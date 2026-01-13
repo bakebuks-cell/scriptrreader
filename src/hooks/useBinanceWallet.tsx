@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useState } from 'react';
+import { useToast } from './use-toast';
 
 export interface ExchangeKey {
   id: string;
@@ -28,6 +29,26 @@ export interface OpenPosition {
   leverage: string;
 }
 
+const BINANCE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/binance-api`;
+
+async function callBinanceApi(action: string, method: string = 'GET', body?: any) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const response = await fetch(`${BINANCE_FUNCTION_URL}?action=${action}`, {
+    method,
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'API request failed');
+  return data;
+}
+
 export function useExchangeKeys() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -36,12 +57,10 @@ export function useExchangeKeys() {
     queryKey: ['exchange-keys', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-
       const { data, error } = await supabase
         .from('exchange_keys')
         .select('*')
         .eq('user_id', user.id);
-
       if (error) throw error;
       return data as ExchangeKey[];
     },
@@ -52,7 +71,6 @@ export function useExchangeKeys() {
     mutationFn: async ({ apiKey, apiSecret }: { apiKey: string; apiSecret: string }) => {
       if (!user?.id) throw new Error('Not authenticated');
 
-      // Check if keys exist
       const { data: existing } = await supabase
         .from('exchange_keys')
         .select('id')
@@ -61,19 +79,16 @@ export function useExchangeKeys() {
         .maybeSingle();
 
       if (existing) {
-        // Update existing
         const { error } = await supabase
           .from('exchange_keys')
           .update({
-            api_key_encrypted: apiKey, // Note: In production, encrypt these properly
+            api_key_encrypted: apiKey,
             api_secret_encrypted: apiSecret,
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id);
-
         if (error) throw error;
       } else {
-        // Insert new
         const { error } = await supabase
           .from('exchange_keys')
           .insert({
@@ -82,29 +97,34 @@ export function useExchangeKeys() {
             api_key_encrypted: apiKey,
             api_secret_encrypted: apiSecret,
           });
-
         if (error) throw error;
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exchange-keys', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['wallet-balance'] });
     },
   });
 
   const deleteKeys = useMutation({
     mutationFn: async () => {
       if (!user?.id) throw new Error('Not authenticated');
-
       const { error } = await supabase
         .from('exchange_keys')
         .delete()
         .eq('user_id', user.id)
         .eq('exchange', 'binance');
-
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exchange-keys', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['wallet-balance'] });
+    },
+  });
+
+  const testConnection = useMutation({
+    mutationFn: async () => {
+      return await callBinanceApi('test');
     },
   });
 
@@ -119,31 +139,26 @@ export function useExchangeKeys() {
     error,
     saveKeys: saveKeys.mutateAsync,
     deleteKeys: deleteKeys.mutateAsync,
+    testConnection: testConnection.mutateAsync,
     isSaving: saveKeys.isPending,
     isDeleting: deleteKeys.isPending,
+    isTesting: testConnection.isPending,
   };
 }
 
-// Mock wallet data for demo - in production, this would call an edge function
-// that securely communicates with Binance API
 export function useWalletBalance() {
-  const { binanceKeys, hasKeys } = useExchangeKeys();
+  const { hasKeys } = useExchangeKeys();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // In production, this would call an edge function to get real Binance balance
-  const { data: balances, isLoading, refetch } = useQuery({
-    queryKey: ['wallet-balance', binanceKeys?.id],
-    queryFn: async (): Promise<WalletBalance[]> => {
-      // Mock data for demo purposes
-      // In production, call: await supabase.functions.invoke('get-binance-balance')
-      return [
-        { asset: 'USDT', free: '1000.00', locked: '0.00' },
-        { asset: 'BTC', free: '0.05', locked: '0.00' },
-        { asset: 'ETH', free: '0.5', locked: '0.00' },
-      ];
+  const { data, isLoading, refetch, error } = useQuery({
+    queryKey: ['wallet-balance'],
+    queryFn: async () => {
+      const result = await callBinanceApi('balance');
+      return result;
     },
     enabled: hasKeys,
-    staleTime: 30000, // 30 seconds
+    staleTime: 30000,
+    retry: 1,
   });
 
   const refresh = async () => {
@@ -152,46 +167,83 @@ export function useWalletBalance() {
     setIsRefreshing(false);
   };
 
-  const totalUSDT = balances?.reduce((sum, b) => {
-    if (b.asset === 'USDT') return sum + parseFloat(b.free);
-    // Mock conversion rates
-    if (b.asset === 'BTC') return sum + parseFloat(b.free) * 45000;
-    if (b.asset === 'ETH') return sum + parseFloat(b.free) * 2500;
+  const spotBalances: WalletBalance[] = data?.spot ?? [];
+  const futuresBalances: WalletBalance[] = data?.futures ?? [];
+  const allBalances = [...spotBalances, ...futuresBalances];
+
+  // Calculate total in USDT (simplified - in production use real price feeds)
+  const totalUSDT = allBalances.reduce((sum, b) => {
+    if (b.asset === 'USDT' || b.asset === 'BUSD') {
+      return sum + parseFloat(b.free) + parseFloat(b.locked);
+    }
     return sum;
-  }, 0) ?? 0;
+  }, 0);
 
   return {
-    balances: balances ?? [],
+    balances: allBalances,
+    spotBalances,
+    futuresBalances,
     totalUSDT,
     isLoading,
     isRefreshing,
     refresh,
     hasKeys,
+    error,
   };
 }
 
 export function useOpenPositions() {
-  const { binanceKeys, hasKeys } = useExchangeKeys();
+  const { hasKeys } = useExchangeKeys();
 
-  const { data: positions, isLoading } = useQuery({
-    queryKey: ['open-positions', binanceKeys?.id],
-    queryFn: async (): Promise<OpenPosition[]> => {
-      // Mock data for demo purposes
-      // In production, call: await supabase.functions.invoke('get-binance-positions')
-      return [];
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['open-positions'],
+    queryFn: async () => {
+      const result = await callBinanceApi('positions');
+      return result.positions as OpenPosition[];
     },
     enabled: hasKeys,
-    staleTime: 10000, // 10 seconds
+    staleTime: 10000,
+    retry: 1,
   });
 
   return {
-    positions: positions ?? [],
+    positions: data ?? [],
     isLoading,
     hasKeys,
+    refetch,
   };
 }
 
-// Admin hook to view all user wallets (read-only)
+export function usePlaceTrade() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (params: {
+      symbol: string;
+      side: 'BUY' | 'SELL';
+      quantity: string;
+      type?: 'MARKET' | 'LIMIT';
+      price?: string;
+      stopLoss?: string;
+      takeProfit?: string;
+      isFutures?: boolean;
+    }) => {
+      return await callBinanceApi('trade', 'POST', params);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wallet-balance'] });
+      queryClient.invalidateQueries({ queryKey: ['open-positions'] });
+      queryClient.invalidateQueries({ queryKey: ['trades'] });
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      toast({ title: 'Trade Executed', description: 'Your order has been placed successfully.' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Trade Failed', description: error.message, variant: 'destructive' });
+    },
+  });
+}
+
 export function useAdminWallets() {
   const { isAdmin } = useAuth();
 
@@ -202,7 +254,6 @@ export function useAdminWallets() {
         .from('exchange_keys')
         .select('*')
         .order('created_at', { ascending: false });
-
       if (error) throw error;
       return data as ExchangeKey[];
     },

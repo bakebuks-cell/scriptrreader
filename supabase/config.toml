@@ -1,1 +1,4 @@
 project_id = "wqavctxsscolwgmnnujg"
+
+[functions.binance-api]
+verify_jwt = false
