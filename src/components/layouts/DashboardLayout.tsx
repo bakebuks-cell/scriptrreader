@@ -9,7 +9,8 @@ import {
   LogOut,
   TrendingUp,
   Menu,
-  Coins
+  Coins,
+  User
 } from 'lucide-react';
 import {
   Sidebar,
@@ -37,6 +38,7 @@ const navItems = [
   { title: 'Wallet', icon: Wallet, path: '/dashboard', tab: 'wallet' },
   { title: 'Trades', icon: BarChart3, path: '/dashboard', tab: 'trades' },
   { title: 'Settings', icon: Settings, path: '/dashboard', tab: 'settings' },
+  { title: 'Profile', icon: User, path: '/dashboard', tab: 'profile' },
 ];
 
 interface DashboardLayoutProps {
@@ -142,6 +144,7 @@ function TopBar({ activeTab }: { activeTab: string }) {
     wallet: 'Wallet',
     trades: 'Trade History',
     settings: 'Settings',
+    profile: 'Profile',
   };
 
   return (

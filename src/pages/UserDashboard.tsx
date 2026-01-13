@@ -27,6 +27,7 @@ import {
 import PineScriptEditor from '@/components/PineScriptEditor';
 import WalletCard from '@/components/WalletCard';
 import BinanceApiKeyForm from '@/components/BinanceApiKeyForm';
+import UserProfile from '@/components/profile/UserProfile';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
@@ -376,6 +377,9 @@ export default function UserDashboard() {
             </Card>
           </div>
         );
+
+      case 'profile':
+        return <UserProfile />;
 
       default:
         return null;
