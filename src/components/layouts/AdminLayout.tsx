@@ -9,7 +9,9 @@ import {
   LogOut,
   TrendingUp,
   Menu,
-  Shield
+  Shield,
+  Coins,
+  User
 } from 'lucide-react';
 import {
   Sidebar,
@@ -33,10 +35,12 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   { title: 'Users', icon: Users, tab: 'users' },
+  { title: 'Coins', icon: Coins, tab: 'coins' },
   { title: 'Pine Scripts', icon: Code, tab: 'scripts' },
   { title: 'Trades', icon: BarChart3, tab: 'trades' },
   { title: 'Wallets', icon: Wallet, tab: 'wallets' },
   { title: 'Settings', icon: Settings, tab: 'settings' },
+  { title: 'Profile', icon: User, tab: 'profile' },
 ];
 
 interface AdminLayoutProps {
@@ -125,10 +129,12 @@ function AdminSidebarNav({ activeTab, onTabChange }: { activeTab: string; onTabC
 function AdminTopBar({ activeTab }: { activeTab: string }) {
   const tabTitles: Record<string, string> = {
     users: 'User Management',
+    coins: 'Coin Management',
     scripts: 'Pine Scripts',
     trades: 'Trade Monitor',
     wallets: 'Wallet Overview',
     settings: 'Settings',
+    profile: 'Admin Profile',
   };
 
   return (

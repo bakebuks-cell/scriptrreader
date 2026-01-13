@@ -29,6 +29,8 @@ import {
   Settings
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import CoinManagement from '@/components/admin/CoinManagement';
+import AdminProfile from '@/components/profile/AdminProfile';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -75,6 +77,12 @@ export default function AdminDashboard() {
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'coins':
+        return <CoinManagement />;
+
+      case 'profile':
+        return <AdminProfile />;
+
       case 'users':
         return (
           <div className="space-y-6">
