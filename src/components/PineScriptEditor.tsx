@@ -7,9 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check } from 'lucide-react';
+import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X } from 'lucide-react';
 import { AVAILABLE_TIMEFRAMES } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
+import { useEvaluateScript } from '@/hooks/usePineScriptEngine';
+import SignalPreview from '@/components/SignalPreview';
 
 interface PineScript {
   id: string;
@@ -95,6 +97,10 @@ export default function PineScriptEditor({
   const [selectedScript, setSelectedScript] = useState<PineScript | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showSignalPreview, setShowSignalPreview] = useState(false);
+  
+  // Test script mutation
+  const evaluateScript = useEvaluateScript();
   
   const [formData, setFormData] = useState({
     name: '',
@@ -189,6 +195,24 @@ export default function PineScriptEditor({
     setCopied(true);
     toast({ title: 'Copied', description: 'Script copied to clipboard' });
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleTestScript = () => {
+    if (!formData.script_content.trim()) {
+      toast({ title: 'Error', description: 'Script content is required', variant: 'destructive' });
+      return;
+    }
+    if (!formData.symbol.trim()) {
+      toast({ title: 'Error', description: 'Symbol is required', variant: 'destructive' });
+      return;
+    }
+    
+    setShowSignalPreview(true);
+    evaluateScript.mutate({
+      scriptContent: formData.script_content,
+      symbol: formData.symbol,
+      timeframe: formData.allowed_timeframes[0] || '1h',
+    });
   };
 
   const isAttached = selectedScript ? attachedScriptIds.includes(selectedScript.id) : false;
@@ -346,12 +370,24 @@ export default function PineScriptEditor({
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
                     {!readOnly && (
                       <>
                         <Button onClick={handleSave} disabled={isSaving}>
                           <Save className="h-4 w-4 mr-2" />
-                          {isSaving ? 'Saving...' : 'Save Script'}
+                          {isSaving ? 'Saving...' : 'Save'}
+                        </Button>
+                        <Button 
+                          variant="secondary" 
+                          onClick={handleTestScript}
+                          disabled={evaluateScript.isPending}
+                        >
+                          {evaluateScript.isPending ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <FlaskConical className="h-4 w-4 mr-2" />
+                          )}
+                          Test Script
                         </Button>
                         {selectedScript && (
                           <Dialog>
@@ -397,6 +433,40 @@ export default function PineScriptEditor({
                     </Button>
                   )}
                 </div>
+
+                {/* Signal Preview Panel */}
+                {showSignalPreview && (
+                  <div className="mt-6 pt-6 border-t col-span-full">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-sm font-medium text-muted-foreground">SIGNAL EVALUATION RESULT</h4>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setShowSignalPreview(false)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {evaluateScript.isPending ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <span className="ml-3 text-muted-foreground">Evaluating script against live market data...</span>
+                      </div>
+                    ) : evaluateScript.isError ? (
+                      <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive">
+                        <p className="font-medium">Evaluation failed</p>
+                        <p className="text-sm mt-1">{evaluateScript.error?.message || 'Unknown error'}</p>
+                      </div>
+                    ) : evaluateScript.data ? (
+                      <SignalPreview
+                        signal={evaluateScript.data.signal}
+                        currentPrice={evaluateScript.data.currentPrice}
+                        indicators={evaluateScript.data.indicators}
+                        symbol={formData.symbol}
+                      />
+                    ) : null}
+                  </div>
+                )}
               </>
             ) : (
               <div className="text-center py-12 text-muted-foreground">
