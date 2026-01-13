@@ -76,6 +76,7 @@ export type Database = {
       }
       pine_scripts: {
         Row: {
+          admin_tag: string | null
           allowed_timeframes: string[]
           created_at: string
           created_by: string | null
@@ -89,6 +90,7 @@ export type Database = {
           webhook_secret: string
         }
         Insert: {
+          admin_tag?: string | null
           allowed_timeframes?: string[]
           created_at?: string
           created_by?: string | null
@@ -102,6 +104,7 @@ export type Database = {
           webhook_secret?: string
         }
         Update: {
+          admin_tag?: string | null
           allowed_timeframes?: string[]
           created_at?: string
           created_by?: string | null
