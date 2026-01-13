@@ -138,6 +138,23 @@
 }
 
 @layer utilities {
+  /* Trading colors */
+  .text-buy {
+    color: hsl(var(--buy));
+  }
+
+  .text-sell {
+    color: hsl(var(--sell));
+  }
+
+  .bg-buy {
+    background-color: hsl(var(--buy));
+  }
+
+  .bg-sell {
+    background-color: hsl(var(--sell));
+  }
+
   /* Glass morphism */
   .glass {
     @apply bg-card/80 backdrop-blur-xl border border-border/50;
