@@ -32,7 +32,7 @@ import { useToast } from '@/hooks/use-toast';
 import CoinManagement from '@/components/admin/CoinManagement';
 import AdminProfile from '@/components/profile/AdminProfile';
 import AdminPineScriptEditor from '@/components/admin/AdminPineScriptEditor';
-import CandlestickChart from '@/components/CandlestickChart';
+import TradingChart from '@/components/TradingChart';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -202,7 +202,7 @@ export default function AdminDashboard() {
         return <AdminPineScriptEditor />;
 
       case 'charts':
-        return <CandlestickChart className="dashboard-card" />;
+        return <TradingChart className="dashboard-card" showIndicators={true} />;
 
       case 'trades':
         return (

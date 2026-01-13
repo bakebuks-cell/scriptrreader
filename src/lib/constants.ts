@@ -41,13 +41,14 @@ export const USER_ROLES = {
   USER: 'user',
 } as const;
 
-// Admin whitelist emails (permanent admins)
+// Admin whitelist emails (permanent admins) - ONLY these emails can be admins
 export const ADMIN_WHITELIST_EMAILS = [
   'piyushjunghare635@gmail.com',
-  'bakebuks@gmail.com',
+  'bakebuks@gmail.com', // lowercase 'b' as specified
 ] as const;
 
-// Check if email is in admin whitelist
+// Check if email is in admin whitelist (case-insensitive)
 export const isAdminEmail = (email: string): boolean => {
-  return ADMIN_WHITELIST_EMAILS.includes(email.toLowerCase() as typeof ADMIN_WHITELIST_EMAILS[number]);
+  const normalizedEmail = email.toLowerCase().trim();
+  return ADMIN_WHITELIST_EMAILS.some(adminEmail => adminEmail.toLowerCase() === normalizedEmail);
 };
