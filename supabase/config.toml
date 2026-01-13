@@ -2,3 +2,6 @@ project_id = "wqavctxsscolwgmnnujg"
 
 [functions.binance-api]
 verify_jwt = false
+
+[functions.execute-pine-script]
+verify_jwt = false
