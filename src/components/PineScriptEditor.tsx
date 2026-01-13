@@ -7,11 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, ChevronDown, FlaskConical } from 'lucide-react';
+import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check } from 'lucide-react';
 import { AVAILABLE_TIMEFRAMES } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
-import ScriptTestPanel from './ScriptTestPanel';
 
 interface PineScript {
   id: string;
@@ -399,29 +397,6 @@ export default function PineScriptEditor({
                     </Button>
                   )}
                 </div>
-
-                {/* Test Panel - Only show for saved scripts */}
-                {selectedScript && !isCreating && (
-                  <Collapsible className="mt-6">
-                    <CollapsibleTrigger asChild>
-                      <Button variant="outline" className="w-full justify-between">
-                        <span className="flex items-center gap-2">
-                          <FlaskConical className="h-4 w-4" />
-                          Test Script Against Live Data
-                        </span>
-                        <ChevronDown className="h-4 w-4" />
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="mt-4">
-                      <ScriptTestPanel
-                        scriptId={selectedScript.id}
-                        scriptName={selectedScript.name}
-                        symbol={selectedScript.symbol}
-                        allowedTimeframes={selectedScript.allowed_timeframes}
-                      />
-                    </CollapsibleContent>
-                  </Collapsible>
-                )}
               </>
             ) : (
               <div className="text-center py-12 text-muted-foreground">
