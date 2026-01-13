@@ -11,7 +11,8 @@ import {
   Menu,
   Shield,
   Coins,
-  User
+  User,
+  LineChart
 } from 'lucide-react';
 import {
   Sidebar,
@@ -30,6 +31,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { PaidModeIndicator } from '@/components/PaidModeIndicator';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
@@ -37,6 +39,7 @@ const navItems = [
   { title: 'Users', icon: Users, tab: 'users' },
   { title: 'Coins', icon: Coins, tab: 'coins' },
   { title: 'Pine Scripts', icon: Code, tab: 'scripts' },
+  { title: 'Charts', icon: LineChart, tab: 'charts' },
   { title: 'Trades', icon: BarChart3, tab: 'trades' },
   { title: 'Wallets', icon: Wallet, tab: 'wallets' },
   { title: 'Settings', icon: Settings, tab: 'settings' },
@@ -131,6 +134,7 @@ function AdminTopBar({ activeTab }: { activeTab: string }) {
     users: 'User Management',
     coins: 'Coin Management',
     scripts: 'Pine Scripts',
+    charts: 'Price Charts',
     trades: 'Trade Monitor',
     wallets: 'Wallet Overview',
     settings: 'Settings',
@@ -149,6 +153,7 @@ function AdminTopBar({ activeTab }: { activeTab: string }) {
           <Shield className="h-3 w-3" />
           Admin
         </Badge>
+        <PaidModeIndicator />
       </div>
 
       <ThemeToggle />

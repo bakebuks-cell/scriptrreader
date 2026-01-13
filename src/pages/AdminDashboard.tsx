@@ -31,6 +31,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import CoinManagement from '@/components/admin/CoinManagement';
 import AdminProfile from '@/components/profile/AdminProfile';
+import AdminPineScriptEditor from '@/components/admin/AdminPineScriptEditor';
+import CandlestickChart from '@/components/CandlestickChart';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -197,66 +199,10 @@ export default function AdminDashboard() {
         );
 
       case 'scripts':
-        return (
-          <Card className="dashboard-card">
-            <CardHeader>
-              <CardTitle>All Pine Scripts</CardTitle>
-              <CardDescription>View and copy user-created scripts</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {scriptsLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-24" />
-                  <Skeleton className="h-24" />
-                </div>
-              ) : scripts.length === 0 ? (
-                <div className="empty-state py-12">
-                  <Code className="empty-state-icon" />
-                  <p className="empty-state-title">No scripts yet</p>
-                  <p className="empty-state-description">User scripts will appear here</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {scripts.map((script) => (
-                    <div key={script.id} className="p-4 border border-border rounded-lg hover:border-primary/20 transition-colors">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h4 className="font-medium flex items-center gap-2">
-                            {script.name}
-                            {script.admin_tag && (
-                              <Badge variant="outline" className="text-xs">{script.admin_tag}</Badge>
-                            )}
-                          </h4>
-                          <p className="text-sm text-muted-foreground">
-                            {script.symbol} • {script.allowed_timeframes?.join(', ') || 'All timeframes'}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={script.is_active ? 'default' : 'outline'}>
-                            {script.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => copyToClipboard(script.script_content, 'Script')}
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="bg-muted/50 rounded-lg p-3 font-mono text-xs overflow-x-auto max-h-32">
-                        <pre className="whitespace-pre-wrap">{script.script_content.slice(0, 300)}...</pre>
-                      </div>
-                      {script.description && (
-                        <p className="text-sm text-muted-foreground mt-2">{script.description}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
+        return <AdminPineScriptEditor />;
+
+      case 'charts':
+        return <CandlestickChart className="dashboard-card" />;
 
       case 'trades':
         return (

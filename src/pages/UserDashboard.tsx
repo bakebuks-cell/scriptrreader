@@ -28,6 +28,7 @@ import PineScriptEditor from '@/components/PineScriptEditor';
 import WalletCard from '@/components/WalletCard';
 import BinanceApiKeyForm from '@/components/BinanceApiKeyForm';
 import UserProfile from '@/components/profile/UserProfile';
+import CandlestickChart from '@/components/CandlestickChart';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
@@ -232,6 +233,9 @@ export default function UserDashboard() {
             </div>
           </div>
         );
+
+      case 'charts':
+        return <CandlestickChart className="dashboard-card" />;
 
       case 'scripts':
         return (
