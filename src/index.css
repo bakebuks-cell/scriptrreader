@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Trading SaaS Design System - Bold, Professional, Dark-first */
+/* PineTrader - Fintech SaaS Design System */
 
 @layer base {
   :root {
@@ -15,106 +15,106 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 142 76% 36%;
+    --primary: 152 76% 40%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96%;
+    --secondary: 220 14% 96%;
     --secondary-foreground: 222 47% 11%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
 
-    --accent: 210 40% 96%;
+    --accent: 220 14% 96%;
     --accent-foreground: 222 47% 11%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 142 76% 36%;
+    --success: 152 76% 40%;
     --success-foreground: 0 0% 100%;
 
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 0%;
 
-    --buy: 142 76% 36%;
+    --buy: 152 76% 40%;
     --buy-foreground: 0 0% 100%;
 
-    --sell: 0 84% 60%;
+    --sell: 0 72% 51%;
     --sell-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 142 76% 36%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 152 76% 40%;
 
     --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5% 26%;
-    --sidebar-primary: 142 76% 36%;
+    --sidebar-background: 220 14% 98%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 152 76% 40%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 5% 96%;
-    --sidebar-accent-foreground: 240 6% 10%;
+    --sidebar-accent: 220 14% 96%;
+    --sidebar-accent-foreground: 222 47% 11%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 142 76% 36%;
+    --sidebar-ring: 152 76% 40%;
 
-    --chart-1: 142 76% 36%;
+    --chart-1: 152 76% 40%;
     --chart-2: 217 91% 60%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
-    --chart-5: 0 84% 60%;
+    --chart-5: 0 72% 51%;
   }
 
   .dark {
     --background: 222 47% 6%;
     --foreground: 210 40% 98%;
 
-    --card: 222 47% 9%;
+    --card: 222 47% 8%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 222 47% 9%;
+    --popover: 222 47% 8%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 142 76% 45%;
+    --primary: 152 76% 45%;
     --primary-foreground: 0 0% 0%;
 
-    --secondary: 217 33% 17%;
+    --secondary: 217 33% 15%;
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 217 33% 17%;
+    --muted: 217 33% 15%;
     --muted-foreground: 215 20% 65%;
 
-    --accent: 217 33% 17%;
+    --accent: 217 33% 15%;
     --accent-foreground: 210 40% 98%;
 
     --destructive: 0 63% 45%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 142 76% 45%;
+    --success: 152 76% 45%;
     --success-foreground: 0 0% 0%;
 
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 0%;
 
-    --buy: 142 76% 45%;
+    --buy: 152 76% 45%;
     --buy-foreground: 0 0% 0%;
 
     --sell: 0 63% 50%;
     --sell-foreground: 0 0% 100%;
 
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 142 76% 45%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 152 76% 45%;
 
-    --sidebar-background: 222 47% 8%;
+    --sidebar-background: 222 47% 7%;
     --sidebar-foreground: 210 40% 95%;
-    --sidebar-primary: 142 76% 45%;
+    --sidebar-primary: 152 76% 45%;
     --sidebar-primary-foreground: 0 0% 0%;
-    --sidebar-accent: 217 33% 15%;
+    --sidebar-accent: 217 33% 13%;
     --sidebar-accent-foreground: 210 40% 95%;
     --sidebar-border: 217 33% 15%;
-    --sidebar-ring: 142 76% 45%;
+    --sidebar-ring: 152 76% 45%;
 
-    --chart-1: 142 76% 45%;
+    --chart-1: 152 76% 45%;
     --chart-2: 217 91% 60%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
@@ -138,26 +138,29 @@
 }
 
 @layer utilities {
+  /* Glass morphism */
   .glass {
     @apply bg-card/80 backdrop-blur-xl border border-border/50;
   }
 
+  /* Gradients */
   .gradient-primary {
-    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%);
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.7) 100%);
   }
 
   .gradient-buy {
-    background: linear-gradient(135deg, hsl(var(--buy)) 0%, hsl(142 76% 30%) 100%);
+    background: linear-gradient(135deg, hsl(var(--buy)) 0%, hsl(152 76% 30%) 100%);
   }
 
   .gradient-sell {
-    background: linear-gradient(135deg, hsl(var(--sell)) 0%, hsl(0 84% 45%) 100%);
+    background: linear-gradient(135deg, hsl(var(--sell)) 0%, hsl(0 72% 40%) 100%);
   }
 
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70;
   }
 
+  /* Animations */
   .animate-pulse-subtle {
     animation: pulse-subtle 2s ease-in-out infinite;
   }
@@ -167,7 +170,92 @@
     50% { opacity: 0.7; }
   }
 
-  .stat-card {
-    @apply glass rounded-xl p-6 transition-all duration-300 hover:shadow-lg hover:shadow-primary/5;
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
   }
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-slide-in {
+    animation: slide-in 0.3s ease-out;
+  }
+
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* Cards */
+  .stat-card {
+    @apply glass rounded-xl p-6 transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20;
+  }
+
+  .dashboard-card {
+    @apply bg-card rounded-xl border border-border shadow-sm transition-all duration-200 hover:shadow-md;
+  }
+
+  /* Status indicators */
+  .status-dot {
+    @apply w-2.5 h-2.5 rounded-full;
+  }
+
+  .status-dot-active {
+    @apply bg-primary animate-pulse;
+  }
+
+  .status-dot-inactive {
+    @apply bg-muted-foreground/40;
+  }
+
+  /* Scrollbar styling */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+
+  /* Focus styles */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-2 focus:ring-offset-background;
+  }
+}
+
+/* Code editor styles */
+.code-editor {
+  @apply font-mono text-sm leading-relaxed;
+}
+
+.code-editor-container {
+  @apply bg-muted/30 rounded-lg border border-border;
+}
+
+/* Empty state styling */
+.empty-state {
+  @apply flex flex-col items-center justify-center py-12 text-center;
+}
+
+.empty-state-icon {
+  @apply w-12 h-12 text-muted-foreground/50 mb-4;
+}
+
+.empty-state-title {
+  @apply text-lg font-medium text-foreground mb-1;
+}
+
+.empty-state-description {
+  @apply text-sm text-muted-foreground max-w-sm;
 }

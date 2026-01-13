@@ -1,30 +1,41 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useTrades } from '@/hooks/useTrades';
 import { usePineScripts } from '@/hooks/usePineScripts';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
-import { Button } from '@/components/ui/button';
+import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, Coins, Bot, LogOut, ArrowUp, ArrowDown, Shield, Code, Wallet, Key } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { 
+  Coins, 
+  Bot, 
+  TrendingUp, 
+  Code, 
+  ArrowUp, 
+  ArrowDown, 
+  AlertTriangle,
+  Wallet,
+  Activity,
+  CheckCircle2,
+  XCircle
+} from 'lucide-react';
 import PineScriptEditor from '@/components/PineScriptEditor';
 import WalletCard from '@/components/WalletCard';
 import BinanceApiKeyForm from '@/components/BinanceApiKeyForm';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
-  const { user, role, signOut, loading: authLoading } = useAuth();
+  const [activeTab, setActiveTab] = useState('overview');
+  const { user, role, loading: authLoading } = useAuth();
   const { profile, isLoading: profileLoading, toggleBot, isUpdating } = useProfile();
   const { trades, activeTrades, isLoading: tradesLoading } = useTrades();
   const { scripts, isLoading: scriptsLoading, createScript, updateScript, deleteScript, isCreating, isUpdating: isScriptUpdating } = usePineScripts();
   const { isPaidModeEnabled } = useFeatureFlags();
-  const { toast } = useToast();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -33,11 +44,6 @@ export default function UserDashboard() {
       navigate('/admin');
     }
   }, [user, role, authLoading, navigate]);
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
-  };
 
   const handleSaveScript = async (scriptData: any) => {
     await createScript(scriptData);
@@ -49,190 +55,336 @@ export default function UserDashboard() {
 
   if (authLoading || profileLoading) {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <Skeleton className="h-12 w-48" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-          </div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="space-y-4 w-full max-w-md px-6">
+          <Skeleton className="h-8 w-32 mx-auto" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
         </div>
       </div>
     );
   }
 
   const coinsRemaining = profile?.coins ?? 0;
+  const recentTrades = trades.slice(0, 5);
 
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-8 w-8 text-primary" />
-            <span className="text-xl font-bold">PineTrader</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">{user?.email}</span>
-            <Button variant="ghost" size="sm" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </header>
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'overview':
+        return (
+          <div className="space-y-6">
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Coins Card */}
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Available Coins</CardTitle>
+                  <Coins className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{coinsRemaining}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {coinsRemaining === 0 ? (
+                      <span className="text-destructive flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        No trades remaining
+                      </span>
+                    ) : (
+                      `${coinsRemaining} trade${coinsRemaining !== 1 ? 's' : ''} remaining`
+                    )}
+                  </p>
+                </CardContent>
+              </Card>
 
-      <main className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="stat-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Coins</CardTitle>
-              <Coins className="h-5 w-5 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{coinsRemaining}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {coinsRemaining === 0 ? 'No trades available' : `${coinsRemaining} trades remaining`}
-              </p>
-            </CardContent>
-          </Card>
+              {/* Bot Status Card */}
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Trading Bot</CardTitle>
+                  <Bot className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`status-dot ${profile?.bot_enabled ? 'status-dot-active' : 'status-dot-inactive'}`} />
+                      <span className="text-lg font-semibold">{profile?.bot_enabled ? 'Active' : 'Inactive'}</span>
+                    </div>
+                    <Switch
+                      checked={profile?.bot_enabled ?? false}
+                      onCheckedChange={toggleBot}
+                      disabled={isUpdating || coinsRemaining === 0}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
 
-          <Card className="stat-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Bot</CardTitle>
-              <Bot className="h-5 w-5 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${profile?.bot_enabled ? 'bg-primary animate-pulse' : 'bg-muted-foreground'}`} />
-                  <span className="text-lg font-semibold">{profile?.bot_enabled ? 'Active' : 'Off'}</span>
-                </div>
-                <Switch
-                  checked={profile?.bot_enabled ?? false}
-                  onCheckedChange={toggleBot}
-                  disabled={isUpdating || coinsRemaining === 0}
-                />
-              </div>
-            </CardContent>
-          </Card>
+              {/* Scripts Card */}
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Your Scripts</CardTitle>
+                  <Code className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{scripts.length}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {scripts.filter(s => s.is_active).length} active
+                  </p>
+                </CardContent>
+              </Card>
 
-          <Card className="stat-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Scripts</CardTitle>
-              <Code className="h-5 w-5 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{scripts.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">{scripts.filter(s => s.is_active).length} active</p>
-            </CardContent>
-          </Card>
-
-          <Card className="stat-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Trades</CardTitle>
-              <TrendingUp className="h-5 w-5 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{activeTrades.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">{trades.length} total</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {!isPaidModeEnabled && (
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="flex items-center justify-between py-4">
-              <div className="flex items-center gap-3">
-                <Shield className="h-5 w-5 text-primary" />
-                <div>
-                  <p className="font-medium">Upgrade to Premium</p>
-                  <p className="text-sm text-muted-foreground">Unlimited coins and advanced features</p>
-                </div>
-              </div>
-              <Button variant="outline" disabled>Coming Soon</Button>
-            </CardContent>
-          </Card>
-        )}
-
-        <Tabs defaultValue="scripts" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="scripts">Pine Scripts</TabsTrigger>
-            <TabsTrigger value="wallet">Wallet</TabsTrigger>
-            <TabsTrigger value="trades">Trades</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="scripts">
-            <PineScriptEditor
-              scripts={scripts}
-              onSave={handleSaveScript}
-              onUpdate={handleUpdateScript}
-              onDelete={deleteScript}
-              isLoading={scriptsLoading}
-              isSaving={isCreating || isScriptUpdating}
-            />
-          </TabsContent>
-
-          <TabsContent value="wallet">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <WalletCard />
-              <BinanceApiKeyForm />
+              {/* Active Trades Card */}
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Open Trades</CardTitle>
+                  <Activity className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{activeTrades.length}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {trades.length} total executed
+                  </p>
+                </CardContent>
+              </Card>
             </div>
-          </TabsContent>
 
-          <TabsContent value="trades">
-            <Card>
+            {/* Warning if no coins */}
+            {coinsRemaining === 0 && (
+              <Card className="border-destructive/50 bg-destructive/5">
+                <CardContent className="flex items-center gap-4 py-4">
+                  <AlertTriangle className="h-6 w-6 text-destructive" />
+                  <div>
+                    <p className="font-medium text-destructive">No Coins Remaining</p>
+                    <p className="text-sm text-muted-foreground">
+                      You've used all your free trades. Trading is currently disabled.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Quick Actions */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Wallet Snapshot */}
+              <Card className="dashboard-card">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Wallet className="h-5 w-5 text-primary" />
+                    Wallet Snapshot
+                  </CardTitle>
+                  <CardDescription>Your connected Binance wallet</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <WalletCard compact />
+                </CardContent>
+              </Card>
+
+              {/* Recent Trades */}
+              <Card className="dashboard-card">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-primary" />
+                    Recent Trades
+                  </CardTitle>
+                  <CardDescription>Your last 5 trades</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {tradesLoading ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-10" />
+                      <Skeleton className="h-10" />
+                    </div>
+                  ) : recentTrades.length === 0 ? (
+                    <div className="empty-state py-8">
+                      <TrendingUp className="empty-state-icon" />
+                      <p className="empty-state-title">No trades yet</p>
+                      <p className="empty-state-description">
+                        Enable your bot and create a Pine Script to start trading
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {recentTrades.map((trade) => (
+                        <div key={trade.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-1.5 rounded ${trade.signal_type === 'BUY' ? 'bg-buy/10 text-buy' : 'bg-sell/10 text-sell'}`}>
+                              {trade.signal_type === 'BUY' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                            </div>
+                            <div>
+                              <p className="font-medium text-sm">{trade.symbol}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(trade.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge variant={
+                            trade.status === 'OPEN' ? 'default' :
+                            trade.status === 'CLOSED' ? 'secondary' :
+                            trade.status === 'FAILED' ? 'destructive' : 'outline'
+                          }>
+                            {trade.status}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+
+      case 'scripts':
+        return (
+          <div className="space-y-6">
+            <Card className="dashboard-card">
               <CardHeader>
-                <CardTitle>Trade History</CardTitle>
-                <CardDescription>Your executed trades</CardDescription>
+                <CardTitle>Pine Script Editor</CardTitle>
+                <CardDescription>
+                  Your trading logic is fully controlled by this script. Write your strategy below.
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                {tradesLoading ? (
-                  <Skeleton className="h-24" />
-                ) : trades.length === 0 ? (
-                  <p className="text-center py-8 text-muted-foreground">No trades yet</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b text-left text-sm text-muted-foreground">
-                          <th className="pb-3">Type</th>
-                          <th className="pb-3">Symbol</th>
-                          <th className="pb-3">Status</th>
-                          <th className="pb-3">SL / TP</th>
-                          <th className="pb-3">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {trades.slice(0, 10).map((trade) => (
-                          <tr key={trade.id} className="border-b border-border/50">
-                            <td className="py-3">
-                              <Badge variant={trade.signal_type === 'BUY' ? 'default' : 'destructive'}>
-                                {trade.signal_type === 'BUY' ? <ArrowUp className="h-3 w-3 mr-1" /> : <ArrowDown className="h-3 w-3 mr-1" />}
-                                {trade.signal_type}
-                              </Badge>
-                            </td>
-                            <td className="py-3 font-medium">{trade.symbol}</td>
-                            <td className="py-3"><Badge variant="outline">{trade.status}</Badge></td>
-                            <td className="py-3 text-sm">{trade.stop_loss?.toFixed(2)} / {trade.take_profit?.toFixed(2)}</td>
-                            <td className="py-3 text-sm text-muted-foreground">{new Date(trade.created_at).toLocaleDateString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <PineScriptEditor
+                  scripts={scripts}
+                  onSave={handleSaveScript}
+                  onUpdate={handleUpdateScript}
+                  onDelete={deleteScript}
+                  isLoading={scriptsLoading}
+                  isSaving={isCreating || isScriptUpdating}
+                />
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>
+        );
 
-          <TabsContent value="settings">
+      case 'wallet':
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <WalletCard />
             <BinanceApiKeyForm />
-          </TabsContent>
-        </Tabs>
-      </main>
-    </div>
+          </div>
+        );
+
+      case 'trades':
+        return (
+          <Card className="dashboard-card">
+            <CardHeader>
+              <CardTitle>Trade History</CardTitle>
+              <CardDescription>All your executed trades</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {tradesLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-12" />
+                  <Skeleton className="h-12" />
+                  <Skeleton className="h-12" />
+                </div>
+              ) : trades.length === 0 ? (
+                <div className="empty-state py-12">
+                  <TrendingUp className="empty-state-icon" />
+                  <p className="empty-state-title">No trades yet</p>
+                  <p className="empty-state-description">
+                    Your trade history will appear here once you start trading
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b text-left text-sm text-muted-foreground">
+                        <th className="pb-3 font-medium">Side</th>
+                        <th className="pb-3 font-medium">Symbol</th>
+                        <th className="pb-3 font-medium">Entry</th>
+                        <th className="pb-3 font-medium">SL</th>
+                        <th className="pb-3 font-medium">TP</th>
+                        <th className="pb-3 font-medium">Status</th>
+                        <th className="pb-3 font-medium">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trades.map((trade) => (
+                        <tr key={trade.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                          <td className="py-3">
+                            <Badge variant={trade.signal_type === 'BUY' ? 'default' : 'destructive'} className="gap-1">
+                              {trade.signal_type === 'BUY' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                              {trade.signal_type}
+                            </Badge>
+                          </td>
+                          <td className="py-3 font-medium">{trade.symbol}</td>
+                          <td className="py-3 font-mono text-sm">{trade.entry_price?.toFixed(2) || '-'}</td>
+                          <td className="py-3 font-mono text-sm text-sell">{trade.stop_loss?.toFixed(2) || '-'}</td>
+                          <td className="py-3 font-mono text-sm text-buy">{trade.take_profit?.toFixed(2) || '-'}</td>
+                          <td className="py-3">
+                            <Badge variant={
+                              trade.status === 'OPEN' ? 'default' :
+                              trade.status === 'CLOSED' ? 'secondary' :
+                              trade.status === 'FAILED' ? 'destructive' : 'outline'
+                            }>
+                              {trade.status === 'OPEN' && <Activity className="h-3 w-3 mr-1" />}
+                              {trade.status === 'CLOSED' && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                              {trade.status === 'FAILED' && <XCircle className="h-3 w-3 mr-1" />}
+                              {trade.status}
+                            </Badge>
+                          </td>
+                          <td className="py-3 text-sm text-muted-foreground">
+                            {new Date(trade.created_at).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+
+      case 'settings':
+        return (
+          <div className="max-w-2xl space-y-6">
+            <Card className="dashboard-card">
+              <CardHeader>
+                <CardTitle>Binance API Configuration</CardTitle>
+                <CardDescription>
+                  Connect your Binance account to enable automated trading
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <BinanceApiKeyForm />
+              </CardContent>
+            </Card>
+
+            <Card className="dashboard-card">
+              <CardHeader>
+                <CardTitle>Bot Configuration</CardTitle>
+                <CardDescription>Control your trading bot settings</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                  <div>
+                    <p className="font-medium">Trading Bot</p>
+                    <p className="text-sm text-muted-foreground">
+                      {profile?.bot_enabled ? 'Bot is actively monitoring and trading' : 'Bot is currently disabled'}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={profile?.bot_enabled ?? false}
+                    onCheckedChange={toggleBot}
+                    disabled={isUpdating || coinsRemaining === 0}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <DashboardLayout activeTab={activeTab} onTabChange={setActiveTab}>
+      {renderContent()}
+    </DashboardLayout>
   );
 }
