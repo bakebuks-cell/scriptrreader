@@ -1,25 +1,45 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useAdminUsers } from '@/hooks/useAdminUsers';
-import { usePineScripts } from '@/hooks/usePineScripts';
+import { useAdminPineScripts } from '@/hooks/usePineScripts';
 import { useAllTrades } from '@/hooks/useTrades';
 import { useAdminFeatureFlags } from '@/hooks/useFeatureFlags';
-import { Button } from '@/components/ui/button';
+import { useAdminWallets } from '@/hooks/useBinanceWallet';
+import { AdminLayout } from '@/components/layouts/AdminLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, Users, Code, BarChart3, LogOut, Shield, Coins, Settings } from 'lucide-react';
+import { 
+  Users, 
+  Code, 
+  BarChart3, 
+  Coins,
+  Bot,
+  Copy,
+  Eye,
+  CheckCircle2,
+  XCircle,
+  ArrowUp,
+  ArrowDown,
+  Activity,
+  Wallet,
+  Settings
+} from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const { user, role, signOut, loading: authLoading } = useAuth();
+  const [activeTab, setActiveTab] = useState('users');
+  const { user, role, loading: authLoading } = useAuth();
   const { users, isLoading: usersLoading } = useAdminUsers();
-  const { scripts, isLoading: scriptsLoading } = usePineScripts();
+  const { scripts, isLoading: scriptsLoading } = useAdminPineScripts();
   const { trades, isLoading: tradesLoading } = useAllTrades();
   const { flags, toggleFlag, isToggling } = useAdminFeatureFlags();
+  const { allKeys: wallets, isLoading: walletsLoading } = useAdminWallets();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -29,22 +49,21 @@ export default function AdminDashboard() {
     }
   }, [user, role, authLoading, navigate]);
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: 'Copied!',
+      description: `${label} copied to clipboard`,
+    });
   };
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <Skeleton className="h-12 w-48" />
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-          </div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="space-y-4 w-full max-w-md px-6">
+          <Skeleton className="h-8 w-32 mx-auto" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
         </div>
       </div>
     );
@@ -52,123 +71,109 @@ export default function AdminDashboard() {
 
   const totalCoins = users.reduce((sum, u) => sum + u.coins, 0);
   const activeBots = users.filter(u => u.bot_enabled).length;
+  const connectedWallets = wallets?.length || 0;
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-8 w-8 text-primary" />
-            <span className="text-xl font-bold">PineTrader</span>
-            <Badge variant="secondary" className="ml-2">Admin</Badge>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">{user?.email}</span>
-            <Button variant="ghost" size="sm" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </header>
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'users':
+        return (
+          <div className="space-y-6">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
+                  <Users className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{users.length}</div>
+                  <p className="text-xs text-muted-foreground mt-1">{activeBots} with active bots</p>
+                </CardContent>
+              </Card>
 
-      <main className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="stat-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
-              <Users className="h-5 w-5 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{users.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">{activeBots} with active bots</p>
-            </CardContent>
-          </Card>
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Coins</CardTitle>
+                  <Coins className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{totalCoins}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Available across users</p>
+                </CardContent>
+              </Card>
 
-          <Card className="stat-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pine Scripts</CardTitle>
-              <Code className="h-5 w-5 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{scripts.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">{scripts.filter(s => s.is_active).length} active</p>
-            </CardContent>
-          </Card>
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Active Bots</CardTitle>
+                  <Bot className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{activeBots}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Currently running</p>
+                </CardContent>
+              </Card>
 
-          <Card className="stat-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Trades</CardTitle>
-              <BarChart3 className="h-5 w-5 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{trades.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">All time</p>
-            </CardContent>
-          </Card>
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Connected Wallets</CardTitle>
+                  <Wallet className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{connectedWallets}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Binance accounts</p>
+                </CardContent>
+              </Card>
+            </div>
 
-          <Card className="stat-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Coins</CardTitle>
-              <Coins className="h-5 w-5 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{totalCoins}</div>
-              <p className="text-xs text-muted-foreground mt-1">Available across users</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Tabs */}
-        <Tabs defaultValue="users" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="users">Users</TabsTrigger>
-            <TabsTrigger value="scripts">Pine Scripts</TabsTrigger>
-            <TabsTrigger value="trades">Trades</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="users">
-            <Card>
+            {/* Users Table */}
+            <Card className="dashboard-card">
               <CardHeader>
                 <CardTitle>User Management</CardTitle>
-                <CardDescription>View and manage all registered users</CardDescription>
+                <CardDescription>View all registered users and their status</CardDescription>
               </CardHeader>
               <CardContent>
                 {usersLoading ? (
                   <div className="space-y-2">
                     <Skeleton className="h-12" />
                     <Skeleton className="h-12" />
+                    <Skeleton className="h-12" />
+                  </div>
+                ) : users.length === 0 ? (
+                  <div className="empty-state py-12">
+                    <Users className="empty-state-icon" />
+                    <p className="empty-state-title">No users yet</p>
+                    <p className="empty-state-description">Users will appear here when they sign up</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b border-border text-left text-sm text-muted-foreground">
-                          <th className="pb-3">Email</th>
-                          <th className="pb-3">Role</th>
-                          <th className="pb-3">Coins</th>
-                          <th className="pb-3">Bot</th>
-                          <th className="pb-3">Timeframes</th>
-                          <th className="pb-3">Joined</th>
+                        <tr className="border-b text-left text-sm text-muted-foreground">
+                          <th className="pb-3 font-medium">Email</th>
+                          <th className="pb-3 font-medium">Role</th>
+                          <th className="pb-3 font-medium">Coins</th>
+                          <th className="pb-3 font-medium">Bot Status</th>
+                          <th className="pb-3 font-medium">Joined</th>
                         </tr>
                       </thead>
                       <tbody>
                         {users.map((u) => (
-                          <tr key={u.id} className="border-b border-border/50">
-                            <td className="py-3">{u.email}</td>
+                          <tr key={u.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                            <td className="py-3 font-medium">{u.email}</td>
                             <td className="py-3">
-                              <Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>{u.role || 'user'}</Badge>
-                            </td>
-                            <td className="py-3">{u.coins}</td>
-                            <td className="py-3">
-                              <Badge variant={u.bot_enabled ? 'default' : 'outline'}>
-                                {u.bot_enabled ? 'On' : 'Off'}
+                              <Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>
+                                {u.role || 'user'}
                               </Badge>
                             </td>
-                            <td className="py-3">{u.selected_timeframes?.length ?? 0}</td>
+                            <td className="py-3">
+                              <span className={u.coins === 0 ? 'text-destructive' : ''}>{u.coins}</span>
+                            </td>
+                            <td className="py-3">
+                              <div className="flex items-center gap-2">
+                                <div className={`status-dot ${u.bot_enabled ? 'status-dot-active' : 'status-dot-inactive'}`} />
+                                <span className="text-sm">{u.bot_enabled ? 'Active' : 'Inactive'}</span>
+                              </div>
+                            </td>
                             <td className="py-3 text-sm text-muted-foreground">
                               {new Date(u.created_at).toLocaleDateString()}
                             </td>
@@ -180,81 +185,161 @@ export default function AdminDashboard() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>
+        );
 
-          <TabsContent value="scripts">
-            <Card>
-              <CardHeader>
-                <CardTitle>Pine Script Manager</CardTitle>
-                <CardDescription>Manage trading scripts (never exposed to users)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {scriptsLoading ? (
-                  <div className="space-y-2">
-                    <Skeleton className="h-12" />
-                  </div>
-                ) : scripts.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No scripts created yet</p>
-                ) : (
-                  <div className="space-y-4">
-                    {scripts.map((script) => (
-                      <div key={script.id} className="p-4 border border-border rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h4 className="font-medium">{script.name}</h4>
-                            <p className="text-sm text-muted-foreground">{script.symbol} • {script.allowed_timeframes.join(', ')}</p>
-                          </div>
+      case 'scripts':
+        return (
+          <Card className="dashboard-card">
+            <CardHeader>
+              <CardTitle>All Pine Scripts</CardTitle>
+              <CardDescription>View and copy user-created scripts</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {scriptsLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-24" />
+                  <Skeleton className="h-24" />
+                </div>
+              ) : scripts.length === 0 ? (
+                <div className="empty-state py-12">
+                  <Code className="empty-state-icon" />
+                  <p className="empty-state-title">No scripts yet</p>
+                  <p className="empty-state-description">User scripts will appear here</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {scripts.map((script) => (
+                    <div key={script.id} className="p-4 border border-border rounded-lg hover:border-primary/20 transition-colors">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <h4 className="font-medium flex items-center gap-2">
+                            {script.name}
+                            {script.admin_tag && (
+                              <Badge variant="outline" className="text-xs">{script.admin_tag}</Badge>
+                            )}
+                          </h4>
+                          <p className="text-sm text-muted-foreground">
+                            {script.symbol} • {script.allowed_timeframes?.join(', ') || 'All timeframes'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
                           <Badge variant={script.is_active ? 'default' : 'outline'}>
                             {script.is_active ? 'Active' : 'Inactive'}
                           </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => copyToClipboard(script.script_content, 'Script')}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-2">Webhook: {script.webhook_secret.slice(0, 8)}...</p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      <div className="bg-muted/50 rounded-lg p-3 font-mono text-xs overflow-x-auto max-h-32">
+                        <pre className="whitespace-pre-wrap">{script.script_content.slice(0, 300)}...</pre>
+                      </div>
+                      {script.description && (
+                        <p className="text-sm text-muted-foreground mt-2">{script.description}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
 
-          <TabsContent value="trades">
-            <Card>
+      case 'trades':
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Trades</CardTitle>
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{trades.length}</div>
+                </CardContent>
+              </Card>
+
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Open</CardTitle>
+                  <Activity className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{trades.filter(t => t.status === 'OPEN').length}</div>
+                </CardContent>
+              </Card>
+
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Failed</CardTitle>
+                  <XCircle className="h-5 w-5 text-destructive" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-destructive">{trades.filter(t => t.status === 'FAILED').length}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="dashboard-card">
               <CardHeader>
                 <CardTitle>Trade Monitor</CardTitle>
-                <CardDescription>All trades across users</CardDescription>
+                <CardDescription>All trades across all users</CardDescription>
               </CardHeader>
               <CardContent>
                 {tradesLoading ? (
                   <div className="space-y-2">
                     <Skeleton className="h-12" />
+                    <Skeleton className="h-12" />
                   </div>
                 ) : trades.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No trades yet</p>
+                  <div className="empty-state py-12">
+                    <BarChart3 className="empty-state-icon" />
+                    <p className="empty-state-title">No trades yet</p>
+                    <p className="empty-state-description">Trades will appear here when users start trading</p>
+                  </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b border-border text-left text-sm text-muted-foreground">
-                          <th className="pb-3">Type</th>
-                          <th className="pb-3">Symbol</th>
-                          <th className="pb-3">Status</th>
-                          <th className="pb-3">Coin Used</th>
-                          <th className="pb-3">Date</th>
+                        <tr className="border-b text-left text-sm text-muted-foreground">
+                          <th className="pb-3 font-medium">Side</th>
+                          <th className="pb-3 font-medium">Symbol</th>
+                          <th className="pb-3 font-medium">Status</th>
+                          <th className="pb-3 font-medium">Coin Used</th>
+                          <th className="pb-3 font-medium">Date</th>
                         </tr>
                       </thead>
                       <tbody>
                         {trades.slice(0, 20).map((trade) => (
-                          <tr key={trade.id} className="border-b border-border/50">
+                          <tr key={trade.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
                             <td className="py-3">
-                              <Badge variant={trade.signal_type === 'BUY' ? 'default' : 'destructive'}>
+                              <Badge variant={trade.signal_type === 'BUY' ? 'default' : 'destructive'} className="gap-1">
+                                {trade.signal_type === 'BUY' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
                                 {trade.signal_type}
                               </Badge>
                             </td>
-                            <td className="py-3">{trade.symbol}</td>
+                            <td className="py-3 font-medium">{trade.symbol}</td>
                             <td className="py-3">
-                              <Badge variant="outline">{trade.status}</Badge>
+                              <Badge variant={
+                                trade.status === 'OPEN' ? 'default' :
+                                trade.status === 'CLOSED' ? 'secondary' :
+                                trade.status === 'FAILED' ? 'destructive' : 'outline'
+                              }>
+                                {trade.status}
+                              </Badge>
                             </td>
-                            <td className="py-3">{trade.coin_consumed ? 'Yes' : 'No'}</td>
+                            <td className="py-3">
+                              {trade.coin_consumed ? (
+                                <CheckCircle2 className="h-4 w-4 text-primary" />
+                              ) : (
+                                <XCircle className="h-4 w-4 text-muted-foreground" />
+                              )}
+                            </td>
                             <td className="py-3 text-sm text-muted-foreground">
                               {new Date(trade.created_at).toLocaleDateString()}
                             </td>
@@ -266,23 +351,73 @@ export default function AdminDashboard() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>
+        );
 
-          <TabsContent value="settings">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="h-5 w-5" />
-                  Feature Flags
-                </CardTitle>
-                <CardDescription>Control system-wide features</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {flags.map((flag) => (
-                  <div key={flag.id} className="flex items-center justify-between p-4 border border-border rounded-lg">
+      case 'wallets':
+        return (
+          <Card className="dashboard-card">
+            <CardHeader>
+              <CardTitle>Wallet Overview</CardTitle>
+              <CardDescription>All connected Binance wallets (read-only)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {walletsLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-12" />
+                  <Skeleton className="h-12" />
+                </div>
+              ) : !wallets || wallets.length === 0 ? (
+                <div className="empty-state py-12">
+                  <Wallet className="empty-state-icon" />
+                  <p className="empty-state-title">No connected wallets</p>
+                  <p className="empty-state-description">User wallets will appear here when they connect their Binance accounts</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {wallets.map((wallet) => (
+                    <div key={wallet.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Wallet className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium">User ID: {wallet.user_id.slice(0, 8)}...</p>
+                          <p className="text-sm text-muted-foreground">
+                            Connected: {new Date(wallet.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant={wallet.is_active ? 'default' : 'outline'}>
+                        {wallet.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+
+      case 'settings':
+        return (
+          <Card className="dashboard-card max-w-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-primary" />
+                Feature Flags
+              </CardTitle>
+              <CardDescription>Control system-wide features</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {flags.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No feature flags configured</p>
+              ) : (
+                flags.map((flag) => (
+                  <div key={flag.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover:bg-muted/70 transition-colors">
                     <div>
-                      <p className="font-medium">{flag.name.replace('_', ' ').toUpperCase()}</p>
-                      <p className="text-sm text-muted-foreground">{flag.description}</p>
+                      <p className="font-medium">{flag.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
+                      <p className="text-sm text-muted-foreground">{flag.description || 'No description'}</p>
                     </div>
                     <Switch
                       checked={flag.enabled}
@@ -290,12 +425,20 @@ export default function AdminDashboard() {
                       disabled={isToggling}
                     />
                   </div>
-                ))}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </main>
-    </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <AdminLayout activeTab={activeTab} onTabChange={setActiveTab}>
+      {renderContent()}
+    </AdminLayout>
   );
 }

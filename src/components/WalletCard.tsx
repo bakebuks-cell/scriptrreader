@@ -1,42 +1,77 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Wallet, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
+import { Wallet, RefreshCw, TrendingUp, TrendingDown, Link2Off } from 'lucide-react';
 import { useWalletBalance, useOpenPositions } from '@/hooks/useBinanceWallet';
 
-export default function WalletCard() {
+interface WalletCardProps {
+  compact?: boolean;
+}
+
+export default function WalletCard({ compact = false }: WalletCardProps) {
   const { balances, totalUSDT, isLoading, isRefreshing, refresh, hasKeys } = useWalletBalance();
   const { positions } = useOpenPositions();
 
   if (!hasKeys) {
-    return (
-      <Card>
+    return compact ? (
+      <div className="flex flex-col items-center justify-center py-6 text-center">
+        <Link2Off className="h-8 w-8 text-muted-foreground/50 mb-2" />
+        <p className="text-sm font-medium text-muted-foreground">Not Connected</p>
+        <p className="text-xs text-muted-foreground">Add your Binance API keys</p>
+      </div>
+    ) : (
+      <Card className="dashboard-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Wallet className="h-5 w-5" />
+            <Wallet className="h-5 w-5 text-primary" />
             Binance Wallet
           </CardTitle>
           <CardDescription>Connect your Binance API keys to view your wallet</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            <Wallet className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>No API keys configured</p>
-            <p className="text-sm">Add your Binance API keys to see your balance</p>
+          <div className="empty-state py-8">
+            <Wallet className="empty-state-icon" />
+            <p className="empty-state-title">No API keys configured</p>
+            <p className="empty-state-description">Add your Binance API keys in Settings to see your balance</p>
           </div>
         </CardContent>
       </Card>
     );
   }
 
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        {isLoading ? (
+          <Skeleton className="h-16" />
+        ) : (
+          <>
+            <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+              <p className="text-xs text-muted-foreground">Total Balance</p>
+              <p className="text-xl font-bold text-primary">
+                ${totalUSDT.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            {positions.length > 0 ? (
+              <div className="text-sm">
+                <span className="text-muted-foreground">{positions.length} open position{positions.length !== 1 ? 's' : ''}</span>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No open positions</p>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <Card>
+    <Card className="dashboard-card">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <Wallet className="h-5 w-5" />
+              <Wallet className="h-5 w-5 text-primary" />
               Binance Wallet
             </CardTitle>
             <CardDescription>Your connected wallet balance</CardDescription>
@@ -49,9 +84,9 @@ export default function WalletCard() {
       <CardContent className="space-y-4">
         {isLoading ? (
           <div className="space-y-2">
+            <Skeleton className="h-16 w-full" />
             <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-12 w-full" />
           </div>
         ) : (
           <>
@@ -64,37 +99,39 @@ export default function WalletCard() {
             </div>
 
             {/* Asset List */}
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Assets</p>
-              {balances.map((balance) => (
-                <div 
-                  key={balance.asset} 
-                  className="flex items-center justify-between p-3 rounded-lg bg-accent/50"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <span className="text-xs font-bold">{balance.asset.slice(0, 2)}</span>
+            {balances.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Assets</p>
+                {balances.slice(0, 5).map((balance) => (
+                  <div 
+                    key={balance.asset} 
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted/70 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <span className="text-xs font-bold text-primary">{balance.asset.slice(0, 2)}</span>
+                      </div>
+                      <div>
+                        <p className="font-medium">{balance.asset}</p>
+                        <p className="text-xs text-muted-foreground">Available</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">{balance.asset}</p>
-                      <p className="text-xs text-muted-foreground">Available</p>
+                    <div className="text-right">
+                      <p className="font-medium font-mono">{parseFloat(balance.free).toFixed(4)}</p>
+                      {parseFloat(balance.locked) > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Locked: {parseFloat(balance.locked).toFixed(4)}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-medium">{parseFloat(balance.free).toFixed(4)}</p>
-                    {parseFloat(balance.locked) > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Locked: {parseFloat(balance.locked).toFixed(4)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Open Positions */}
             {positions.length > 0 && (
-              <div className="space-y-2 pt-4 border-t">
+              <div className="space-y-2 pt-4 border-t border-border">
                 <p className="text-sm font-medium">Open Positions</p>
                 {positions.map((position, idx) => {
                   const pnl = parseFloat(position.unrealizedProfit);
@@ -102,7 +139,7 @@ export default function WalletCard() {
                   return (
                     <div 
                       key={idx} 
-                      className="flex items-center justify-between p-3 rounded-lg bg-accent/50"
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
                     >
                       <div>
                         <p className="font-medium">{position.symbol}</p>
@@ -111,13 +148,13 @@ export default function WalletCard() {
                         </p>
                       </div>
                       <div className="text-right">
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center justify-end gap-1">
                           {isProfit ? (
                             <TrendingUp className="h-4 w-4 text-buy" />
                           ) : (
                             <TrendingDown className="h-4 w-4 text-sell" />
                           )}
-                          <span className={isProfit ? 'text-buy' : 'text-sell'}>
+                          <span className={`font-medium ${isProfit ? 'text-buy' : 'text-sell'}`}>
                             ${Math.abs(pnl).toFixed(2)}
                           </span>
                         </div>
@@ -131,9 +168,9 @@ export default function WalletCard() {
               </div>
             )}
 
-            {positions.length === 0 && (
+            {positions.length === 0 && balances.length === 0 && (
               <div className="text-center py-4 text-muted-foreground">
-                <p className="text-sm">No open positions</p>
+                <p className="text-sm">No assets or positions found</p>
               </div>
             )}
           </>
