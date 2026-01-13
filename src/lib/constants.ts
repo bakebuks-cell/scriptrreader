@@ -40,3 +40,14 @@ export const USER_ROLES = {
   ADMIN: 'admin',
   USER: 'user',
 } as const;
+
+// Admin whitelist emails (permanent admins)
+export const ADMIN_WHITELIST_EMAILS = [
+  'piyushjunghare635@gmail.com',
+  'bakebuks@gmail.com',
+] as const;
+
+// Check if email is in admin whitelist
+export const isAdminEmail = (email: string): boolean => {
+  return ADMIN_WHITELIST_EMAILS.includes(email.toLowerCase() as typeof ADMIN_WHITELIST_EMAILS[number]);
+};

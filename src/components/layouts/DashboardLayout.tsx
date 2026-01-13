@@ -10,7 +10,8 @@ import {
   TrendingUp,
   Menu,
   Coins,
-  User
+  User,
+  LineChart
 } from 'lucide-react';
 import {
   Sidebar,
@@ -28,12 +29,14 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { PaidModeIndicator } from '@/components/PaidModeIndicator';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { title: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', tab: 'overview' },
+  { title: 'Charts', icon: LineChart, path: '/dashboard', tab: 'charts' },
   { title: 'Pine Script', icon: Code, path: '/dashboard', tab: 'scripts' },
   { title: 'Wallet', icon: Wallet, path: '/dashboard', tab: 'wallet' },
   { title: 'Trades', icon: BarChart3, path: '/dashboard', tab: 'trades' },
@@ -140,6 +143,7 @@ function TopBar({ activeTab }: { activeTab: string }) {
   const { profile } = useProfile();
   const tabTitles: Record<string, string> = {
     overview: 'Dashboard',
+    charts: 'Price Charts',
     scripts: 'Pine Script Editor',
     wallet: 'Wallet',
     trades: 'Trade History',
@@ -153,8 +157,9 @@ function TopBar({ activeTab }: { activeTab: string }) {
         <Menu className="h-5 w-5" />
       </SidebarTrigger>
       
-      <div className="flex-1">
+      <div className="flex-1 flex items-center gap-3">
         <h1 className="text-xl font-semibold">{tabTitles[activeTab] || 'Dashboard'}</h1>
+        <PaidModeIndicator />
       </div>
 
       <div className="flex items-center gap-4">

@@ -1,0 +1,516 @@
+import { useState } from 'react';
+import { useAdminPineScripts, PineScript, CreatePineScriptInput } from '@/hooks/usePineScripts';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
+import { 
+  Plus, 
+  Save, 
+  Trash2, 
+  Copy, 
+  Code, 
+  Shield, 
+  Users,
+  Edit,
+  X,
+  CheckCircle2
+} from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { AVAILABLE_TIMEFRAMES } from '@/lib/constants';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Switch } from '@/components/ui/switch';
+
+const defaultScript = `// Admin Pine Script Template
+//@version=5
+strategy("Admin Strategy", overlay=true)
+
+// Your indicators here
+sma20 = ta.sma(close, 20)
+sma50 = ta.sma(close, 50)
+
+// Entry conditions
+longCondition = ta.crossover(sma20, sma50)
+shortCondition = ta.crossunder(sma20, sma50)
+
+// Execute trades
+if (longCondition)
+    strategy.entry("Long", strategy.long)
+if (shortCondition)
+    strategy.entry("Short", strategy.short)
+
+// Plots
+plot(sma20, color=color.blue)
+plot(sma50, color=color.red)
+`;
+
+export default function AdminPineScriptEditor() {
+  const { 
+    adminScripts, 
+    userScripts, 
+    isLoading, 
+    createAdminScript, 
+    updateScript, 
+    deleteScript,
+    copyScript,
+    isCreating,
+    isUpdating,
+    isDeleting,
+    isCopying
+  } = useAdminPineScripts();
+  const { toast } = useToast();
+
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [editingScript, setEditingScript] = useState<PineScript | null>(null);
+  const [newScript, setNewScript] = useState<CreatePineScriptInput & { admin_tag: string }>({
+    name: '',
+    description: '',
+    script_content: defaultScript,
+    symbol: 'BTCUSDT',
+    allowed_timeframes: ['1h', '4h'],
+    is_active: false,
+    admin_tag: 'ADMIN',
+  });
+
+  const handleCreateScript = async () => {
+    if (!newScript.name.trim()) {
+      toast({ title: 'Error', description: 'Script name is required', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      await createAdminScript(newScript);
+      toast({ title: 'Success', description: 'Admin script created!' });
+      setIsCreateDialogOpen(false);
+      setNewScript({
+        name: '',
+        description: '',
+        script_content: defaultScript,
+        symbol: 'BTCUSDT',
+        allowed_timeframes: ['1h', '4h'],
+        is_active: false,
+        admin_tag: 'ADMIN',
+      });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleUpdateScript = async () => {
+    if (!editingScript) return;
+
+    try {
+      await updateScript({
+        id: editingScript.id,
+        name: editingScript.name,
+        description: editingScript.description,
+        script_content: editingScript.script_content,
+        symbol: editingScript.symbol,
+        allowed_timeframes: editingScript.allowed_timeframes,
+        is_active: editingScript.is_active,
+      });
+      toast({ title: 'Success', description: 'Script updated!' });
+      setEditingScript(null);
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleDeleteScript = async (id: string) => {
+    try {
+      await deleteScript(id);
+      toast({ title: 'Success', description: 'Script deleted!' });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleCopyScript = async (script: PineScript) => {
+    try {
+      await copyScript(script);
+      toast({ title: 'Success', description: 'Script copied to your admin scripts!' });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const toggleTimeframe = (tf: string, isNew: boolean) => {
+    if (isNew) {
+      setNewScript(prev => ({
+        ...prev,
+        allowed_timeframes: prev.allowed_timeframes.includes(tf)
+          ? prev.allowed_timeframes.filter(t => t !== tf)
+          : [...prev.allowed_timeframes, tf]
+      }));
+    } else if (editingScript) {
+      setEditingScript(prev => prev ? ({
+        ...prev,
+        allowed_timeframes: prev.allowed_timeframes.includes(tf)
+          ? prev.allowed_timeframes.filter(t => t !== tf)
+          : [...prev.allowed_timeframes, tf]
+      }) : null);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-40" />
+        <Skeleton className="h-64" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Create Admin Script Button */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h3 className="text-lg font-semibold">Pine Script Management</h3>
+          <p className="text-sm text-muted-foreground">
+            Create admin scripts and view/copy user scripts
+          </p>
+        </div>
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              Create Admin Script
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Create Admin Pine Script</DialogTitle>
+              <DialogDescription>
+                Create a new admin-owned trading script
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Script Name</Label>
+                  <Input
+                    value={newScript.name}
+                    onChange={(e) => setNewScript(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="My Admin Strategy"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Symbol</Label>
+                  <Input
+                    value={newScript.symbol}
+                    onChange={(e) => setNewScript(prev => ({ ...prev, symbol: e.target.value }))}
+                    placeholder="BTCUSDT"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Input
+                  value={newScript.description || ''}
+                  onChange={(e) => setNewScript(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Brief description of the strategy"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Allowed Timeframes</Label>
+                <div className="flex flex-wrap gap-2">
+                  {AVAILABLE_TIMEFRAMES.map((tf) => (
+                    <Badge
+                      key={tf.value}
+                      variant={newScript.allowed_timeframes.includes(tf.value) ? 'default' : 'outline'}
+                      className="cursor-pointer"
+                      onClick={() => toggleTimeframe(tf.value, true)}
+                    >
+                      {tf.label}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Script Content</Label>
+                <Textarea
+                  value={newScript.script_content}
+                  onChange={(e) => setNewScript(prev => ({ ...prev, script_content: e.target.value }))}
+                  className="font-mono text-sm h-64"
+                  placeholder="// Your Pine Script code here"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={newScript.is_active}
+                  onCheckedChange={(checked) => setNewScript(prev => ({ ...prev, is_active: checked }))}
+                />
+                <Label>Active</Label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateScript} disabled={isCreating}>
+                {isCreating ? 'Creating...' : 'Create Script'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <Tabs defaultValue="admin" className="w-full">
+        <TabsList>
+          <TabsTrigger value="admin" className="gap-2">
+            <Shield className="h-4 w-4" />
+            Admin Scripts ({adminScripts.length})
+          </TabsTrigger>
+          <TabsTrigger value="user" className="gap-2">
+            <Users className="h-4 w-4" />
+            User Scripts ({userScripts.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="admin" className="space-y-4 mt-4">
+          {adminScripts.length === 0 ? (
+            <Card>
+              <CardContent className="py-12">
+                <div className="text-center">
+                  <Code className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">No admin scripts yet</p>
+                  <p className="text-muted-foreground">Create your first admin script above</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            adminScripts.map((script) => (
+              <Card key={script.id}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        {script.name}
+                        <Badge variant="default" className="text-xs gap-1">
+                          <Shield className="h-3 w-3" />
+                          {script.admin_tag}
+                        </Badge>
+                        {script.is_active && (
+                          <Badge variant="secondary" className="gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Active
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription>
+                        {script.symbol} • {script.allowed_timeframes?.join(', ')}
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="icon" onClick={() => setEditingScript(script)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Script?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently delete "{script.name}". This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={() => handleDeleteScript(script.id)}
+                              className="bg-destructive text-destructive-foreground"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {script.description && (
+                    <p className="text-sm text-muted-foreground mb-2">{script.description}</p>
+                  )}
+                  <div className="bg-muted/50 rounded-lg p-3 font-mono text-xs overflow-x-auto max-h-24">
+                    <pre className="whitespace-pre-wrap">{script.script_content.slice(0, 200)}...</pre>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="user" className="space-y-4 mt-4">
+          {userScripts.length === 0 ? (
+            <Card>
+              <CardContent className="py-12">
+                <div className="text-center">
+                  <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">No user scripts yet</p>
+                  <p className="text-muted-foreground">User scripts will appear here</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            userScripts.map((script) => (
+              <Card key={script.id}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        {script.name}
+                        <Badge variant="outline" className="text-xs">User Script</Badge>
+                        {script.is_active && (
+                          <Badge variant="secondary" className="gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Active
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription>
+                        {script.symbol} • {script.allowed_timeframes?.join(', ')}
+                      </CardDescription>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="gap-2"
+                      onClick={() => handleCopyScript(script)}
+                      disabled={isCopying}
+                    >
+                      <Copy className="h-4 w-4" />
+                      Copy
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {script.description && (
+                    <p className="text-sm text-muted-foreground mb-2">{script.description}</p>
+                  )}
+                  <div className="bg-muted/50 rounded-lg p-3 font-mono text-xs overflow-x-auto max-h-24">
+                    <pre className="whitespace-pre-wrap">{script.script_content.slice(0, 200)}...</pre>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingScript} onOpenChange={(open) => !open && setEditingScript(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Admin Script</DialogTitle>
+            <DialogDescription>
+              Modify your admin trading script
+            </DialogDescription>
+          </DialogHeader>
+          {editingScript && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Script Name</Label>
+                  <Input
+                    value={editingScript.name}
+                    onChange={(e) => setEditingScript(prev => prev ? ({ ...prev, name: e.target.value }) : null)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Symbol</Label>
+                  <Input
+                    value={editingScript.symbol}
+                    onChange={(e) => setEditingScript(prev => prev ? ({ ...prev, symbol: e.target.value }) : null)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Input
+                  value={editingScript.description || ''}
+                  onChange={(e) => setEditingScript(prev => prev ? ({ ...prev, description: e.target.value }) : null)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Allowed Timeframes</Label>
+                <div className="flex flex-wrap gap-2">
+                  {AVAILABLE_TIMEFRAMES.map((tf) => (
+                    <Badge
+                      key={tf.value}
+                      variant={editingScript.allowed_timeframes.includes(tf.value) ? 'default' : 'outline'}
+                      className="cursor-pointer"
+                      onClick={() => toggleTimeframe(tf.value, false)}
+                    >
+                      {tf.label}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Script Content</Label>
+                <Textarea
+                  value={editingScript.script_content}
+                  onChange={(e) => setEditingScript(prev => prev ? ({ ...prev, script_content: e.target.value }) : null)}
+                  className="font-mono text-sm h-64"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={editingScript.is_active}
+                  onCheckedChange={(checked) => setEditingScript(prev => prev ? ({ ...prev, is_active: checked }) : null)}
+                />
+                <Label>Active</Label>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingScript(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateScript} disabled={isUpdating}>
+              {isUpdating ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -8,14 +8,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, Lock, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { isAdminEmail } from '@/lib/constants';
 
 export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, user, role, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!loading && user && role) {
+      navigate(role === 'admin' ? '/admin' : '/dashboard');
+    }
+  }, [user, role, loading, navigate]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +33,9 @@ export default function Auth() {
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     } else {
-      navigate('/dashboard');
+      // Check if admin email to redirect appropriately
+      const targetRoute = isAdminEmail(email) ? '/admin' : '/dashboard';
+      navigate(targetRoute);
     }
   };
 
@@ -38,7 +48,9 @@ export default function Auth() {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     } else {
       toast({ title: 'Success', description: 'Account created! You can now sign in.' });
-      navigate('/dashboard');
+      // Check if admin email to redirect appropriately
+      const targetRoute = isAdminEmail(email) ? '/admin' : '/dashboard';
+      navigate(targetRoute);
     }
   };
 

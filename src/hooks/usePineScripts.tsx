@@ -107,7 +107,7 @@ export function usePineScripts() {
 
 // Admin hook - sees ALL scripts from all users
 export function useAdminPineScripts() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const queryClient = useQueryClient();
 
   const { data: scripts, isLoading, error } = useQuery({
@@ -122,6 +122,32 @@ export function useAdminPineScripts() {
       return data as PineScript[];
     },
     enabled: isAdmin,
+  });
+
+  // Admin scripts (created by admin with admin_tag)
+  const adminScripts = scripts?.filter(s => s.admin_tag) ?? [];
+  const userScripts = scripts?.filter(s => !s.admin_tag) ?? [];
+
+  const createAdminScript = useMutation({
+    mutationFn: async (input: CreatePineScriptInput & { admin_tag?: string }) => {
+      if (!user?.id) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('pine_scripts')
+        .insert({ 
+          ...input, 
+          created_by: user.id,
+          admin_tag: input.admin_tag || 'ADMIN'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as PineScript;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-pine-scripts'] });
+    },
   });
 
   const updateScript = useMutation({
@@ -141,11 +167,56 @@ export function useAdminPineScripts() {
     },
   });
 
+  const deleteScript = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('pine_scripts').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-pine-scripts'] });
+    },
+  });
+
+  const copyScript = useMutation({
+    mutationFn: async (script: PineScript) => {
+      if (!user?.id) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('pine_scripts')
+        .insert({
+          name: `${script.name} (Admin Copy)`,
+          description: script.description,
+          script_content: script.script_content,
+          symbol: script.symbol,
+          allowed_timeframes: script.allowed_timeframes,
+          is_active: false,
+          created_by: user.id,
+          admin_tag: 'ADMIN_COPY'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as PineScript;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-pine-scripts'] });
+    },
+  });
+
   return {
     scripts: scripts ?? [],
+    adminScripts,
+    userScripts,
     isLoading,
     error,
+    createAdminScript: createAdminScript.mutateAsync,
     updateScript: updateScript.mutateAsync,
+    deleteScript: deleteScript.mutateAsync,
+    copyScript: copyScript.mutateAsync,
+    isCreating: createAdminScript.isPending,
     isUpdating: updateScript.isPending,
+    isDeleting: deleteScript.isPending,
+    isCopying: copyScript.isPending,
   };
 }
