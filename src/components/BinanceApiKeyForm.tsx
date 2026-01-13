@@ -5,18 +5,38 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Key, Eye, EyeOff, Trash2, Shield, CheckCircle2 } from 'lucide-react';
+import { Key, Eye, EyeOff, Trash2, Shield, CheckCircle2, Wifi, WifiOff, Loader2 } from 'lucide-react';
 import { useExchangeKeys } from '@/hooks/useBinanceWallet';
 import { useToast } from '@/hooks/use-toast';
 
 export default function BinanceApiKeyForm() {
-  const { binanceKeys, hasKeys, saveKeys, deleteKeys, isSaving, isDeleting } = useExchangeKeys();
+  const { binanceKeys, hasKeys, saveKeys, deleteKeys, testConnection, isSaving, isDeleting, isTesting } = useExchangeKeys();
   const { toast } = useToast();
   
   const [isOpen, setIsOpen] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const handleTestConnection = async () => {
+    try {
+      setConnectionStatus('idle');
+      await testConnection();
+      setConnectionStatus('success');
+      toast({ 
+        title: 'Connection Successful', 
+        description: 'Your Binance API keys are valid and working correctly.' 
+      });
+    } catch (error: any) {
+      setConnectionStatus('error');
+      toast({ 
+        title: 'Connection Failed', 
+        description: error.message || 'Could not connect to Binance. Please check your API keys.',
+        variant: 'destructive' 
+      });
+    }
+  };
 
   const handleSave = async () => {
     if (!apiKey.trim() || !apiSecret.trim()) {
@@ -70,6 +90,36 @@ export default function BinanceApiKeyForm() {
               </div>
               <Badge variant="default">Active</Badge>
             </div>
+
+            {/* Test Connection Button */}
+            <Button 
+              variant="outline" 
+              className="w-full"
+              onClick={handleTestConnection}
+              disabled={isTesting}
+            >
+              {isTesting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Testing Connection...
+                </>
+              ) : connectionStatus === 'success' ? (
+                <>
+                  <Wifi className="h-4 w-4 mr-2 text-green-500" />
+                  Connection Verified
+                </>
+              ) : connectionStatus === 'error' ? (
+                <>
+                  <WifiOff className="h-4 w-4 mr-2 text-red-500" />
+                  Test Connection
+                </>
+              ) : (
+                <>
+                  <Wifi className="h-4 w-4 mr-2" />
+                  Test Connection
+                </>
+              )}
+            </Button>
 
             <div className="flex items-center gap-2 p-3 rounded-lg bg-accent/50">
               <Shield className="h-4 w-4 text-muted-foreground" />
