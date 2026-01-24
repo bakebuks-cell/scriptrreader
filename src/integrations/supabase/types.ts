@@ -272,6 +272,56 @@ export type Database = {
         }
         Relationships: []
       }
+      script_reports: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          description: string | null
+          id: string
+          reason: Database["public"]["Enums"]["report_reason"]
+          reported_by: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          script_id: string
+          status: Database["public"]["Enums"]["report_status"]
+          updated_at: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          reason: Database["public"]["Enums"]["report_reason"]
+          reported_by: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          script_id: string
+          status?: Database["public"]["Enums"]["report_status"]
+          updated_at?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          reason?: Database["public"]["Enums"]["report_reason"]
+          reported_by?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          script_id?: string
+          status?: Database["public"]["Enums"]["report_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "script_reports_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: false
+            referencedRelation: "pine_scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       signals: {
         Row: {
           candle_timestamp: string
@@ -522,6 +572,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      report_reason: "SPAM" | "SCAM" | "FAKE_STRATEGY" | "OFFENSIVE" | "OTHER"
+      report_status: "PENDING" | "REVIEWED" | "RESOLVED"
       signal_type: "BUY" | "SELL"
       trade_status: "PENDING" | "OPEN" | "CLOSED" | "FAILED" | "CANCELLED"
       wallet_role: "ADMIN" | "USER"
@@ -653,6 +705,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      report_reason: ["SPAM", "SCAM", "FAKE_STRATEGY", "OFFENSIVE", "OTHER"],
+      report_status: ["PENDING", "REVIEWED", "RESOLVED"],
       signal_type: ["BUY", "SELL"],
       trade_status: ["PENDING", "OPEN", "CLOSED", "FAILED", "CANCELLED"],
       wallet_role: ["ADMIN", "USER"],

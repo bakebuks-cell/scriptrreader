@@ -32,6 +32,7 @@ import { useToast } from '@/hooks/use-toast';
 import CoinManagement from '@/components/admin/CoinManagement';
 import AdminProfile from '@/components/profile/AdminProfile';
 import AdminPineScriptEditor from '@/components/admin/AdminPineScriptEditor';
+import AdminReportsSection from '@/components/admin/AdminReportsSection';
 import TradingChart from '@/components/TradingChart';
 
 export default function AdminDashboard() {
@@ -209,6 +210,9 @@ export default function AdminDashboard() {
 
       case 'scripts':
         return <AdminPineScriptEditor />;
+
+      case 'reports':
+        return <AdminReportsSection />;
 
       case 'charts':
         return <TradingChart className="dashboard-card" showIndicators={true} />;

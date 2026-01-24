@@ -12,7 +12,8 @@ import {
   Shield,
   Coins,
   User,
-  LineChart
+  LineChart,
+  Flag
 } from 'lucide-react';
 import {
   Sidebar,
@@ -39,6 +40,7 @@ const navItems = [
   { title: 'Users', icon: Users, tab: 'users' },
   { title: 'Coins', icon: Coins, tab: 'coins' },
   { title: 'Pine Scripts', icon: Code, tab: 'scripts' },
+  { title: 'Reports', icon: Flag, tab: 'reports' },
   { title: 'Charts', icon: LineChart, tab: 'charts' },
   { title: 'Trades', icon: BarChart3, tab: 'trades' },
   { title: 'Wallets', icon: Wallet, tab: 'wallets' },
@@ -134,6 +136,7 @@ function AdminTopBar({ activeTab }: { activeTab: string }) {
     users: 'User Management',
     coins: 'Coin Management',
     scripts: 'Pine Scripts',
+    reports: 'Script Reports',
     charts: 'Price Charts',
     trades: 'Trade Monitor',
     wallets: 'Wallet Overview',
