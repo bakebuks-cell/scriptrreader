@@ -236,8 +236,10 @@ export default function PineScriptEditor({
         toast({ title: 'Success', description: 'Script created successfully' });
         resetForm();
       }
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to save script', variant: 'destructive' });
+    } catch (error: any) {
+      console.error('Save script error:', error);
+      const errorMessage = error?.message || 'Failed to save script';
+      toast({ title: 'Error', description: errorMessage, variant: 'destructive' });
     }
   };
 

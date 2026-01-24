@@ -75,13 +75,36 @@ export function usePineScripts() {
     mutationFn: async (input: CreatePineScriptInput) => {
       if (!user?.id) throw new Error('Not authenticated');
 
+      // Clean up the input data - ensure proper types and remove undefined values
+      const cleanInput = {
+        name: input.name,
+        script_content: input.script_content,
+        symbol: input.symbol,
+        allowed_timeframes: input.allowed_timeframes,
+        is_active: input.is_active ?? true,
+        description: input.description || null,
+        candle_type: input.candle_type || 'regular',
+        market_type: input.market_type || 'spot',
+        trading_pairs: input.trading_pairs || [input.symbol],
+        multi_pair_mode: input.multi_pair_mode ?? false,
+        position_size_type: input.position_size_type || 'fixed',
+        position_size_value: input.position_size_value || 100,
+        max_capital: input.max_capital || 1000,
+        leverage: input.leverage || 1,
+        max_trades_per_day: input.max_trades_per_day || 10,
+        created_by: user.id,
+      };
+
       const { data, error } = await supabase
         .from('pine_scripts')
-        .insert({ ...input, created_by: user.id })
+        .insert(cleanInput)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Script creation error:', error);
+        throw new Error(error.message || 'Failed to create script');
+      }
       return data as PineScript;
     },
     onSuccess: () => {
@@ -91,14 +114,35 @@ export function usePineScripts() {
 
   const updateScript = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<PineScript> & { id: string }) => {
+      // Clean up the update data
+      const cleanUpdates: Record<string, any> = {};
+      if (updates.name !== undefined) cleanUpdates.name = updates.name;
+      if (updates.description !== undefined) cleanUpdates.description = updates.description || null;
+      if (updates.script_content !== undefined) cleanUpdates.script_content = updates.script_content;
+      if (updates.symbol !== undefined) cleanUpdates.symbol = updates.symbol;
+      if (updates.allowed_timeframes !== undefined) cleanUpdates.allowed_timeframes = updates.allowed_timeframes;
+      if (updates.is_active !== undefined) cleanUpdates.is_active = updates.is_active;
+      if (updates.candle_type !== undefined) cleanUpdates.candle_type = updates.candle_type;
+      if (updates.market_type !== undefined) cleanUpdates.market_type = updates.market_type;
+      if (updates.trading_pairs !== undefined) cleanUpdates.trading_pairs = updates.trading_pairs;
+      if (updates.multi_pair_mode !== undefined) cleanUpdates.multi_pair_mode = updates.multi_pair_mode;
+      if (updates.position_size_type !== undefined) cleanUpdates.position_size_type = updates.position_size_type;
+      if (updates.position_size_value !== undefined) cleanUpdates.position_size_value = updates.position_size_value;
+      if (updates.max_capital !== undefined) cleanUpdates.max_capital = updates.max_capital;
+      if (updates.leverage !== undefined) cleanUpdates.leverage = updates.leverage;
+      if (updates.max_trades_per_day !== undefined) cleanUpdates.max_trades_per_day = updates.max_trades_per_day;
+
       const { data, error } = await supabase
         .from('pine_scripts')
-        .update(updates)
+        .update(cleanUpdates)
         .eq('id', id)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Script update error:', error);
+        throw new Error(error.message || 'Failed to update script');
+      }
       return data as PineScript;
     },
     onSuccess: () => {
@@ -206,17 +250,37 @@ export function useAdminPineScripts() {
     mutationFn: async (input: CreatePineScriptInput & { admin_tag?: string }) => {
       if (!user?.id) throw new Error('Not authenticated');
 
+      // Clean up the input data
+      const cleanInput = {
+        name: input.name,
+        script_content: input.script_content,
+        symbol: input.symbol,
+        allowed_timeframes: input.allowed_timeframes,
+        is_active: input.is_active ?? false,
+        description: input.description || null,
+        candle_type: input.candle_type || 'regular',
+        market_type: input.market_type || 'spot',
+        trading_pairs: input.trading_pairs || [input.symbol],
+        multi_pair_mode: input.multi_pair_mode ?? false,
+        position_size_type: input.position_size_type || 'fixed',
+        position_size_value: input.position_size_value || 100,
+        max_capital: input.max_capital || 1000,
+        leverage: input.leverage || 1,
+        max_trades_per_day: input.max_trades_per_day || 10,
+        created_by: user.id,
+        admin_tag: input.admin_tag || 'ADMIN',
+      };
+
       const { data, error } = await supabase
         .from('pine_scripts')
-        .insert({ 
-          ...input, 
-          created_by: user.id,
-          admin_tag: input.admin_tag || 'ADMIN'
-        })
+        .insert(cleanInput)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Admin script creation error:', error);
+        throw new Error(error.message || 'Failed to create script');
+      }
       return data as PineScript;
     },
     onSuccess: () => {
@@ -226,14 +290,35 @@ export function useAdminPineScripts() {
 
   const updateScript = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<PineScript> & { id: string }) => {
+      // Clean up the update data
+      const cleanUpdates: Record<string, any> = {};
+      if (updates.name !== undefined) cleanUpdates.name = updates.name;
+      if (updates.description !== undefined) cleanUpdates.description = updates.description || null;
+      if (updates.script_content !== undefined) cleanUpdates.script_content = updates.script_content;
+      if (updates.symbol !== undefined) cleanUpdates.symbol = updates.symbol;
+      if (updates.allowed_timeframes !== undefined) cleanUpdates.allowed_timeframes = updates.allowed_timeframes;
+      if (updates.is_active !== undefined) cleanUpdates.is_active = updates.is_active;
+      if (updates.candle_type !== undefined) cleanUpdates.candle_type = updates.candle_type;
+      if (updates.market_type !== undefined) cleanUpdates.market_type = updates.market_type;
+      if (updates.trading_pairs !== undefined) cleanUpdates.trading_pairs = updates.trading_pairs;
+      if (updates.multi_pair_mode !== undefined) cleanUpdates.multi_pair_mode = updates.multi_pair_mode;
+      if (updates.position_size_type !== undefined) cleanUpdates.position_size_type = updates.position_size_type;
+      if (updates.position_size_value !== undefined) cleanUpdates.position_size_value = updates.position_size_value;
+      if (updates.max_capital !== undefined) cleanUpdates.max_capital = updates.max_capital;
+      if (updates.leverage !== undefined) cleanUpdates.leverage = updates.leverage;
+      if (updates.max_trades_per_day !== undefined) cleanUpdates.max_trades_per_day = updates.max_trades_per_day;
+
       const { data, error } = await supabase
         .from('pine_scripts')
-        .update(updates)
+        .update(cleanUpdates)
         .eq('id', id)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Admin script update error:', error);
+        throw new Error(error.message || 'Failed to update script');
+      }
       return data as PineScript;
     },
     onSuccess: () => {
