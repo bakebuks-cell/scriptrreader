@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Coins, 
   Bot, 
@@ -22,13 +23,16 @@ import {
   Wallet,
   Activity,
   CheckCircle2,
-  XCircle
+  XCircle,
+  BarChart3
 } from 'lucide-react';
 import PineScriptEditor from '@/components/PineScriptEditor';
 import WalletCard from '@/components/WalletCard';
 import BinanceApiKeyForm from '@/components/BinanceApiKeyForm';
 import UserProfile from '@/components/profile/UserProfile';
 import TradingChart from '@/components/TradingChart';
+import ScriptAnalyticsDashboard from '@/components/analytics/ScriptAnalyticsDashboard';
+import ScriptExportButton from '@/components/ScriptExportButton';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
@@ -260,26 +264,48 @@ export default function UserDashboard() {
       case 'scripts':
         return (
           <div className="space-y-6">
-            <Card className="dashboard-card">
-              <CardHeader>
-                <CardTitle>Pine Script Editor</CardTitle>
-                <CardDescription>
-                  Manage your trading strategies. Admin scripts are read-only templates you can reference.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <PineScriptEditor
-                  scripts={scripts}
-                  onSave={handleSaveScript}
-                  onUpdate={handleUpdateScript}
-                  onDelete={deleteScript}
-                  onToggleActivation={handleToggleActivation}
-                  isLoading={scriptsLoading}
-                  isSaving={isCreating || isScriptUpdating}
-                  isToggling={isToggling}
-                />
-              </CardContent>
-            </Card>
+            <Tabs defaultValue="editor" className="w-full">
+              <div className="flex items-center justify-between mb-4">
+                <TabsList>
+                  <TabsTrigger value="editor" className="flex items-center gap-2">
+                    <Code className="h-4 w-4" />
+                    Editor
+                  </TabsTrigger>
+                  <TabsTrigger value="analytics" className="flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4" />
+                    Analytics
+                  </TabsTrigger>
+                </TabsList>
+                <ScriptExportButton scripts={scripts} />
+              </div>
+              
+              <TabsContent value="editor">
+                <Card className="dashboard-card">
+                  <CardHeader>
+                    <CardTitle>Pine Script Editor</CardTitle>
+                    <CardDescription>
+                      Manage your trading strategies. Admin scripts are read-only templates you can reference.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <PineScriptEditor
+                      scripts={scripts}
+                      onSave={handleSaveScript}
+                      onUpdate={handleUpdateScript}
+                      onDelete={deleteScript}
+                      onToggleActivation={handleToggleActivation}
+                      isLoading={scriptsLoading}
+                      isSaving={isCreating || isScriptUpdating}
+                      isToggling={isToggling}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              
+              <TabsContent value="analytics">
+                <ScriptAnalyticsDashboard />
+              </TabsContent>
+            </Tabs>
           </div>
         );
 
@@ -406,6 +432,9 @@ export default function UserDashboard() {
 
       case 'profile':
         return <UserProfile />;
+
+      case 'analytics':
+        return <ScriptAnalyticsDashboard />;
 
       default:
         return null;
