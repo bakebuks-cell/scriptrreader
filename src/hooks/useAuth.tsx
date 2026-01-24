@@ -65,7 +65,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      // Handle stale/invalid refresh token by signing out gracefully
+      if (error) {
+        console.warn('Session retrieval error:', error.message);
+        // Clear any stale session data
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        setLoading(false);
+        return;
+      }
+
       setSession(session);
       setUser(session?.user ?? null);
 
@@ -73,6 +85,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userRole = await fetchUserRole(session.user.id);
         setRole(userRole);
       }
+      setLoading(false);
+    }).catch(async (err) => {
+      console.error('Session error:', err);
+      // Clear any stale session data on error
+      await supabase.auth.signOut();
+      setSession(null);
+      setUser(null);
+      setRole(null);
       setLoading(false);
     });
 
