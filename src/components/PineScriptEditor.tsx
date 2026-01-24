@@ -6,9 +6,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Edit, Flag } from 'lucide-react';
+import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Shield, Power } from 'lucide-react';
 import { AVAILABLE_TIMEFRAMES, MAX_SYMBOLS_PER_SCRIPT } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { useEvaluateScript } from '@/hooks/usePineScriptEngine';
@@ -26,6 +27,7 @@ interface PineScript {
   symbol: string;
   is_active: boolean;
   allowed_timeframes: string[];
+  admin_tag: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -43,14 +45,16 @@ interface PineScript {
 
 interface PineScriptEditorProps {
   scripts: PineScript[];
-  onSave: (script: Omit<PineScript, 'id' | 'created_by' | 'created_at' | 'updated_at' | 'webhook_secret'>) => Promise<void>;
+  onSave: (script: Omit<PineScript, 'id' | 'created_by' | 'created_at' | 'updated_at' | 'webhook_secret' | 'admin_tag'>) => Promise<void>;
   onUpdate: (id: string, updates: Partial<PineScript>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onToggleActivation?: (id: string, is_active: boolean) => Promise<void>;
   onAttach?: (scriptId: string) => Promise<void>;
   onDetach?: (scriptId: string) => Promise<void>;
   attachedScriptIds?: string[];
   isLoading?: boolean;
   isSaving?: boolean;
+  isToggling?: boolean;
   canAttach?: boolean;
   readOnly?: boolean;
 }
@@ -112,11 +116,13 @@ export default function PineScriptEditor({
   onSave,
   onUpdate,
   onDelete,
+  onToggleActivation,
   onAttach,
   onDetach,
   attachedScriptIds = [],
   isLoading,
   isSaving,
+  isToggling,
   canAttach = false,
   readOnly = false,
 }: PineScriptEditorProps) {
@@ -327,54 +333,87 @@ export default function PineScriptEditor({
                     <p className="text-xs text-muted-foreground">Unsaved</p>
                   </div>
                 )}
-                {scripts.map((script) => (
-                  <div
-                    key={script.id}
-                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedScript?.id === script.id 
-                        ? 'border-primary bg-primary/5' 
-                        : 'border-border hover:bg-accent/50'
-                    }`}
-                    onClick={() => { setSelectedScript(script); setIsCreating(false); }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium truncate flex-1">{script.name}</p>
-                      <div className="flex items-center gap-1">
-                        <Badge variant={script.is_active ? 'default' : 'outline'} className="ml-2 shrink-0">
-                          {script.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
+                {scripts.map((script) => {
+                  const isAdminScript = script.admin_tag !== null;
+                  const isOwnScript = script.created_by === user?.id;
+                  const canToggle = isOwnScript && !isAdminScript;
+                  const canEdit = (isOwnScript && !isAdminScript) || isAdmin;
+                  
+                  return (
+                    <div
+                      key={script.id}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedScript?.id === script.id 
+                          ? 'border-primary bg-primary/5' 
+                          : 'border-border hover:bg-accent/50'
+                      }`}
+                      onClick={() => { setSelectedScript(script); setIsCreating(false); }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium truncate flex-1">{script.name}</p>
+                        <div className="flex items-center gap-1">
+                          {isAdminScript && (
+                            <Badge variant="secondary" className="gap-1 shrink-0">
+                              <Shield className="h-3 w-3" />
+                              Admin
+                            </Badge>
+                          )}
+                          <Badge 
+                            variant={script.is_active ? 'default' : 'outline'} 
+                            className={`shrink-0 ${script.is_active ? 'bg-green-600' : ''}`}
+                          >
+                            {script.is_active ? '🟢 Active' : '🔴 Inactive'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {(() => {
+                          const symbols = script.trading_pairs?.length ? script.trading_pairs : [script.symbol];
+                          const displaySymbols = symbols.slice(0, 2).join(', ');
+                          const remaining = symbols.length - 2;
+                          return remaining > 0 ? `${displaySymbols} (+${remaining} more)` : displaySymbols;
+                        })()} • {script.allowed_timeframes.length} TF
+                        {script.market_type && script.market_type !== 'spot' && (
+                          <span className="ml-1">• {script.leverage || 1}x</span>
+                        )}
+                      </p>
+                      <div className="flex items-center justify-between mt-2">
+                        <div className="flex items-center gap-2">
+                          {canAttach && attachedScriptIds.includes(script.id) && (
+                            <Badge variant="secondary" className="text-xs">Attached to Bot</Badge>
+                          )}
+                          {/* Activation Toggle - Only for own non-admin scripts */}
+                          {canToggle && onToggleActivation && (
+                            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <Switch
+                                checked={script.is_active}
+                                onCheckedChange={(checked) => onToggleActivation(script.id, checked)}
+                                disabled={isToggling}
+                                className="scale-75"
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {script.is_active ? 'On' : 'Off'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <PineScriptActions
+                          scriptId={script.id}
+                          scriptName={script.name}
+                          scriptOwnerId={script.created_by}
+                          currentUserId={user?.id || null}
+                          isAdmin={isAdmin}
+                          isAdminScript={isAdminScript}
+                          onEdit={canEdit ? () => { setSelectedScript(script); setIsCreating(false); } : undefined}
+                          showView={false}
+                          showEdit={canEdit && !readOnly}
+                          showReport={!isOwnScript}
+                          compact
+                        />
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {(() => {
-                        const symbols = script.trading_pairs?.length ? script.trading_pairs : [script.symbol];
-                        const displaySymbols = symbols.slice(0, 2).join(', ');
-                        const remaining = symbols.length - 2;
-                        return remaining > 0 ? `${displaySymbols} (+${remaining} more)` : displaySymbols;
-                      })()} • {script.allowed_timeframes.length} TF
-                      {script.market_type && script.market_type !== 'spot' && (
-                        <span className="ml-1">• {script.leverage || 1}x</span>
-                      )}
-                    </p>
-                    <div className="flex items-center justify-between mt-2">
-                      {canAttach && attachedScriptIds.includes(script.id) && (
-                        <Badge variant="secondary" className="text-xs">Attached to Bot</Badge>
-                      )}
-                      <PineScriptActions
-                        scriptId={script.id}
-                        scriptName={script.name}
-                        scriptOwnerId={script.created_by}
-                        currentUserId={user?.id || null}
-                        isAdmin={isAdmin}
-                        onEdit={() => { setSelectedScript(script); setIsCreating(false); }}
-                        showView={false}
-                        showEdit={!readOnly}
-                        showReport={!readOnly}
-                        compact
-                      />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </>
             )}
           </CardContent>

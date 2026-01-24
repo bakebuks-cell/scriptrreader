@@ -36,7 +36,21 @@ export default function UserDashboard() {
   const { user, role, loading: authLoading } = useAuth();
   const { profile, isLoading: profileLoading, toggleBot, isUpdating } = useProfile();
   const { trades, activeTrades, isLoading: tradesLoading } = useTrades();
-  const { scripts, isLoading: scriptsLoading, createScript, updateScript, deleteScript, isCreating, isUpdating: isScriptUpdating } = usePineScripts();
+  const { 
+    scripts, 
+    ownScripts,
+    adminScripts,
+    isLoading: scriptsLoading, 
+    createScript, 
+    updateScript, 
+    deleteScript, 
+    toggleActivation,
+    isCreating, 
+    isUpdating: isScriptUpdating,
+    isToggling,
+    canEditScript,
+    isAdminScript
+  } = usePineScripts();
   const { isPaidModeEnabled } = useFeatureFlags();
 
   useEffect(() => {
@@ -55,6 +69,10 @@ export default function UserDashboard() {
 
   const handleUpdateScript = async (id: string, updates: any) => {
     await updateScript({ id, ...updates });
+  };
+
+  const handleToggleActivation = async (id: string, is_active: boolean) => {
+    await toggleActivation({ id, is_active });
   };
 
   if (authLoading || profileLoading) {
@@ -246,7 +264,7 @@ export default function UserDashboard() {
               <CardHeader>
                 <CardTitle>Pine Script Editor</CardTitle>
                 <CardDescription>
-                  Your trading logic is fully controlled by this script. Write your strategy below.
+                  Manage your trading strategies. Admin scripts are read-only templates you can reference.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -255,8 +273,10 @@ export default function UserDashboard() {
                   onSave={handleSaveScript}
                   onUpdate={handleUpdateScript}
                   onDelete={deleteScript}
+                  onToggleActivation={handleToggleActivation}
                   isLoading={scriptsLoading}
                   isSaving={isCreating || isScriptUpdating}
+                  isToggling={isToggling}
                 />
               </CardContent>
             </Card>

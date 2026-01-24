@@ -46,7 +46,7 @@ export interface CreatePineScriptInput {
   max_trades_per_day?: number;
 }
 
-// User hook - sees only their own scripts
+// User hook - sees own scripts AND admin scripts (read-only for admin scripts)
 export function usePineScripts() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -55,10 +55,10 @@ export function usePineScripts() {
     queryKey: ['pine-scripts', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
+      // Fetch all scripts user can see (own + admin scripts via RLS)
       const { data, error } = await supabase
         .from('pine_scripts')
         .select('*')
-        .eq('created_by', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -66,6 +66,10 @@ export function usePineScripts() {
     },
     enabled: !!user?.id,
   });
+
+  // Separate user's own scripts from admin scripts
+  const ownScripts = scripts?.filter(s => s.created_by === user?.id) ?? [];
+  const adminScripts = scripts?.filter(s => s.admin_tag !== null && s.created_by !== user?.id) ?? [];
 
   const createScript = useMutation({
     mutationFn: async (input: CreatePineScriptInput) => {
@@ -112,16 +116,66 @@ export function usePineScripts() {
     },
   });
 
+  // Toggle script activation (only for own scripts)
+  const toggleActivation = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      // First check if this is user's own script (not admin script)
+      const script = scripts?.find(s => s.id === id);
+      if (!script) throw new Error('Script not found');
+      if (script.admin_tag !== null && script.created_by !== user?.id) {
+        throw new Error('Cannot activate/deactivate admin scripts');
+      }
+      if (script.created_by !== user?.id) {
+        throw new Error('Cannot modify scripts you do not own');
+      }
+
+      const { data, error } = await supabase
+        .from('pine_scripts')
+        .update({ is_active })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as PineScript;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id] });
+    },
+  });
+
+  // Helper: Check if user can edit a script
+  const canEditScript = (script: PineScript) => {
+    return script.created_by === user?.id && script.admin_tag === null;
+  };
+
+  // Helper: Check if user can activate/deactivate a script
+  const canToggleScript = (script: PineScript) => {
+    return script.created_by === user?.id && script.admin_tag === null;
+  };
+
+  // Helper: Check if script is an admin script
+  const isAdminScript = (script: PineScript) => {
+    return script.admin_tag !== null;
+  };
+
   return {
     scripts: scripts ?? [],
+    ownScripts,
+    adminScripts,
     isLoading,
     error,
     createScript: createScript.mutateAsync,
     updateScript: updateScript.mutateAsync,
     deleteScript: deleteScript.mutateAsync,
+    toggleActivation: toggleActivation.mutateAsync,
     isCreating: createScript.isPending,
     isUpdating: updateScript.isPending,
     isDeleting: deleteScript.isPending,
+    isToggling: toggleActivation.isPending,
+    canEditScript,
+    canToggleScript,
+    isAdminScript,
   };
 }
 
@@ -224,6 +278,24 @@ export function useAdminPineScripts() {
     },
   });
 
+  // Toggle script activation (admin can toggle any script)
+  const toggleActivation = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const { data, error } = await supabase
+        .from('pine_scripts')
+        .update({ is_active })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as PineScript;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-pine-scripts'] });
+    },
+  });
+
   return {
     scripts: scripts ?? [],
     adminScripts,
@@ -234,9 +306,11 @@ export function useAdminPineScripts() {
     updateScript: updateScript.mutateAsync,
     deleteScript: deleteScript.mutateAsync,
     copyScript: copyScript.mutateAsync,
+    toggleActivation: toggleActivation.mutateAsync,
     isCreating: createAdminScript.isPending,
     isUpdating: updateScript.isPending,
     isDeleting: deleteScript.isPending,
     isCopying: copyScript.isPending,
+    isToggling: toggleActivation.isPending,
   };
 }
