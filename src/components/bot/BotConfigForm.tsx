@@ -13,7 +13,8 @@ import {
   POSITION_SIZE_TYPES, 
   LEVERAGE_OPTIONS,
   POPULAR_TRADING_PAIRS,
-  AVAILABLE_TIMEFRAMES
+  AVAILABLE_TIMEFRAMES,
+  MAX_SYMBOLS_PER_SCRIPT
 } from '@/lib/constants';
 import { 
   CandlestickChart, 
@@ -29,6 +30,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
+import SymbolMultiSelect from '@/components/SymbolMultiSelect';
 
 export interface BotConfig {
   candle_type: string;
@@ -46,6 +48,7 @@ export interface StrategyConfig {
   name: string;
   description: string;
   symbol: string;
+  symbols: string[];
   script_content: string;
   allowed_timeframes: string[];
   is_active: boolean;
@@ -178,28 +181,36 @@ export default function BotConfigForm({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="strategy-name" className="text-xs text-muted-foreground">Strategy Name</Label>
-                <Input
-                  id="strategy-name"
-                  value={strategyConfig.name}
-                  onChange={(e) => handleStrategyFieldChange('name', e.target.value)}
-                  placeholder="My Strategy"
-                  disabled={disabled}
-                />
-              </div>
-              <div>
-                <Label htmlFor="symbol" className="text-xs text-muted-foreground">Primary Symbol</Label>
-                <Input
-                  id="symbol"
-                  value={strategyConfig.symbol}
-                  onChange={(e) => handleStrategyFieldChange('symbol', e.target.value.toUpperCase())}
-                  placeholder="BTCUSDT"
-                  disabled={disabled}
-                />
-              </div>
+            <div>
+              <Label htmlFor="strategy-name" className="text-xs text-muted-foreground">Strategy Name *</Label>
+              <Input
+                id="strategy-name"
+                value={strategyConfig.name}
+                onChange={(e) => handleStrategyFieldChange('name', e.target.value)}
+                placeholder="My Strategy"
+                disabled={disabled}
+              />
             </div>
+
+            <SymbolMultiSelect
+              value={strategyConfig.symbols || [strategyConfig.symbol]}
+              onChange={(symbols) => {
+                onStrategyChange?.({
+                  ...strategyConfig,
+                  symbols,
+                  symbol: symbols[0] || 'BTCUSDT'
+                });
+                // Sync with bot config trading_pairs
+                onChange({
+                  ...config,
+                  trading_pairs: symbols,
+                  multi_pair_mode: symbols.length > 1
+                });
+              }}
+              disabled={disabled}
+              label="Trading Symbols"
+              placeholder="Select 1-10 symbols..."
+            />
 
             <div>
               <Label htmlFor="description" className="text-xs text-muted-foreground">Description (optional)</Label>
