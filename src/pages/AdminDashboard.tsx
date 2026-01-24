@@ -48,7 +48,10 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!authLoading && !user) {
       navigate('/auth');
-    } else if (!authLoading && role !== 'admin') {
+      return;
+    }
+    // Only redirect non-admins AFTER role has been fetched (not null)
+    if (!authLoading && user && role !== null && role !== 'admin') {
       navigate('/dashboard');
     }
   }, [user, role, authLoading, navigate]);
@@ -61,7 +64,8 @@ export default function AdminDashboard() {
     });
   };
 
-  if (authLoading) {
+  // Show loading while auth is loading OR while role is still being fetched for logged in user
+  if (authLoading || (user && role === null)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="space-y-4 w-full max-w-md px-6">
@@ -71,6 +75,11 @@ export default function AdminDashboard() {
         </div>
       </div>
     );
+  }
+
+  // Don't render admin content if not admin
+  if (role !== 'admin') {
+    return null;
   }
 
   const totalCoins = users.reduce((sum, u) => sum + u.coins, 0);
