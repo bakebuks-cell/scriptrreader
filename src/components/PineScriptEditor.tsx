@@ -9,12 +9,13 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Edit, Flag } from 'lucide-react';
-import { AVAILABLE_TIMEFRAMES } from '@/lib/constants';
+import { AVAILABLE_TIMEFRAMES, MAX_SYMBOLS_PER_SCRIPT } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { useEvaluateScript } from '@/hooks/usePineScriptEngine';
 import SignalPreview from '@/components/SignalPreview';
 import BotConfigForm, { BotConfig } from '@/components/bot/BotConfigForm';
 import PineScriptActions from '@/components/PineScriptActions';
+import SymbolMultiSelect from '@/components/SymbolMultiSelect';
 import { useAuth } from '@/hooks/useAuth';
 
 interface PineScript {
@@ -133,7 +134,7 @@ export default function PineScriptEditor({
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    symbol: 'BTCUSDT',
+    symbols: ['BTCUSDT'] as string[],
     script_content: DEFAULT_PINE_SCRIPT,
     allowed_timeframes: ['1h', '4h'],
     is_active: true,
@@ -143,10 +144,15 @@ export default function PineScriptEditor({
 
   useEffect(() => {
     if (selectedScript) {
+      // Get symbols from trading_pairs or fall back to symbol
+      const symbols = selectedScript.trading_pairs?.length 
+        ? selectedScript.trading_pairs 
+        : [selectedScript.symbol];
+      
       setFormData({
         name: selectedScript.name,
         description: selectedScript.description || '',
-        symbol: selectedScript.symbol,
+        symbols,
         script_content: selectedScript.script_content,
         allowed_timeframes: selectedScript.allowed_timeframes,
         is_active: selectedScript.is_active,
@@ -154,8 +160,8 @@ export default function PineScriptEditor({
       setBotConfig({
         candle_type: selectedScript.candle_type || 'regular',
         market_type: selectedScript.market_type || 'spot',
-        trading_pairs: selectedScript.trading_pairs || [selectedScript.symbol],
-        multi_pair_mode: selectedScript.multi_pair_mode || false,
+        trading_pairs: symbols,
+        multi_pair_mode: symbols.length > 1,
         position_size_type: selectedScript.position_size_type || 'fixed',
         position_size_value: selectedScript.position_size_value || 100,
         max_capital: selectedScript.max_capital || 1000,
@@ -169,7 +175,7 @@ export default function PineScriptEditor({
     setFormData({
       name: '',
       description: '',
-      symbol: 'BTCUSDT',
+      symbols: ['BTCUSDT'],
       script_content: DEFAULT_PINE_SCRIPT,
       allowed_timeframes: ['1h', '4h'],
       is_active: true,
@@ -193,10 +199,26 @@ export default function PineScriptEditor({
       toast({ title: 'Error', description: 'Select at least one timeframe', variant: 'destructive' });
       return;
     }
+    if (formData.symbols.length === 0) {
+      toast({ title: 'Error', description: 'Select at least one symbol', variant: 'destructive' });
+      return;
+    }
+    if (formData.symbols.length > MAX_SYMBOLS_PER_SCRIPT) {
+      toast({ title: 'Error', description: `Maximum ${MAX_SYMBOLS_PER_SCRIPT} symbols allowed`, variant: 'destructive' });
+      return;
+    }
 
+    // Build the full data, using first symbol as primary and all symbols in trading_pairs
     const fullData = {
-      ...formData,
+      name: formData.name,
+      description: formData.description,
+      symbol: formData.symbols[0], // Primary symbol (first in list)
+      script_content: formData.script_content,
+      allowed_timeframes: formData.allowed_timeframes,
+      is_active: formData.is_active,
       ...botConfig,
+      trading_pairs: formData.symbols, // All selected symbols
+      multi_pair_mode: formData.symbols.length > 1,
     };
 
     try {
@@ -250,15 +272,16 @@ export default function PineScriptEditor({
       toast({ title: 'Error', description: 'Script content is required', variant: 'destructive' });
       return;
     }
-    if (!formData.symbol.trim()) {
-      toast({ title: 'Error', description: 'Symbol is required', variant: 'destructive' });
+    if (formData.symbols.length === 0) {
+      toast({ title: 'Error', description: 'At least one symbol is required', variant: 'destructive' });
       return;
     }
     
     setShowSignalPreview(true);
+    // Test with the first symbol
     evaluateScript.mutate({
       scriptContent: formData.script_content,
-      symbol: formData.symbol,
+      symbol: formData.symbols[0],
       timeframe: formData.allowed_timeframes[0] || '1h',
     });
   };
@@ -323,7 +346,12 @@ export default function PineScriptEditor({
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {script.symbol} • {script.allowed_timeframes.length} TF
+                      {(() => {
+                        const symbols = script.trading_pairs?.length ? script.trading_pairs : [script.symbol];
+                        const displaySymbols = symbols.slice(0, 2).join(', ');
+                        const remaining = symbols.length - 2;
+                        return remaining > 0 ? `${displaySymbols} (+${remaining} more)` : displaySymbols;
+                      })()} • {script.allowed_timeframes.length} TF
                       {script.market_type && script.market_type !== 'spot' && (
                         <span className="ml-1">• {script.leverage || 1}x</span>
                       )}
@@ -381,28 +409,24 @@ export default function PineScriptEditor({
                 </TabsList>
 
                 <TabsContent value="strategy" className="space-y-4 mt-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="name">Strategy Name</Label>
-                      <Input
-                        id="name"
-                        value={formData.name}
-                        onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                        placeholder="My Strategy"
-                        disabled={readOnly}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="symbol">Primary Symbol</Label>
-                      <Input
-                        id="symbol"
-                        value={formData.symbol}
-                        onChange={(e) => setFormData(prev => ({ ...prev, symbol: e.target.value.toUpperCase() }))}
-                        placeholder="BTCUSDT"
-                        disabled={readOnly}
-                      />
-                    </div>
+                  <div>
+                    <Label htmlFor="name">Strategy Name *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="My Strategy"
+                      disabled={readOnly}
+                    />
                   </div>
+
+                  <SymbolMultiSelect
+                    value={formData.symbols}
+                    onChange={(symbols) => setFormData(prev => ({ ...prev, symbols }))}
+                    disabled={readOnly}
+                    label="Trading Symbols"
+                    placeholder="Select 1-10 symbols..."
+                  />
 
                   <div>
                     <Label htmlFor="description">Description (optional)</Label>
@@ -476,7 +500,7 @@ export default function PineScriptEditor({
                           signal={evaluateScript.data.signal}
                           currentPrice={evaluateScript.data.currentPrice}
                           indicators={evaluateScript.data.indicators}
-                          symbol={formData.symbol}
+                          symbol={formData.symbols[0] || 'BTCUSDT'}
                         />
                       ) : null}
                     </div>

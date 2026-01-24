@@ -21,7 +21,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { AVAILABLE_TIMEFRAMES } from '@/lib/constants';
+import { AVAILABLE_TIMEFRAMES, MAX_SYMBOLS_PER_SCRIPT } from '@/lib/constants';
 import {
   Dialog,
   DialogContent,
@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
 import BotConfigForm, { BotConfig } from '@/components/bot/BotConfigForm';
+import SymbolMultiSelect from '@/components/SymbolMultiSelect';
 
 const defaultScript = `// Admin Pine Script Template
 //@version=5
@@ -100,11 +101,12 @@ export default function AdminPineScriptEditor() {
   const [createTab, setCreateTab] = useState<'strategy' | 'config'>('strategy');
   const [editTab, setEditTab] = useState<'strategy' | 'config'>('strategy');
 
-  const [newScript, setNewScript] = useState<CreatePineScriptInput & { admin_tag: string }>({
+  const [newScript, setNewScript] = useState<CreatePineScriptInput & { admin_tag: string; symbols: string[] }>({
     name: '',
     description: '',
     script_content: defaultScript,
     symbol: 'BTCUSDT',
+    symbols: ['BTCUSDT'],
     allowed_timeframes: ['1h', '4h'],
     is_active: false,
     admin_tag: 'ADMIN',
@@ -119,11 +121,22 @@ export default function AdminPineScriptEditor() {
       toast({ title: 'Error', description: 'Script name is required', variant: 'destructive' });
       return;
     }
+    if (newScript.symbols.length === 0) {
+      toast({ title: 'Error', description: 'At least one symbol is required', variant: 'destructive' });
+      return;
+    }
+    if (newScript.symbols.length > MAX_SYMBOLS_PER_SCRIPT) {
+      toast({ title: 'Error', description: `Maximum ${MAX_SYMBOLS_PER_SCRIPT} symbols allowed`, variant: 'destructive' });
+      return;
+    }
 
     try {
       await createAdminScript({
         ...newScript,
         ...newBotConfig,
+        symbol: newScript.symbols[0], // Primary symbol
+        trading_pairs: newScript.symbols,
+        multi_pair_mode: newScript.symbols.length > 1,
       });
       toast({ title: 'Success', description: 'Admin script created!' });
       setIsCreateDialogOpen(false);
@@ -132,6 +145,7 @@ export default function AdminPineScriptEditor() {
         description: '',
         script_content: defaultScript,
         symbol: 'BTCUSDT',
+        symbols: ['BTCUSDT'],
         allowed_timeframes: ['1h', '4h'],
         is_active: false,
         admin_tag: 'ADMIN',
@@ -264,24 +278,21 @@ export default function AdminPineScriptEditor() {
               </TabsList>
 
               <TabsContent value="strategy" className="space-y-4 mt-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Script Name</Label>
-                    <Input
-                      value={newScript.name}
-                      onChange={(e) => setNewScript(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="My Admin Strategy"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Primary Symbol</Label>
-                    <Input
-                      value={newScript.symbol}
-                      onChange={(e) => setNewScript(prev => ({ ...prev, symbol: e.target.value.toUpperCase() }))}
-                      placeholder="BTCUSDT"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label>Script Name *</Label>
+                  <Input
+                    value={newScript.name}
+                    onChange={(e) => setNewScript(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="My Admin Strategy"
+                  />
                 </div>
+
+                <SymbolMultiSelect
+                  value={newScript.symbols}
+                  onChange={(symbols) => setNewScript(prev => ({ ...prev, symbols }))}
+                  label="Trading Symbols"
+                  placeholder="Select 1-10 symbols..."
+                />
 
                 <div className="space-y-2">
                   <Label>Description</Label>
@@ -398,7 +409,12 @@ export default function AdminPineScriptEditor() {
                         )}
                       </CardTitle>
                       <CardDescription>
-                        {script.symbol} • {script.allowed_timeframes?.join(', ')} • 
+                        {(() => {
+                          const symbols = script.trading_pairs?.length ? script.trading_pairs : [script.symbol];
+                          const displaySymbols = symbols.slice(0, 3).join(', ');
+                          const remaining = symbols.length - 3;
+                          return remaining > 0 ? `${displaySymbols} (+${remaining} more)` : displaySymbols;
+                        })()} • {script.allowed_timeframes?.join(', ')} • 
                         {script.candle_type === 'heikin_ashi' ? ' Heikin Ashi' : ' OHLC'}
                       </CardDescription>
                     </div>
@@ -495,7 +511,12 @@ export default function AdminPineScriptEditor() {
                         </Badge>
                       </CardTitle>
                       <CardDescription>
-                        {script.symbol} • {script.allowed_timeframes?.join(', ')}
+                        {(() => {
+                          const symbols = script.trading_pairs?.length ? script.trading_pairs : [script.symbol];
+                          const displaySymbols = symbols.slice(0, 3).join(', ');
+                          const remaining = symbols.length - 3;
+                          return remaining > 0 ? `${displaySymbols} (+${remaining} more)` : displaySymbols;
+                        })()} • {script.allowed_timeframes?.join(', ')}
                         {script.created_by && (
                           <span className="ml-2 text-xs opacity-70">• Owner: {script.created_by.slice(0, 8)}...</span>
                         )}

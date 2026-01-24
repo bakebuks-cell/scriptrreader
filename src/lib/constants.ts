@@ -56,7 +56,30 @@ export const POPULAR_TRADING_PAIRS = [
   'DOTUSDT',
   'MATICUSDT',
   'AVAXUSDT',
+  'LINKUSDT',
+  'LTCUSDT',
+  'ATOMUSDT',
+  'UNIUSDT',
+  'APTUSDT',
+  'ARBUSDT',
+  'OPUSDT',
+  'NEARUSDT',
+  'FILUSDT',
+  'INJUSDT',
+  'SUIUSDT',
+  'SEIUSDT',
+  'TIAUSDT',
+  'JUPUSDT',
+  'WIFUSDT',
+  'PEPEUSDT',
+  'SHIBUSDT',
+  'FETUSDT',
+  'RENDERUSDT',
+  'AAVEUSDT',
 ] as const;
+
+// Maximum symbols per script
+export const MAX_SYMBOLS_PER_SCRIPT = 10;
 
 // Trade statuses
 export const TRADE_STATUS = {
