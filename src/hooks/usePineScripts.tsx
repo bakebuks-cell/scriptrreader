@@ -15,6 +15,16 @@ export interface PineScript {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Bot configuration fields
+  candle_type: string;
+  market_type: string;
+  trading_pairs: string[];
+  multi_pair_mode: boolean;
+  position_size_type: string;
+  position_size_value: number;
+  max_capital: number;
+  leverage: number;
+  max_trades_per_day: number;
 }
 
 export interface CreatePineScriptInput {
@@ -24,6 +34,16 @@ export interface CreatePineScriptInput {
   symbol: string;
   allowed_timeframes: string[];
   is_active?: boolean;
+  // Bot configuration fields
+  candle_type?: string;
+  market_type?: string;
+  trading_pairs?: string[];
+  multi_pair_mode?: boolean;
+  position_size_type?: string;
+  position_size_value?: number;
+  max_capital?: number;
+  leverage?: number;
+  max_trades_per_day?: number;
 }
 
 // User hook - sees only their own scripts

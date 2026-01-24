@@ -168,42 +168,69 @@ export type Database = {
         Row: {
           admin_tag: string | null
           allowed_timeframes: string[]
+          candle_type: string | null
           created_at: string
           created_by: string | null
           description: string | null
           id: string
           is_active: boolean
+          leverage: number | null
+          market_type: string | null
+          max_capital: number | null
+          max_trades_per_day: number | null
+          multi_pair_mode: boolean | null
           name: string
+          position_size_type: string | null
+          position_size_value: number | null
           script_content: string
           symbol: string
+          trading_pairs: string[] | null
           updated_at: string
           webhook_secret: string
         }
         Insert: {
           admin_tag?: string | null
           allowed_timeframes?: string[]
+          candle_type?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           is_active?: boolean
+          leverage?: number | null
+          market_type?: string | null
+          max_capital?: number | null
+          max_trades_per_day?: number | null
+          multi_pair_mode?: boolean | null
           name: string
+          position_size_type?: string | null
+          position_size_value?: number | null
           script_content: string
           symbol: string
+          trading_pairs?: string[] | null
           updated_at?: string
           webhook_secret?: string
         }
         Update: {
           admin_tag?: string | null
           allowed_timeframes?: string[]
+          candle_type?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           is_active?: boolean
+          leverage?: number | null
+          market_type?: string | null
+          max_capital?: number | null
+          max_trades_per_day?: number | null
+          multi_pair_mode?: boolean | null
           name?: string
+          position_size_type?: string | null
+          position_size_value?: number | null
           script_content?: string
           symbol?: string
+          trading_pairs?: string[] | null
           updated_at?: string
           webhook_secret?: string
         }

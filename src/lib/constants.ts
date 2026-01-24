@@ -20,6 +20,44 @@ export const AVAILABLE_TIMEFRAMES = [
   { value: '1d', label: '1 Day' },
 ] as const;
 
+// Candle types
+export const CANDLE_TYPES = [
+  { value: 'regular', label: 'Regular OHLC' },
+  { value: 'heikin_ashi', label: 'Heikin Ashi' },
+] as const;
+
+// Market types
+export const MARKET_TYPES = [
+  { value: 'spot', label: 'Spot' },
+  { value: 'usdt_futures', label: 'USDT-M Futures' },
+  { value: 'coin_futures', label: 'COIN-M Futures' },
+] as const;
+
+// Position size types
+export const POSITION_SIZE_TYPES = [
+  { value: 'fixed', label: 'Fixed Amount (USDT)' },
+  { value: 'percentage', label: 'Percentage of Wallet' },
+] as const;
+
+// Leverage options
+export const LEVERAGE_OPTIONS = [
+  1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125
+] as const;
+
+// Popular trading pairs
+export const POPULAR_TRADING_PAIRS = [
+  'BTCUSDT',
+  'ETHUSDT',
+  'BNBUSDT',
+  'XRPUSDT',
+  'SOLUSDT',
+  'ADAUSDT',
+  'DOGEUSDT',
+  'DOTUSDT',
+  'MATICUSDT',
+  'AVAXUSDT',
+] as const;
+
 // Trade statuses
 export const TRADE_STATUS = {
   PENDING: 'PENDING',
@@ -44,7 +82,7 @@ export const USER_ROLES = {
 // Admin whitelist emails (permanent admins) - ONLY these emails can be admins
 export const ADMIN_WHITELIST_EMAILS = [
   'piyushjunghare635@gmail.com',
-  'bakebuks@gmail.com', // lowercase 'b' as specified
+  'bakebuks@gmail.com',
 ] as const;
 
 // Check if email is in admin whitelist (case-insensitive)
