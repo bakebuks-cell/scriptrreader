@@ -38,8 +38,9 @@ const navItems = [
   { title: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', tab: 'overview' },
   { title: 'Charts', icon: LineChart, path: '/dashboard', tab: 'charts' },
   { title: 'Pine Script', icon: Code, path: '/dashboard', tab: 'scripts' },
+  { title: 'Analytics', icon: BarChart3, path: '/dashboard', tab: 'analytics' },
   { title: 'Wallet', icon: Wallet, path: '/dashboard', tab: 'wallet' },
-  { title: 'Trades', icon: BarChart3, path: '/dashboard', tab: 'trades' },
+  { title: 'Trades', icon: TrendingUp, path: '/dashboard', tab: 'trades' },
   { title: 'Settings', icon: Settings, path: '/dashboard', tab: 'settings' },
   { title: 'Profile', icon: User, path: '/dashboard', tab: 'profile' },
 ];
@@ -145,6 +146,7 @@ function TopBar({ activeTab }: { activeTab: string }) {
     overview: 'Dashboard',
     charts: 'Price Charts',
     scripts: 'Pine Script Editor',
+    analytics: 'Script Analytics',
     wallet: 'Wallet',
     trades: 'Trade History',
     settings: 'Settings',
