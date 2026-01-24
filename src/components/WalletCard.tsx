@@ -1,18 +1,23 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Wallet, RefreshCw, TrendingUp, TrendingDown, Link2Off } from 'lucide-react';
-import { useWalletBalance, useOpenPositions } from '@/hooks/useBinanceWallet';
+import { Badge } from '@/components/ui/badge';
+import { Wallet, RefreshCw, TrendingUp, TrendingDown, Link2Off, ShieldCheck, User } from 'lucide-react';
+import { useWalletBalance, useOpenPositions, Wallet as WalletType } from '@/hooks/useWallets';
 
 interface WalletCardProps {
   compact?: boolean;
+  wallet?: WalletType;
+  showRoleBadge?: boolean;
 }
 
-export default function WalletCard({ compact = false }: WalletCardProps) {
-  const { balances, totalUSDT, isLoading, isRefreshing, refresh, hasKeys } = useWalletBalance();
+export default function WalletCard({ compact = false, wallet, showRoleBadge = false }: WalletCardProps) {
+  const { balances, totalUSDT, isLoading, isRefreshing, refresh, hasWallets, wallet: activeWallet } = useWalletBalance(wallet?.id);
   const { positions } = useOpenPositions();
 
-  if (!hasKeys) {
+  const displayWallet = wallet || activeWallet;
+
+  if (!hasWallets && !wallet) {
     return compact ? (
       <div className="flex flex-col items-center justify-center py-6 text-center">
         <Link2Off className="h-8 w-8 text-muted-foreground/50 mb-2" />
@@ -31,7 +36,7 @@ export default function WalletCard({ compact = false }: WalletCardProps) {
         <CardContent>
           <div className="empty-state py-8">
             <Wallet className="empty-state-icon" />
-            <p className="empty-state-title">No API keys configured</p>
+            <p className="empty-state-title">No wallets configured</p>
             <p className="empty-state-description">Add your Binance API keys in Settings to see your balance</p>
           </div>
         </CardContent>
@@ -42,12 +47,28 @@ export default function WalletCard({ compact = false }: WalletCardProps) {
   if (compact) {
     return (
       <div className="space-y-3">
+        {showRoleBadge && displayWallet && (
+          <div className="flex items-center gap-2">
+            <Badge 
+              variant={displayWallet.role === 'ADMIN' ? 'default' : 'secondary'}
+              className="text-xs"
+            >
+              {displayWallet.role === 'ADMIN' ? (
+                <><ShieldCheck className="h-3 w-3 mr-1" /> Admin Wallet</>
+              ) : (
+                <><User className="h-3 w-3 mr-1" /> User Wallet</>
+              )}
+            </Badge>
+          </div>
+        )}
         {isLoading ? (
           <Skeleton className="h-16" />
         ) : (
           <>
             <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
-              <p className="text-xs text-muted-foreground">Total Balance</p>
+              <p className="text-xs text-muted-foreground">
+                {displayWallet?.name || 'Total Balance'}
+              </p>
               <p className="text-xl font-bold text-primary">
                 ${totalUSDT.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
@@ -72,9 +93,19 @@ export default function WalletCard({ compact = false }: WalletCardProps) {
           <div>
             <CardTitle className="flex items-center gap-2">
               <Wallet className="h-5 w-5 text-primary" />
-              Binance Wallet
+              {displayWallet?.name || 'Binance Wallet'}
+              {showRoleBadge && displayWallet && (
+                <Badge 
+                  variant={displayWallet.role === 'ADMIN' ? 'default' : 'secondary'}
+                  className="text-xs ml-2"
+                >
+                  {displayWallet.role}
+                </Badge>
+              )}
             </CardTitle>
-            <CardDescription>Your connected wallet balance</CardDescription>
+            <CardDescription>
+              {displayWallet?.exchange || 'Binance'} • {displayWallet?.is_active ? 'Active' : 'Inactive'}
+            </CardDescription>
           </div>
           <Button variant="ghost" size="icon" onClick={refresh} disabled={isRefreshing}>
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />

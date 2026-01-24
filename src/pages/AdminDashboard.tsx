@@ -5,7 +5,7 @@ import { useAdminUsers } from '@/hooks/useAdminUsers';
 import { useAdminPineScripts } from '@/hooks/usePineScripts';
 import { useAllTrades } from '@/hooks/useTrades';
 import { useAdminFeatureFlags } from '@/hooks/useFeatureFlags';
-import { useAdminWallets } from '@/hooks/useBinanceWallet';
+import { useAdminWallets } from '@/hooks/useWallets';
 import { AdminLayout } from '@/components/layouts/AdminLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -42,7 +42,7 @@ export default function AdminDashboard() {
   const { scripts, isLoading: scriptsLoading } = useAdminPineScripts();
   const { trades, isLoading: tradesLoading } = useAllTrades();
   const { flags, toggleFlag, isToggling } = useAdminFeatureFlags();
-  const { allKeys: wallets, isLoading: walletsLoading } = useAdminWallets();
+  const { wallets, isLoading: walletsLoading } = useAdminWallets();
   const { toast } = useToast();
 
   useEffect(() => {
