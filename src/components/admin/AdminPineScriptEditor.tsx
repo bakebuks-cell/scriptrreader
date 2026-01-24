@@ -496,24 +496,79 @@ export default function AdminPineScriptEditor() {
                       </CardTitle>
                       <CardDescription>
                         {script.symbol} • {script.allowed_timeframes?.join(', ')}
+                        {script.created_by && (
+                          <span className="ml-2 text-xs opacity-70">• Owner: {script.created_by.slice(0, 8)}...</span>
+                        )}
                       </CardDescription>
                     </div>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="gap-2"
-                      onClick={() => handleCopyScript(script)}
-                      disabled={isCopying}
-                    >
-                      <Copy className="h-4 w-4" />
-                      Copy
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => handleEditScript(script)}
+                        title="Edit script"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="gap-2"
+                        onClick={() => handleCopyScript(script)}
+                        disabled={isCopying}
+                      >
+                        <Copy className="h-4 w-4" />
+                        Copy
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete User Script?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently delete "{script.name}" created by user. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={() => handleDeleteScript(script.id)}
+                              className="bg-destructive text-destructive-foreground"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
                   {script.description && (
                     <p className="text-sm text-muted-foreground mb-2">{script.description}</p>
                   )}
+                  <div className="grid grid-cols-4 gap-2 mb-2 text-xs">
+                    <div className="bg-muted/50 rounded p-2">
+                      <span className="text-muted-foreground">Size:</span>{' '}
+                      {script.position_size_value} {script.position_size_type === 'percentage' ? '%' : 'USDT'}
+                    </div>
+                    <div className="bg-muted/50 rounded p-2">
+                      <span className="text-muted-foreground">Max Cap:</span>{' '}
+                      {script.max_capital} USDT
+                    </div>
+                    <div className="bg-muted/50 rounded p-2">
+                      <span className="text-muted-foreground">Max Trades:</span>{' '}
+                      {script.max_trades_per_day}/day
+                    </div>
+                    <div className="bg-muted/50 rounded p-2">
+                      <span className="text-muted-foreground">Pairs:</span>{' '}
+                      {script.trading_pairs?.length || 1}
+                    </div>
+                  </div>
                   <div className="bg-muted/50 rounded-lg p-3 font-mono text-xs overflow-x-auto max-h-24">
                     <pre className="whitespace-pre-wrap">{script.script_content.slice(0, 200)}...</pre>
                   </div>

@@ -8,12 +8,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2 } from 'lucide-react';
+import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Edit, Flag } from 'lucide-react';
 import { AVAILABLE_TIMEFRAMES } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { useEvaluateScript } from '@/hooks/usePineScriptEngine';
 import SignalPreview from '@/components/SignalPreview';
 import BotConfigForm, { BotConfig } from '@/components/bot/BotConfigForm';
+import PineScriptActions from '@/components/PineScriptActions';
+import { useAuth } from '@/hooks/useAuth';
 
 interface PineScript {
   id: string;
@@ -118,6 +120,7 @@ export default function PineScriptEditor({
   readOnly = false,
 }: PineScriptEditorProps) {
   const { toast } = useToast();
+  const { user, isAdmin } = useAuth();
   const [selectedScript, setSelectedScript] = useState<PineScript | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -312,10 +315,12 @@ export default function PineScriptEditor({
                     onClick={() => { setSelectedScript(script); setIsCreating(false); }}
                   >
                     <div className="flex items-center justify-between">
-                      <p className="font-medium truncate">{script.name}</p>
-                      <Badge variant={script.is_active ? 'default' : 'outline'} className="ml-2">
-                        {script.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
+                      <p className="font-medium truncate flex-1">{script.name}</p>
+                      <div className="flex items-center gap-1">
+                        <Badge variant={script.is_active ? 'default' : 'outline'} className="ml-2 shrink-0">
+                          {script.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       {script.symbol} • {script.allowed_timeframes.length} TF
@@ -323,9 +328,23 @@ export default function PineScriptEditor({
                         <span className="ml-1">• {script.leverage || 1}x</span>
                       )}
                     </p>
-                    {canAttach && attachedScriptIds.includes(script.id) && (
-                      <Badge variant="secondary" className="mt-2 text-xs">Attached to Bot</Badge>
-                    )}
+                    <div className="flex items-center justify-between mt-2">
+                      {canAttach && attachedScriptIds.includes(script.id) && (
+                        <Badge variant="secondary" className="text-xs">Attached to Bot</Badge>
+                      )}
+                      <PineScriptActions
+                        scriptId={script.id}
+                        scriptName={script.name}
+                        scriptOwnerId={script.created_by}
+                        currentUserId={user?.id || null}
+                        isAdmin={isAdmin}
+                        onEdit={() => { setSelectedScript(script); setIsCreating(false); }}
+                        showView={false}
+                        showEdit={!readOnly}
+                        showReport={!readOnly}
+                        compact
+                      />
+                    </div>
                   </div>
                 ))}
               </>
