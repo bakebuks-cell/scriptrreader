@@ -456,6 +456,51 @@ export type Database = {
           },
         ]
       }
+      wallets: {
+        Row: {
+          api_key_encrypted: string | null
+          api_secret_encrypted: string | null
+          created_at: string
+          exchange: string
+          id: string
+          is_active: boolean
+          last_synced_at: string | null
+          name: string
+          role: Database["public"]["Enums"]["wallet_role"]
+          total_balance_usdt: number | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          created_at?: string
+          exchange?: string
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          name?: string
+          role?: Database["public"]["Enums"]["wallet_role"]
+          total_balance_usdt?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          created_at?: string
+          exchange?: string
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          name?: string
+          role?: Database["public"]["Enums"]["wallet_role"]
+          total_balance_usdt?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -479,6 +524,7 @@ export type Database = {
       app_role: "admin" | "user"
       signal_type: "BUY" | "SELL"
       trade_status: "PENDING" | "OPEN" | "CLOSED" | "FAILED" | "CANCELLED"
+      wallet_role: "ADMIN" | "USER"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -609,6 +655,7 @@ export const Constants = {
       app_role: ["admin", "user"],
       signal_type: ["BUY", "SELL"],
       trade_status: ["PENDING", "OPEN", "CLOSED", "FAILED", "CANCELLED"],
+      wallet_role: ["ADMIN", "USER"],
     },
   },
 } as const

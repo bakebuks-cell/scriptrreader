@@ -6,11 +6,19 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Key, Eye, EyeOff, Trash2, Shield, CheckCircle2, Wifi, WifiOff, Loader2 } from 'lucide-react';
-import { useExchangeKeys } from '@/hooks/useBinanceWallet';
+import { useUserWallets, callBinanceApi } from '@/hooks/useWallets';
 import { useToast } from '@/hooks/use-toast';
 
 export default function BinanceApiKeyForm() {
-  const { binanceKeys, hasKeys, saveKeys, deleteKeys, testConnection, isSaving, isDeleting, isTesting } = useExchangeKeys();
+  const { 
+    wallets, 
+    activeWallet, 
+    hasWallets, 
+    createWallet, 
+    deleteWallet, 
+    isCreating, 
+    isDeleting 
+  } = useUserWallets();
   const { toast } = useToast();
   
   const [isOpen, setIsOpen] = useState(false);
@@ -18,11 +26,13 @@ export default function BinanceApiKeyForm() {
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [isTesting, setIsTesting] = useState(false);
 
   const handleTestConnection = async () => {
     try {
       setConnectionStatus('idle');
-      await testConnection();
+      setIsTesting(true);
+      await callBinanceApi('test');
       setConnectionStatus('success');
       toast({ 
         title: 'Connection Successful', 
@@ -35,6 +45,8 @@ export default function BinanceApiKeyForm() {
         description: error.message || 'Could not connect to Binance. Please check your API keys.',
         variant: 'destructive' 
       });
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -45,7 +57,7 @@ export default function BinanceApiKeyForm() {
     }
 
     try {
-      await saveKeys({ apiKey, apiSecret });
+      await createWallet({ name: 'Binance Wallet', apiKey, apiSecret });
       toast({ title: 'Success', description: 'Binance API keys saved securely' });
       setApiKey('');
       setApiSecret('');
@@ -56,8 +68,9 @@ export default function BinanceApiKeyForm() {
   };
 
   const handleDelete = async () => {
+    if (!activeWallet) return;
     try {
-      await deleteKeys();
+      await deleteWallet(activeWallet.id);
       toast({ title: 'Success', description: 'API keys deleted' });
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to delete API keys', variant: 'destructive' });
@@ -76,7 +89,7 @@ export default function BinanceApiKeyForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {hasKeys ? (
+        {hasWallets && activeWallet ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 rounded-lg bg-primary/5 border border-primary/20">
               <div className="flex items-center gap-3">
@@ -84,7 +97,7 @@ export default function BinanceApiKeyForm() {
                 <div>
                   <p className="font-medium">Connected to Binance</p>
                   <p className="text-sm text-muted-foreground">
-                    API Key: {binanceKeys?.api_key_encrypted.slice(0, 8)}...
+                    API Key: {activeWallet.api_key_encrypted?.slice(0, 8)}...
                   </p>
                 </div>
               </div>
@@ -105,12 +118,12 @@ export default function BinanceApiKeyForm() {
                 </>
               ) : connectionStatus === 'success' ? (
                 <>
-                  <Wifi className="h-4 w-4 mr-2 text-green-500" />
+                  <Wifi className="h-4 w-4 mr-2 text-primary" />
                   Connection Verified
                 </>
               ) : connectionStatus === 'error' ? (
                 <>
-                  <WifiOff className="h-4 w-4 mr-2 text-red-500" />
+                  <WifiOff className="h-4 w-4 mr-2 text-destructive" />
                   Test Connection
                 </>
               ) : (
@@ -172,8 +185,8 @@ export default function BinanceApiKeyForm() {
                         </Button>
                       </div>
                     </div>
-                    <Button onClick={handleSave} disabled={isSaving} className="w-full">
-                      {isSaving ? 'Saving...' : 'Update Keys'}
+                    <Button onClick={handleSave} disabled={isCreating} className="w-full">
+                      {isCreating ? 'Saving...' : 'Update Keys'}
                     </Button>
                   </div>
                 </DialogContent>
@@ -275,8 +288,8 @@ export default function BinanceApiKeyForm() {
                     </p>
                   </div>
 
-                  <Button onClick={handleSave} disabled={isSaving} className="w-full">
-                    {isSaving ? 'Saving...' : 'Connect Binance'}
+                  <Button onClick={handleSave} disabled={isCreating} className="w-full">
+                    {isCreating ? 'Saving...' : 'Connect Binance'}
                   </Button>
                 </div>
               </DialogContent>
