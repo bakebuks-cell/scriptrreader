@@ -15,6 +15,7 @@ interface PineScriptActionsProps {
   scriptOwnerId: string | null;
   currentUserId: string | null;
   isAdmin: boolean;
+  isAdminScript?: boolean; // Whether the script has admin_tag
   onEdit?: () => void;
   onView?: () => void;
   showView?: boolean;
@@ -29,6 +30,7 @@ export default function PineScriptActions({
   scriptOwnerId,
   currentUserId,
   isAdmin,
+  isAdminScript = false,
   onEdit,
   onView,
   showView = true,
@@ -38,11 +40,13 @@ export default function PineScriptActions({
 }: PineScriptActionsProps) {
   const [reportModalOpen, setReportModalOpen] = useState(false);
 
-  // Edit permission: owner or admin
-  const canEdit = isAdmin || (currentUserId && scriptOwnerId === currentUserId);
+  // Edit permission: 
+  // - Admin can edit anything
+  // - User can edit their own scripts (but not admin scripts)
+  const canEdit = isAdmin || (currentUserId && scriptOwnerId === currentUserId && !isAdminScript);
   
-  // Report permission: any user except owner
-  const canReport = currentUserId && scriptOwnerId !== currentUserId && !isAdmin;
+  // Report permission: any user can report any script except their own
+  const canReport = currentUserId && scriptOwnerId !== currentUserId;
 
   const buttonSize = compact ? 'icon' : 'sm';
   const iconSize = compact ? 'h-4 w-4' : 'h-4 w-4';

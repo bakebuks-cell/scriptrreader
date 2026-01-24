@@ -90,9 +90,11 @@ export default function AdminPineScriptEditor() {
     updateScript, 
     deleteScript,
     copyScript,
+    toggleActivation,
     isCreating,
     isUpdating,
-    isCopying
+    isCopying,
+    isToggling
   } = useAdminPineScripts();
   const { toast } = useToast();
 
@@ -393,12 +395,12 @@ export default function AdminPineScriptEditor() {
                           <Shield className="h-3 w-3" />
                           {script.admin_tag}
                         </Badge>
-                        {script.is_active && (
-                          <Badge variant="secondary" className="gap-1">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Active
-                          </Badge>
-                        )}
+                        <Badge 
+                          variant={script.is_active ? 'default' : 'outline'} 
+                          className={`gap-1 ${script.is_active ? 'bg-green-600' : ''}`}
+                        >
+                          {script.is_active ? '🟢 Active' : '🔴 Inactive'}
+                        </Badge>
                         <Badge variant="outline" className="text-xs">
                           {script.market_type || 'spot'}
                         </Badge>
@@ -418,7 +420,18 @@ export default function AdminPineScriptEditor() {
                         {script.candle_type === 'heikin_ashi' ? ' Heikin Ashi' : ' OHLC'}
                       </CardDescription>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2">
+                      {/* Activation Toggle */}
+                      <div className="flex items-center gap-1.5">
+                        <Switch
+                          checked={script.is_active}
+                          onCheckedChange={(checked) => toggleActivation({ id: script.id, is_active: checked })}
+                          disabled={isToggling}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {script.is_active ? 'On' : 'Off'}
+                        </span>
+                      </div>
                       <Button variant="ghost" size="icon" onClick={() => handleEditScript(script)}>
                         <Edit className="h-4 w-4" />
                       </Button>
@@ -500,12 +513,12 @@ export default function AdminPineScriptEditor() {
                       <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
                         {script.name}
                         <Badge variant="outline" className="text-xs">User Script</Badge>
-                        {script.is_active && (
-                          <Badge variant="secondary" className="gap-1">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Active
-                          </Badge>
-                        )}
+                        <Badge 
+                          variant={script.is_active ? 'default' : 'outline'} 
+                          className={`gap-1 ${script.is_active ? 'bg-green-600' : ''}`}
+                        >
+                          {script.is_active ? '🟢 Active' : '🔴 Inactive'}
+                        </Badge>
                         <Badge variant="outline" className="text-xs">
                           {script.market_type || 'spot'}
                         </Badge>
@@ -522,7 +535,18 @@ export default function AdminPineScriptEditor() {
                         )}
                       </CardDescription>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2">
+                      {/* Activation Toggle */}
+                      <div className="flex items-center gap-1.5">
+                        <Switch
+                          checked={script.is_active}
+                          onCheckedChange={(checked) => toggleActivation({ id: script.id, is_active: checked })}
+                          disabled={isToggling}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {script.is_active ? 'On' : 'Off'}
+                        </span>
+                      </div>
                       <Button 
                         variant="ghost" 
                         size="icon" 
