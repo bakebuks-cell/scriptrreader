@@ -42,7 +42,9 @@ export default function UserDashboard() {
   useEffect(() => {
     if (!authLoading && !user) {
       navigate('/auth');
-    } else if (!authLoading && role === 'admin') {
+    }
+    // Only redirect to admin if explicitly admin role - allow 'user' role or null to stay
+    if (!authLoading && user && role === 'admin') {
       navigate('/admin');
     }
   }, [user, role, authLoading, navigate]);
