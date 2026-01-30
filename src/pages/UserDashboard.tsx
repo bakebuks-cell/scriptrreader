@@ -37,10 +37,12 @@ import TradingChart from '@/components/TradingChart';
 import ScriptAnalyticsDashboard from '@/components/analytics/ScriptAnalyticsDashboard';
 import ScriptExportButton from '@/components/ScriptExportButton';
 import PreciousMetalsRates from '@/components/PreciousMetalsRates';
+import UserOnboarding from '@/components/onboarding/UserOnboarding';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const { user, role, loading: authLoading } = useAuth();
   const { profile, isLoading: profileLoading, toggleBot, isUpdating } = useProfile();
   const { trades, activeTrades, isLoading: tradesLoading } = useTrades();
@@ -64,6 +66,12 @@ export default function UserDashboard() {
   
   // Check if user has API keys configured
   const hasApiKeys = hasWallets && activeWallet?.api_key_encrypted;
+  
+  // Check if user needs onboarding (new user with no scripts and no API keys)
+  const needsOnboarding = !scriptsLoading && ownScripts.length === 0 && !hasApiKeys;
+  
+  // Show onboarding if user is new or explicitly triggered
+  const shouldShowOnboarding = showOnboarding || needsOnboarding;
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -74,6 +82,16 @@ export default function UserDashboard() {
       navigate('/admin');
     }
   }, [user, role, authLoading, navigate]);
+
+  const handleOnboardingComplete = (choice: 'preinstalled' | 'custom') => {
+    setShowOnboarding(false);
+    if (choice === 'custom') {
+      setActiveTab('scripts');
+    } else {
+      // For pre-installed, stay on overview - admin scripts are already visible
+      setActiveTab('overview');
+    }
+  };
 
   const handleSaveScript = async (scriptData: any) => {
     await createScript(scriptData);
@@ -96,6 +114,19 @@ export default function UserDashboard() {
           <Skeleton className="h-32 w-full" />
         </div>
       </div>
+    );
+  }
+
+  // Show onboarding for new users
+  if (shouldShowOnboarding) {
+    return (
+      <DashboardLayout activeTab={activeTab} onTabChange={setActiveTab}>
+        <UserOnboarding 
+          onComplete={handleOnboardingComplete}
+          hasApiKeys={!!hasApiKeys}
+          onAddApiKeys={() => setActiveTab('wallet')}
+        />
+      </DashboardLayout>
     );
   }
 
