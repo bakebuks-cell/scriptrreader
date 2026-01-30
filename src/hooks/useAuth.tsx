@@ -105,10 +105,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string) => {
-    // Use the published app URL for email redirects to avoid Lovable auth redirects
-    const baseUrl = import.meta.env.PROD 
-      ? 'https://pine-scribe-flow.lovable.app' 
-      : window.location.origin;
+    // Ensure verification links never point to the preview host.
+    // Preview-host links can route through a Lovable auth-bridge and show "Access Denied".
+    const getAuthRedirectBaseUrl = () => {
+      const origin = window.location.origin;
+      const hostname = window.location.hostname;
+
+      const isPreviewHost =
+        hostname.endsWith('lovableproject.com') || hostname.startsWith('id-preview--');
+
+      return isPreviewHost ? 'https://pine-scribe-flow.lovable.app' : origin;
+    };
+
+    const baseUrl = getAuthRedirectBaseUrl();
     
     const { error } = await supabase.auth.signUp({
       email,
