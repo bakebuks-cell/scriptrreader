@@ -5,7 +5,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { TrendingUp, TrendingDown, Minus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
 
 interface MetalPrice {
   symbol: string;
@@ -34,12 +33,6 @@ export default function PreciousMetalsRates({ className }: { className?: string 
     try {
       setError(null);
       const symbols = PRECIOUS_METALS.map(m => m.symbol).join(',');
-      
-      // Use edge function to avoid CORS issues
-      const { data, error: fetchError } = await supabase.functions.invoke('binance-api', {
-        body: null,
-        headers: {},
-      });
 
       // Construct URL with query params for GET-like behavior
       const response = await fetch(

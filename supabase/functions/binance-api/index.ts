@@ -3,7 +3,16 @@ import { createHmac } from 'https://deno.land/std@0.177.0/node/crypto.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+}
+
+class HttpError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = 'HttpError';
+  }
 }
 
 interface BinanceBalance {
@@ -85,8 +94,8 @@ async function getUserApiKeys(supabase: any, userId: string) {
     .eq('is_active', true)
     .maybeSingle()
   
-  if (error) throw new Error(`Failed to fetch API keys: ${error.message}`)
-  if (!data) throw new Error('No Binance API keys configured')
+  if (error) throw new HttpError(500, `Failed to fetch API keys: ${error.message}`)
+  if (!data) throw new HttpError(400, 'No Binance API keys configured')
   
   return {
     apiKey: data.api_key_encrypted,
@@ -421,10 +430,11 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     console.error('Binance API error:', err)
+    const status = err instanceof HttpError ? err.status : 500;
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     return new Response(
       JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
