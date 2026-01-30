@@ -5,6 +5,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { useTrades } from '@/hooks/useTrades';
 import { usePineScripts } from '@/hooks/usePineScripts';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
+import { useUserWallets } from '@/hooks/useWallets';
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -12,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   Coins, 
   Bot, 
@@ -24,7 +26,8 @@ import {
   Activity,
   CheckCircle2,
   XCircle,
-  BarChart3
+  BarChart3,
+  Key
 } from 'lucide-react';
 import PineScriptEditor from '@/components/PineScriptEditor';
 import WalletCard from '@/components/WalletCard';
@@ -40,6 +43,7 @@ export default function UserDashboard() {
   const { user, role, loading: authLoading } = useAuth();
   const { profile, isLoading: profileLoading, toggleBot, isUpdating } = useProfile();
   const { trades, activeTrades, isLoading: tradesLoading } = useTrades();
+  const { hasWallets, activeWallet } = useUserWallets();
   const { 
     scripts, 
     ownScripts,
@@ -56,6 +60,9 @@ export default function UserDashboard() {
     isAdminScript
   } = usePineScripts();
   const { isPaidModeEnabled } = useFeatureFlags();
+  
+  // Check if user has API keys configured
+  const hasApiKeys = hasWallets && activeWallet?.api_key_encrypted;
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -134,12 +141,31 @@ export default function UserDashboard() {
                       <div className={`status-dot ${profile?.bot_enabled ? 'status-dot-active' : 'status-dot-inactive'}`} />
                       <span className="text-lg font-semibold">{profile?.bot_enabled ? 'Active' : 'Inactive'}</span>
                     </div>
-                    <Switch
-                      checked={profile?.bot_enabled ?? false}
-                      onCheckedChange={toggleBot}
-                      disabled={isUpdating || coinsRemaining === 0}
-                    />
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Switch
+                              checked={profile?.bot_enabled ?? false}
+                              onCheckedChange={toggleBot}
+                              disabled={isUpdating || coinsRemaining === 0 || !hasApiKeys}
+                            />
+                          </span>
+                        </TooltipTrigger>
+                        {!hasApiKeys && (
+                          <TooltipContent>
+                            <p>Add Binance API keys to enable the trading bot</p>
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
+                  {!hasApiKeys && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+                      <Key className="h-3 w-3" />
+                      API keys required
+                    </p>
+                  )}
                 </CardContent>
               </Card>
 
@@ -183,6 +209,29 @@ export default function UserDashboard() {
                       You've used all your free trades. Trading is currently disabled.
                     </p>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Warning if no API keys */}
+            {!hasApiKeys && (
+              <Card className="border-amber-500/50 bg-amber-500/5">
+                <CardContent className="flex items-center gap-4 py-4">
+                  <Key className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                  <div className="flex-1">
+                    <p className="font-medium text-amber-600 dark:text-amber-400">Binance API Keys Required</p>
+                    <p className="text-sm text-muted-foreground">
+                      Connect your Binance account to enable automated trading.
+                    </p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setActiveTab('wallet')}
+                    className="shrink-0"
+                  >
+                    Add API Keys
+                  </Button>
                 </CardContent>
               </Card>
             )}
@@ -416,15 +465,38 @@ export default function UserDashboard() {
                   <div>
                     <p className="font-medium">Trading Bot</p>
                     <p className="text-sm text-muted-foreground">
-                      {profile?.bot_enabled ? 'Bot is actively monitoring and trading' : 'Bot is currently disabled'}
+                      {!hasApiKeys 
+                        ? 'Add Binance API keys above to enable trading'
+                        : profile?.bot_enabled 
+                          ? 'Bot is actively monitoring and trading' 
+                          : 'Bot is currently disabled'}
                     </p>
                   </div>
-                  <Switch
-                    checked={profile?.bot_enabled ?? false}
-                    onCheckedChange={toggleBot}
-                    disabled={isUpdating || coinsRemaining === 0}
-                  />
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Switch
+                            checked={profile?.bot_enabled ?? false}
+                            onCheckedChange={toggleBot}
+                            disabled={isUpdating || coinsRemaining === 0 || !hasApiKeys}
+                          />
+                        </span>
+                      </TooltipTrigger>
+                      {!hasApiKeys && (
+                        <TooltipContent>
+                          <p>Add Binance API keys to enable the trading bot</p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
+                {!hasApiKeys && (
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-sm">
+                    <Key className="h-4 w-4" />
+                    <span>API keys are required to enable the trading bot</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
