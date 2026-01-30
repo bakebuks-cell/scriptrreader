@@ -105,11 +105,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string) => {
+    // Use the published app URL for email redirects to avoid Lovable auth redirects
+    const baseUrl = import.meta.env.PROD 
+      ? 'https://pine-scribe-flow.lovable.app' 
+      : window.location.origin;
+    
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth?verified=true&email=${encodeURIComponent(email)}`,
+        emailRedirectTo: `${baseUrl}/auth?verified=true&email=${encodeURIComponent(email)}`,
       },
     });
     return { error: error as Error | null };
