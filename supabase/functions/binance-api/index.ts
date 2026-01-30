@@ -229,11 +229,15 @@ async function getPublicTicker(symbols: string[]): Promise<any[]> {
 // Fetch klines/candlestick data
 async function getKlines(symbol: string, interval: string, limit: number = 300): Promise<any[]> {
   try {
-    const response = await fetch(
-      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
-    );
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    console.log(`Fetching klines from: ${url}`);
+    
+    const response = await fetch(url);
+    
     if (!response.ok) {
-      throw new Error(`Failed to fetch klines for ${symbol}`);
+      const errorText = await response.text();
+      console.error(`Binance klines error (${response.status}): ${errorText}`);
+      throw new Error(`Failed to fetch klines for ${symbol}: ${response.status} ${errorText}`);
     }
     return response.json();
   } catch (err) {
