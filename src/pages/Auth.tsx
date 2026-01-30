@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, Lock, Zap } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { TrendingUp, Lock, Zap, Mail, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { isAdminEmail } from '@/lib/constants';
 
@@ -14,9 +15,26 @@ export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showVerificationMessage, setShowVerificationMessage] = useState(false);
+  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
   const { signIn, signUp, user, role, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+
+  // Check for email verification success from URL
+  useEffect(() => {
+    const verified = searchParams.get('verified');
+    const emailParam = searchParams.get('email');
+    
+    if (verified === 'true') {
+      setVerifiedEmail(emailParam);
+      toast({
+        title: 'Email Verified!',
+        description: 'Your email has been verified. You can now sign in.',
+      });
+    }
+  }, [searchParams, toast]);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -30,10 +48,19 @@ export default function Auth() {
     setIsLoading(true);
     const { error } = await signIn(email, password);
     setIsLoading(false);
+    
     if (error) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      // Check for unverified email error
+      if (error.message.includes('Email not confirmed')) {
+        toast({
+          title: 'Email Not Verified',
+          description: 'Please check your inbox and verify your email before signing in.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      }
     } else {
-      // Check if admin email to redirect appropriately
       const targetRoute = isAdminEmail(email) ? '/admin' : '/dashboard';
       navigate(targetRoute);
     }
@@ -44,15 +71,64 @@ export default function Auth() {
     setIsLoading(true);
     const { error } = await signUp(email, password);
     setIsLoading(false);
+    
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     } else {
-      toast({ title: 'Success', description: 'Account created! You can now sign in.' });
-      // Check if admin email to redirect appropriately
-      const targetRoute = isAdminEmail(email) ? '/admin' : '/dashboard';
-      navigate(targetRoute);
+      // Show verification message
+      setShowVerificationMessage(true);
+      setEmail('');
+      setPassword('');
     }
   };
+
+  // Show verification pending screen
+  if (showVerificationMessage) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="border-b border-border px-6 py-4">
+          <Link to="/" className="flex items-center gap-2">
+            <TrendingUp className="h-8 w-8 text-primary" />
+            <span className="text-xl font-bold">PineTrader</span>
+          </Link>
+        </header>
+
+        <main className="flex-1 flex items-center justify-center p-6">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                <Mail className="h-8 w-8 text-primary" />
+              </div>
+              <CardTitle className="text-2xl">Check Your Email</CardTitle>
+              <CardDescription className="mt-2">
+                We've sent a verification link to your email address
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Alert className="border-primary/30 bg-primary/5">
+                <Mail className="h-4 w-4" />
+                <AlertDescription>
+                  Click the link in the email to verify your account. Once verified, you can sign in.
+                </AlertDescription>
+              </Alert>
+              
+              <div className="text-center text-sm text-muted-foreground">
+                <p>Didn't receive the email? Check your spam folder.</p>
+              </div>
+
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowVerificationMessage(false)}
+              >
+                Back to Sign In
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -70,6 +146,16 @@ export default function Auth() {
             <CardDescription>Sign in to your trading dashboard</CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Show success message if email was just verified */}
+            {verifiedEmail && (
+              <Alert className="mb-4 border-primary/30 bg-primary/5">
+                <CheckCircle2 className="h-4 w-4 text-primary" />
+                <AlertDescription>
+                  Email verified successfully! You can now sign in.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <Tabs defaultValue="signin" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="signin">Sign In</TabsTrigger>
@@ -134,6 +220,9 @@ export default function Auth() {
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? 'Creating account...' : 'Create Account'}
                   </Button>
+                  <p className="text-xs text-center text-muted-foreground">
+                    You'll receive a verification email after signing up
+                  </p>
                 </form>
               </TabsContent>
             </Tabs>

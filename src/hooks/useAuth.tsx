@@ -109,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       password,
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: `${window.location.origin}/auth?verified=true&email=${encodeURIComponent(email)}`,
       },
     });
     return { error: error as Error | null };
