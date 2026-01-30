@@ -34,6 +34,7 @@ import AdminProfile from '@/components/profile/AdminProfile';
 import AdminPineScriptEditor from '@/components/admin/AdminPineScriptEditor';
 import AdminReportsSection from '@/components/admin/AdminReportsSection';
 import TradingChart from '@/components/TradingChart';
+import PreciousMetalsRates from '@/components/PreciousMetalsRates';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -215,7 +216,12 @@ export default function AdminDashboard() {
         return <AdminReportsSection />;
 
       case 'charts':
-        return <TradingChart className="dashboard-card" showIndicators={true} />;
+        return (
+          <div className="space-y-6">
+            <PreciousMetalsRates />
+            <TradingChart className="dashboard-card" showIndicators={true} />
+          </div>
+        );
 
       case 'trades':
         return (
