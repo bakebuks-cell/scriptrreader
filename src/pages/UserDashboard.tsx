@@ -124,7 +124,10 @@ export default function UserDashboard() {
         <UserOnboarding 
           onComplete={handleOnboardingComplete}
           hasApiKeys={!!hasApiKeys}
-          onAddApiKeys={() => setActiveTab('wallet')}
+          onAddApiKeys={() => {
+            setShowOnboarding(false);
+            setActiveTab('wallet');
+          }}
         />
       </DashboardLayout>
     );
