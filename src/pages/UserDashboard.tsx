@@ -43,6 +43,7 @@ export default function UserDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [dismissedOnboarding, setDismissedOnboarding] = useState(false);
   const { user, role, loading: authLoading } = useAuth();
   const { profile, isLoading: profileLoading, toggleBot, isUpdating } = useProfile();
   const { trades, activeTrades, isLoading: tradesLoading } = useTrades();
@@ -68,7 +69,7 @@ export default function UserDashboard() {
   const hasApiKeys = hasWallets && activeWallet?.api_key_encrypted;
   
   // Check if user needs onboarding (new user with no scripts and no API keys)
-  const needsOnboarding = !scriptsLoading && ownScripts.length === 0 && !hasApiKeys;
+  const needsOnboarding = !dismissedOnboarding && !scriptsLoading && ownScripts.length === 0 && !hasApiKeys;
   
   // Show onboarding if user is new or explicitly triggered
   const shouldShowOnboarding = showOnboarding || needsOnboarding;
@@ -85,6 +86,7 @@ export default function UserDashboard() {
 
   const handleOnboardingComplete = (choice: 'preinstalled' | 'custom') => {
     setShowOnboarding(false);
+    setDismissedOnboarding(true);
     if (choice === 'custom') {
       setActiveTab('scripts');
     } else {
@@ -126,6 +128,7 @@ export default function UserDashboard() {
           hasApiKeys={!!hasApiKeys}
           onAddApiKeys={() => {
             setShowOnboarding(false);
+            setDismissedOnboarding(true);
             setActiveTab('wallet');
           }}
         />
