@@ -44,7 +44,7 @@ export const LEVERAGE_OPTIONS = [
   1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125
 ] as const;
 
-// Popular trading pairs
+// Popular trading pairs (including precious metals)
 export const POPULAR_TRADING_PAIRS = [
   'BTCUSDT',
   'ETHUSDT',
@@ -76,6 +76,9 @@ export const POPULAR_TRADING_PAIRS = [
   'FETUSDT',
   'RENDERUSDT',
   'AAVEUSDT',
+  // Precious metals
+  'PAXGUSDT',   // PAX Gold (Gold-backed token)
+  'XAUTUSDT',   // Tether Gold
 ] as const;
 
 // Maximum symbols per script

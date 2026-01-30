@@ -95,17 +95,22 @@ export function usePineScripts() {
         created_by: user.id,
       };
 
+      // Use .select() without .single() to avoid JSON coercion errors
       const { data, error } = await supabase
         .from('pine_scripts')
         .insert(cleanInput)
-        .select()
-        .single();
+        .select();
 
       if (error) {
         console.error('Script creation error:', error);
         throw new Error(error.message || 'Failed to create script');
       }
-      return data as PineScript;
+      
+      if (!data || data.length === 0) {
+        throw new Error('Script was not created');
+      }
+      
+      return data[0] as PineScript;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id] });
@@ -132,18 +137,23 @@ export function usePineScripts() {
       if (updates.leverage !== undefined) cleanUpdates.leverage = updates.leverage;
       if (updates.max_trades_per_day !== undefined) cleanUpdates.max_trades_per_day = updates.max_trades_per_day;
 
+      // Use .select() without .single() to avoid JSON coercion errors
       const { data, error } = await supabase
         .from('pine_scripts')
         .update(cleanUpdates)
         .eq('id', id)
-        .select()
-        .single();
+        .select();
 
       if (error) {
         console.error('Script update error:', error);
         throw new Error(error.message || 'Failed to update script');
       }
-      return data as PineScript;
+      
+      if (!data || data.length === 0) {
+        throw new Error('Script not found or update failed');
+      }
+      
+      return data[0] as PineScript;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id] });
@@ -153,10 +163,15 @@ export function usePineScripts() {
   const deleteScript = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('pine_scripts').delete().eq('id', id);
-      if (error) throw error;
+      if (error) {
+        console.error('Script deletion error:', error);
+        throw new Error(error.message || 'Failed to delete script');
+      }
+      return id;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id] });
+      // Force immediate refetch to sync UI
+      queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id], refetchType: 'active' });
     },
   });
 
@@ -271,17 +286,22 @@ export function useAdminPineScripts() {
         admin_tag: input.admin_tag || 'ADMIN',
       };
 
+      // Use .select() without .single() to avoid JSON coercion errors
       const { data, error } = await supabase
         .from('pine_scripts')
         .insert(cleanInput)
-        .select()
-        .single();
+        .select();
 
       if (error) {
         console.error('Admin script creation error:', error);
         throw new Error(error.message || 'Failed to create script');
       }
-      return data as PineScript;
+      
+      if (!data || data.length === 0) {
+        throw new Error('Script was not created');
+      }
+      
+      return data[0] as PineScript;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-pine-scripts'] });
@@ -308,18 +328,23 @@ export function useAdminPineScripts() {
       if (updates.leverage !== undefined) cleanUpdates.leverage = updates.leverage;
       if (updates.max_trades_per_day !== undefined) cleanUpdates.max_trades_per_day = updates.max_trades_per_day;
 
+      // Use .select() without .single() to avoid JSON coercion errors
       const { data, error } = await supabase
         .from('pine_scripts')
         .update(cleanUpdates)
         .eq('id', id)
-        .select()
-        .single();
+        .select();
 
       if (error) {
         console.error('Admin script update error:', error);
         throw new Error(error.message || 'Failed to update script');
       }
-      return data as PineScript;
+      
+      if (!data || data.length === 0) {
+        throw new Error('Script not found or update failed');
+      }
+      
+      return data[0] as PineScript;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-pine-scripts'] });
@@ -329,10 +354,14 @@ export function useAdminPineScripts() {
   const deleteScript = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('pine_scripts').delete().eq('id', id);
-      if (error) throw error;
+      if (error) {
+        console.error('Admin script deletion error:', error);
+        throw new Error(error.message || 'Failed to delete script');
+      }
+      return id;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-pine-scripts'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-pine-scripts'], refetchType: 'active' });
     },
   });
 

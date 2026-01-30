@@ -5,9 +5,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Key, Eye, EyeOff, Trash2, Shield, CheckCircle2, Wifi, WifiOff, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Key, Eye, EyeOff, Trash2, Shield, CheckCircle2, Wifi, WifiOff, Loader2, Copy, Check, Globe, Info } from 'lucide-react';
 import { useUserWallets, callBinanceApi } from '@/hooks/useWallets';
 import { useToast } from '@/hooks/use-toast';
+
+// Supported exchanges
+const EXCHANGES = [
+  { value: 'binance', label: 'Binance', logo: '🔶' },
+  { value: 'binance_us', label: 'Binance US', logo: '🔶' },
+] as const;
+
+// IP addresses to whitelist for Binance API
+const WHITELIST_IPS = [
+  '0.0.0.0/0', // Allow all (recommended for testing)
+];
 
 export default function BinanceApiKeyForm() {
   const { 
@@ -25,8 +37,17 @@ export default function BinanceApiKeyForm() {
   const [showSecret, setShowSecret] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
+  const [selectedExchange, setSelectedExchange] = useState('binance');
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isTesting, setIsTesting] = useState(false);
+  const [copiedIp, setCopiedIp] = useState(false);
+
+  const handleCopyIp = async () => {
+    await navigator.clipboard.writeText(WHITELIST_IPS.join(', '));
+    setCopiedIp(true);
+    toast({ title: 'Copied', description: 'IP addresses copied to clipboard' });
+    setTimeout(() => setCopiedIp(false), 2000);
+  };
 
   const handleTestConnection = async () => {
     try {
@@ -57,8 +78,9 @@ export default function BinanceApiKeyForm() {
     }
 
     try {
-      await createWallet({ name: 'Binance Wallet', apiKey, apiSecret });
-      toast({ title: 'Success', description: 'Binance API keys saved securely' });
+      const exchangeName = EXCHANGES.find(e => e.value === selectedExchange)?.label || 'Binance';
+      await createWallet({ name: `${exchangeName} Wallet`, apiKey, apiSecret });
+      toast({ title: 'Success', description: `${exchangeName} API keys saved securely` });
       setApiKey('');
       setApiSecret('');
       setIsOpen(false);
@@ -82,10 +104,10 @@ export default function BinanceApiKeyForm() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Key className="h-5 w-5" />
-          Binance API Keys
+          Exchange API Keys
         </CardTitle>
         <CardDescription>
-          Connect your Binance account to enable automated trading
+          Connect your exchange account to enable automated trading
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -95,7 +117,7 @@ export default function BinanceApiKeyForm() {
               <div className="flex items-center gap-3">
                 <CheckCircle2 className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="font-medium">Connected to Binance</p>
+                  <p className="font-medium">Connected to {activeWallet.exchange === 'binance' ? 'Binance' : activeWallet.exchange}</p>
                   <p className="text-sm text-muted-foreground">
                     API Key: {activeWallet.api_key_encrypted?.slice(0, 8)}...
                   </p>
@@ -148,12 +170,30 @@ export default function BinanceApiKeyForm() {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Update Binance API Keys</DialogTitle>
+                    <DialogTitle>Update Exchange API Keys</DialogTitle>
                     <DialogDescription>
-                      Enter your new Binance API credentials. Make sure to enable trading permissions.
+                      Enter your new API credentials. Make sure to enable trading permissions.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="update-exchange">Exchange</Label>
+                      <Select value={selectedExchange} onValueChange={setSelectedExchange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select exchange" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {EXCHANGES.map((exchange) => (
+                            <SelectItem key={exchange.value} value={exchange.value}>
+                              <span className="flex items-center gap-2">
+                                <span>{exchange.logo}</span>
+                                <span>{exchange.label}</span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div>
                       <Label htmlFor="update-api-key">API Key</Label>
                       <Input
@@ -202,7 +242,7 @@ export default function BinanceApiKeyForm() {
                   <DialogHeader>
                     <DialogTitle>Delete API Keys</DialogTitle>
                     <DialogDescription>
-                      Are you sure you want to delete your Binance API keys? This will disable automated trading.
+                      Are you sure you want to delete your API keys? This will disable automated trading.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="flex justify-end gap-2">
@@ -220,26 +260,72 @@ export default function BinanceApiKeyForm() {
             <div className="text-center py-6">
               <Key className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
               <p className="text-muted-foreground">No API keys configured</p>
-              <p className="text-sm text-muted-foreground">Add your Binance API keys to start trading</p>
+              <p className="text-sm text-muted-foreground">Add your exchange API keys to start trading</p>
             </div>
 
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
               <DialogTrigger asChild>
                 <Button className="w-full">
                   <Key className="h-4 w-4 mr-2" />
-                  Add Binance API Keys
+                  Add Exchange API Keys
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-w-lg">
                 <DialogHeader>
-                  <DialogTitle>Connect Binance Account</DialogTitle>
+                  <DialogTitle>Connect Exchange Account</DialogTitle>
                   <DialogDescription>
-                    Enter your Binance API credentials. Make sure to enable trading permissions in your Binance account.
+                    Select your exchange and enter your API credentials to enable automated trading.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
+                  {/* Step 1: Exchange Selection */}
+                  <div>
+                    <Label htmlFor="exchange">Step 1: Select Exchange</Label>
+                    <Select value={selectedExchange} onValueChange={setSelectedExchange}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select your exchange" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EXCHANGES.map((exchange) => (
+                          <SelectItem key={exchange.value} value={exchange.value}>
+                            <span className="flex items-center gap-2">
+                              <span>{exchange.logo}</span>
+                              <span>{exchange.label}</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Step 2: IP Whitelist Info */}
+                  <div className="p-3 rounded-lg bg-accent/50 border border-border">
+                    <div className="flex items-start gap-2">
+                      <Globe className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Step 2: IP Whitelist (Optional)</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          For enhanced security, you can restrict API access to specific IPs. If you want to whitelist our servers, use:
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <code className="text-xs bg-background px-2 py-1 rounded border flex-1">
+                            {WHITELIST_IPS.join(', ')}
+                          </code>
+                          <Button variant="ghost" size="sm" onClick={handleCopyIp} className="shrink-0">
+                            {copiedIp ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          <Info className="h-3 w-3" />
+                          Or set "Unrestricted" for easier setup
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Required Permissions */}
                   <div className="p-3 rounded-lg bg-accent/50">
-                    <p className="text-sm font-medium mb-2">Required API Permissions:</p>
+                    <p className="text-sm font-medium mb-2">Step 3: Required API Permissions:</p>
                     <ul className="text-sm text-muted-foreground space-y-1">
                       <li>✓ Enable Spot & Margin Trading</li>
                       <li>✓ Enable Futures (for futures trading)</li>
@@ -248,26 +334,28 @@ export default function BinanceApiKeyForm() {
                     </ul>
                   </div>
 
+                  {/* Step 4: API Credentials */}
                   <div>
-                    <Label htmlFor="api-key">API Key</Label>
+                    <Label htmlFor="api-key">Step 4: API Key</Label>
                     <Input
                       id="api-key"
                       type="text"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="Enter your Binance API key"
+                      placeholder="Enter your API key"
+                      className="mt-1"
                     />
                   </div>
 
                   <div>
                     <Label htmlFor="api-secret">API Secret</Label>
-                    <div className="relative">
+                    <div className="relative mt-1">
                       <Input
                         id="api-secret"
                         type={showSecret ? 'text' : 'password'}
                         value={apiSecret}
                         onChange={(e) => setApiSecret(e.target.value)}
-                        placeholder="Enter your Binance API secret"
+                        placeholder="Enter your API secret"
                       />
                       <Button
                         type="button"
@@ -289,7 +377,7 @@ export default function BinanceApiKeyForm() {
                   </div>
 
                   <Button onClick={handleSave} disabled={isCreating} className="w-full">
-                    {isCreating ? 'Saving...' : 'Connect Binance'}
+                    {isCreating ? 'Connecting...' : `Connect ${EXCHANGES.find(e => e.value === selectedExchange)?.label || 'Exchange'}`}
                   </Button>
                 </div>
               </DialogContent>

@@ -47,7 +47,7 @@ interface PineScriptEditorProps {
   scripts: PineScript[];
   onSave: (script: Omit<PineScript, 'id' | 'created_by' | 'created_at' | 'updated_at' | 'webhook_secret' | 'admin_tag'>) => Promise<void>;
   onUpdate: (id: string, updates: Partial<PineScript>) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void | string>;
   onToggleActivation?: (id: string, is_active: boolean) => Promise<void>;
   onAttach?: (scriptId: string) => Promise<void>;
   onDetach?: (scriptId: string) => Promise<void>;
