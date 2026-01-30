@@ -36,6 +36,7 @@ import UserProfile from '@/components/profile/UserProfile';
 import TradingChart from '@/components/TradingChart';
 import ScriptAnalyticsDashboard from '@/components/analytics/ScriptAnalyticsDashboard';
 import ScriptExportButton from '@/components/ScriptExportButton';
+import PreciousMetalsRates from '@/components/PreciousMetalsRates';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
@@ -308,7 +309,12 @@ export default function UserDashboard() {
         );
 
       case 'charts':
-        return <TradingChart className="dashboard-card" showIndicators={true} />;
+        return (
+          <div className="space-y-6">
+            <PreciousMetalsRates />
+            <TradingChart className="dashboard-card" showIndicators={true} />
+          </div>
+        );
 
       case 'scripts':
         return (
