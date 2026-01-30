@@ -92,7 +92,18 @@ async function binanceRequest(
   
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(error.msg || `Binance API error: ${response.status}`)
+    const errorCode = error.code
+    const errorMsg = error.msg || `Binance API error: ${response.status}`
+    
+    // Provide user-friendly messages for common errors
+    if (errorCode === -2015 || errorMsg.includes('Invalid API-key')) {
+      throw new Error('Invalid API key, IP not whitelisted, or missing permissions. Please whitelist these IPs in your Binance API settings: 188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35')
+    }
+    if (errorMsg.includes('restricted location')) {
+      throw new Error('Binance is unavailable in your region. If you are in the US, please use Binance US instead.')
+    }
+    
+    throw new Error(errorMsg)
   }
   
   return response.json()
