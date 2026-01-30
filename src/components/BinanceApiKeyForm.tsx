@@ -53,7 +53,7 @@ export default function BinanceApiKeyForm() {
     try {
       setConnectionStatus('idle');
       setIsTesting(true);
-      await callBinanceApi('test');
+      await callBinanceApi('test', 'GET', undefined, activeWallet?.exchange);
       setConnectionStatus('success');
       toast({ 
         title: 'Connection Successful', 
@@ -79,7 +79,7 @@ export default function BinanceApiKeyForm() {
 
     try {
       const exchangeName = EXCHANGES.find(e => e.value === selectedExchange)?.label || 'Binance';
-      await createWallet({ name: `${exchangeName} Wallet`, apiKey, apiSecret });
+      await createWallet({ name: `${exchangeName} Wallet`, apiKey, apiSecret, exchange: selectedExchange });
       toast({ title: 'Success', description: `${exchangeName} API keys saved securely` });
       setApiKey('');
       setApiSecret('');

@@ -40,6 +40,13 @@ interface TradeParams {
   takeProfit?: string
 }
 
+type Exchange = 'binance' | 'binance_us'
+
+function normalizeExchange(value: string | null): Exchange {
+  if (value === 'binance_us') return 'binance_us'
+  return 'binance'
+}
+
 // Create Binance signature for authenticated requests
 function createSignature(queryString: string, apiSecret: string): string {
   const hmac = createHmac('sha256', apiSecret)
@@ -52,13 +59,20 @@ async function binanceRequest(
   endpoint: string,
   apiKey: string,
   apiSecret: string,
+  exchange: Exchange,
   method: string = 'GET',
   params: Record<string, string> = {},
   isFutures: boolean = false
 ): Promise<any> {
-  const baseUrl = isFutures 
-    ? 'https://fapi.binance.com' 
-    : 'https://api.binance.com'
+  if (isFutures && exchange === 'binance_us') {
+    throw new Error('Futures are not available on Binance US')
+  }
+
+  const baseUrl = isFutures
+    ? 'https://fapi.binance.com'
+    : exchange === 'binance_us'
+      ? 'https://api.binance.us'
+      : 'https://api.binance.com'
   
   const timestamp = Date.now().toString()
   const allParams = { ...params, timestamp }
@@ -85,27 +99,56 @@ async function binanceRequest(
 }
 
 // Get user's API keys from database
-async function getUserApiKeys(supabase: any, userId: string) {
-  const { data, error } = await supabase
+async function getUserApiKeys(supabase: any, userId: string, exchange: Exchange) {
+  // Prefer the newer `wallets` table (used by the current UI)
+  const { data: walletData, error: walletError } = await supabase
+    .from('wallets')
+    .select('api_key_encrypted, api_secret_encrypted')
+    .eq('user_id', userId)
+    .eq('exchange', exchange)
+    .eq('is_active', true)
+    .not('api_key_encrypted', 'is', null)
+    .not('api_secret_encrypted', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (walletError) {
+    throw new HttpError(500, `Failed to fetch API keys: ${walletError.message}`)
+  }
+
+  if (walletData) {
+    return {
+      apiKey: walletData.api_key_encrypted,
+      apiSecret: walletData.api_secret_encrypted,
+    }
+  }
+
+  // Backward compatibility: older projects stored keys in `exchange_keys`
+  const { data: legacyData, error: legacyError } = await supabase
     .from('exchange_keys')
     .select('api_key_encrypted, api_secret_encrypted')
     .eq('user_id', userId)
-    .eq('exchange', 'binance')
+    .eq('exchange', exchange)
     .eq('is_active', true)
     .maybeSingle()
-  
-  if (error) throw new HttpError(500, `Failed to fetch API keys: ${error.message}`)
-  if (!data) throw new HttpError(400, 'No Binance API keys configured')
-  
+
+  if (legacyError) throw new HttpError(500, `Failed to fetch API keys: ${legacyError.message}`)
+
+  if (!legacyData) {
+    const msg = exchange === 'binance_us' ? 'No Binance US API keys configured' : 'No Binance API keys configured'
+    throw new HttpError(400, msg)
+  }
+
   return {
-    apiKey: data.api_key_encrypted,
-    apiSecret: data.api_secret_encrypted,
+    apiKey: legacyData.api_key_encrypted,
+    apiSecret: legacyData.api_secret_encrypted,
   }
 }
 
 // Get spot wallet balance
-async function getSpotBalance(apiKey: string, apiSecret: string): Promise<BinanceBalance[]> {
-  const data = await binanceRequest('/api/v3/account', apiKey, apiSecret)
+async function getSpotBalance(apiKey: string, apiSecret: string, exchange: Exchange): Promise<BinanceBalance[]> {
+  const data = await binanceRequest('/api/v3/account', apiKey, apiSecret, exchange)
   
   // Filter out zero balances
   return data.balances.filter(
@@ -114,9 +157,9 @@ async function getSpotBalance(apiKey: string, apiSecret: string): Promise<Binanc
 }
 
 // Get futures positions
-async function getFuturesPositions(apiKey: string, apiSecret: string): Promise<BinancePosition[]> {
+async function getFuturesPositions(apiKey: string, apiSecret: string, exchange: Exchange): Promise<BinancePosition[]> {
   try {
-    const data = await binanceRequest('/fapi/v2/positionRisk', apiKey, apiSecret, 'GET', {}, true)
+    const data = await binanceRequest('/fapi/v2/positionRisk', apiKey, apiSecret, exchange, 'GET', {}, true)
     
     // Filter out positions with no amount
     return data.filter((p: BinancePosition) => parseFloat(p.positionAmt) !== 0)
@@ -129,9 +172,9 @@ async function getFuturesPositions(apiKey: string, apiSecret: string): Promise<B
 }
 
 // Get futures account balance
-async function getFuturesBalance(apiKey: string, apiSecret: string): Promise<BinanceBalance[]> {
+async function getFuturesBalance(apiKey: string, apiSecret: string, exchange: Exchange): Promise<BinanceBalance[]> {
   try {
-    const data = await binanceRequest('/fapi/v2/balance', apiKey, apiSecret, 'GET', {}, true)
+    const data = await binanceRequest('/fapi/v2/balance', apiKey, apiSecret, exchange, 'GET', {}, true)
     
     return data
       .filter((b: any) => parseFloat(b.balance) > 0)
@@ -151,6 +194,7 @@ async function getFuturesBalance(apiKey: string, apiSecret: string): Promise<Bin
 async function placeOrder(
   apiKey: string, 
   apiSecret: string, 
+  exchange: Exchange,
   params: TradeParams,
   isFutures: boolean = false
 ): Promise<any> {
@@ -168,12 +212,12 @@ async function placeOrder(
     orderParams.timeInForce = 'GTC'
   }
   
-  const result = await binanceRequest(endpoint, apiKey, apiSecret, 'POST', orderParams, isFutures)
+  const result = await binanceRequest(endpoint, apiKey, apiSecret, exchange, 'POST', orderParams, isFutures)
   
   // If SL/TP provided, place those orders too
   if (params.stopLoss) {
     try {
-      await binanceRequest(endpoint, apiKey, apiSecret, 'POST', {
+      await binanceRequest(endpoint, apiKey, apiSecret, exchange, 'POST', {
         symbol: params.symbol,
         side: params.side === 'BUY' ? 'SELL' : 'BUY',
         type: 'STOP_MARKET',
@@ -188,7 +232,7 @@ async function placeOrder(
   
   if (params.takeProfit) {
     try {
-      await binanceRequest(endpoint, apiKey, apiSecret, 'POST', {
+      await binanceRequest(endpoint, apiKey, apiSecret, exchange, 'POST', {
         symbol: params.symbol,
         side: params.side === 'BUY' ? 'SELL' : 'BUY',
         type: 'TAKE_PROFIT_MARKET',
@@ -256,6 +300,7 @@ Deno.serve(async (req) => {
     // Parse request
     const url = new URL(req.url)
     const action = url.searchParams.get('action') || 'balance'
+    const exchange = normalizeExchange(url.searchParams.get('exchange'))
     
     // PUBLIC ENDPOINTS (no auth required)
     if (action === 'ticker') {
@@ -309,14 +354,14 @@ Deno.serve(async (req) => {
     }
 
     // Get user's API keys
-    const { apiKey, apiSecret } = await getUserApiKeys(supabase, user.id)
+    const { apiKey, apiSecret } = await getUserApiKeys(supabase, user.id, exchange)
 
     let result: any
 
     switch (action) {
       case 'balance': {
-        const spotBalances = await getSpotBalance(apiKey, apiSecret)
-        const futuresBalances = await getFuturesBalance(apiKey, apiSecret)
+        const spotBalances = await getSpotBalance(apiKey, apiSecret, exchange)
+        const futuresBalances = await getFuturesBalance(apiKey, apiSecret, exchange)
         
         result = {
           spot: spotBalances,
@@ -326,7 +371,7 @@ Deno.serve(async (req) => {
       }
       
       case 'positions': {
-        const positions = await getFuturesPositions(apiKey, apiSecret)
+        const positions = await getFuturesPositions(apiKey, apiSecret, exchange)
         result = { positions }
         break
       }
@@ -370,7 +415,7 @@ Deno.serve(async (req) => {
           .eq('user_id', user.id)
         
         try {
-          result = await placeOrder(apiKey, apiSecret, {
+          result = await placeOrder(apiKey, apiSecret, exchange, {
             symbol,
             side,
             type,
@@ -411,7 +456,7 @@ Deno.serve(async (req) => {
       case 'test': {
         // Test API connection
         try {
-          await binanceRequest('/api/v3/account', apiKey, apiSecret)
+          await binanceRequest('/api/v3/account', apiKey, apiSecret, exchange)
           result = { success: true, message: 'API connection successful' }
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : 'Unknown error';

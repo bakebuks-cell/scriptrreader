@@ -42,11 +42,20 @@ const BINANCE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/
  * Call Binance API via edge function with auth token
  * Server-side enforces role-based access
  */
-async function callBinanceApi(action: string, method: string = 'GET', body?: any) {
+async function callBinanceApi(
+  action: string,
+  method: string = 'GET',
+  body?: any,
+  exchange?: string
+) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
-  const response = await fetch(`${BINANCE_FUNCTION_URL}?action=${action}`, {
+  const url = new URL(BINANCE_FUNCTION_URL);
+  url.searchParams.set('action', action);
+  if (exchange) url.searchParams.set('exchange', exchange);
+
+  const response = await fetch(url.toString(), {
     method,
     headers: {
       'Authorization': `Bearer ${session.access_token}`,
@@ -95,7 +104,17 @@ export function useUserWallets() {
   });
 
   const createWallet = useMutation({
-    mutationFn: async ({ name, apiKey, apiSecret }: { name: string; apiKey: string; apiSecret: string }) => {
+    mutationFn: async ({
+      name,
+      apiKey,
+      apiSecret,
+      exchange = 'binance',
+    }: {
+      name: string;
+      apiKey: string;
+      apiSecret: string;
+      exchange?: string;
+    }) => {
       if (!user?.id) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -104,7 +123,7 @@ export function useUserWallets() {
           user_id: user.id,
           role: 'USER' as WalletRole,
           name,
-          exchange: 'binance',
+          exchange,
           api_key_encrypted: apiKey,
           api_secret_encrypted: apiSecret,
         })
@@ -213,7 +232,17 @@ export function useAdminWallets() {
   const userWallets = wallets?.filter(w => w.role === 'USER') ?? [];
 
   const createAdminWallet = useMutation({
-    mutationFn: async ({ name, apiKey, apiSecret }: { name: string; apiKey: string; apiSecret: string }) => {
+    mutationFn: async ({
+      name,
+      apiKey,
+      apiSecret,
+      exchange = 'binance',
+    }: {
+      name: string;
+      apiKey: string;
+      apiSecret: string;
+      exchange?: string;
+    }) => {
       if (!user?.id) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -222,7 +251,7 @@ export function useAdminWallets() {
           user_id: user.id, // Admin's user_id
           role: 'ADMIN' as WalletRole,
           name,
-          exchange: 'binance',
+          exchange,
           api_key_encrypted: apiKey,
           api_secret_encrypted: apiSecret,
         })
@@ -299,10 +328,10 @@ export function useWalletBalance(walletId?: string) {
   const { data, isLoading, refetch, error } = useQuery({
     queryKey: ['wallet-balance', targetWallet?.id],
     queryFn: async () => {
-      const result = await callBinanceApi('balance');
+      const result = await callBinanceApi('balance', 'GET', undefined, targetWallet?.exchange);
       return result;
     },
-    enabled: !!targetWallet?.api_key_encrypted,
+    enabled: !!targetWallet?.api_key_encrypted && !!targetWallet?.api_secret_encrypted,
     staleTime: 30000,
     retry: 1,
   });
@@ -347,10 +376,10 @@ export function useOpenPositions() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['open-positions', activeWallet?.id],
     queryFn: async () => {
-      const result = await callBinanceApi('positions');
+      const result = await callBinanceApi('positions', 'GET', undefined, activeWallet?.exchange);
       return result.positions as OpenPosition[];
     },
-    enabled: !!activeWallet?.api_key_encrypted,
+    enabled: !!activeWallet?.api_key_encrypted && !!activeWallet?.api_secret_encrypted,
     staleTime: 10000,
     retry: 1,
   });
@@ -370,6 +399,7 @@ export function usePlaceTrade() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { activeWallet } = useUserWallets();
 
   return useMutation({
     mutationFn: async (params: {
@@ -382,7 +412,7 @@ export function usePlaceTrade() {
       takeProfit?: string;
       isFutures?: boolean;
     }) => {
-      return await callBinanceApi('trade', 'POST', params);
+      return await callBinanceApi('trade', 'POST', params, activeWallet?.exchange);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['wallet-balance'] });
