@@ -169,9 +169,29 @@ export function usePineScripts() {
       }
       return id;
     },
-    onSuccess: () => {
-      // Force immediate refetch to sync UI
-      queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id], refetchType: 'active' });
+    onMutate: async (id: string) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['pine-scripts', user?.id] });
+      
+      // Snapshot the previous value
+      const previousScripts = queryClient.getQueryData(['pine-scripts', user?.id]);
+      
+      // Optimistically remove the script from the cache
+      queryClient.setQueryData(['pine-scripts', user?.id], (old: PineScript[] | undefined) => 
+        old ? old.filter(script => script.id !== id) : []
+      );
+      
+      return { previousScripts };
+    },
+    onError: (err, id, context) => {
+      // Rollback on error
+      if (context?.previousScripts) {
+        queryClient.setQueryData(['pine-scripts', user?.id], context.previousScripts);
+      }
+    },
+    onSettled: () => {
+      // Always refetch to ensure sync
+      queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id] });
     },
   });
 
@@ -360,8 +380,23 @@ export function useAdminPineScripts() {
       }
       return id;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-pine-scripts'], refetchType: 'active' });
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: ['admin-pine-scripts'] });
+      const previousScripts = queryClient.getQueryData(['admin-pine-scripts']);
+      
+      queryClient.setQueryData(['admin-pine-scripts'], (old: PineScript[] | undefined) => 
+        old ? old.filter(script => script.id !== id) : []
+      );
+      
+      return { previousScripts };
+    },
+    onError: (err, id, context) => {
+      if (context?.previousScripts) {
+        queryClient.setQueryData(['admin-pine-scripts'], context.previousScripts);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-pine-scripts'] });
     },
   });
 
