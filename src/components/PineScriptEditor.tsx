@@ -364,7 +364,7 @@ export default function PineScriptEditor({
                             variant={script.is_active ? 'default' : 'outline'} 
                             className={`shrink-0 ${script.is_active ? 'bg-green-600' : ''}`}
                           >
-                            {script.is_active ? '🟢 Active' : '🔴 Inactive'}
+                            {script.is_active ? 'Enabled' : 'Disabled'}
                           </Badge>
                         </div>
                       </div>
