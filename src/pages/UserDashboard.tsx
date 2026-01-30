@@ -138,8 +138,8 @@ export default function UserDashboard() {
                 <CardContent>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className={`status-dot ${profile?.bot_enabled ? 'status-dot-active' : 'status-dot-inactive'}`} />
-                      <span className="text-lg font-semibold">{profile?.bot_enabled ? 'Active' : 'Inactive'}</span>
+                      <div className={`status-dot ${profile?.bot_enabled && hasApiKeys ? 'status-dot-active' : 'status-dot-inactive'}`} />
+                      <span className="text-lg font-semibold">{profile?.bot_enabled && hasApiKeys ? 'Active' : 'Inactive'}</span>
                     </div>
                     <TooltipProvider>
                       <Tooltip>
