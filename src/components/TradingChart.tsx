@@ -40,6 +40,8 @@ const SYMBOLS = [
   { value: 'XRPUSDT', label: 'XRP/USDT' },
   { value: 'ADAUSDT', label: 'ADA/USDT' },
   { value: 'DOGEUSDT', label: 'DOGE/USDT' },
+  { value: 'PAXGUSDT', label: 'PAXG/USDT (Gold)' },
+  { value: 'XAUTUSDT', label: 'XAUT/USDT (Gold)' },
 ];
 
 const INTERVALS = [
