@@ -79,11 +79,11 @@ export default function TradingChart({
   const signalLineRef = useRef<ISeriesApi<'Line'> | null>(null);
   const histogramRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   
-  const wsRef = useRef<WebSocket | null>(null);
+  
   const candleDataRef = useRef<CandlestickData<Time>[]>([]);
 
   const [symbol, setSymbol] = useState(defaultSymbol);
-  const [interval, setInterval] = useState('1h');
+  const [selectedInterval, setSelectedInterval] = useState('1h');
   const [isLoading, setIsLoading] = useState(true);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [priceChange, setPriceChange] = useState<number>(0);
@@ -585,17 +585,22 @@ export default function TradingChart({
     }
   }, [showIndicators, showEMA, showRSI, showMACD]);
 
-  // Fetch and update data
+  // Fetch and update data using edge function to avoid CORS
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const response = await fetch(
-        `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=300`
+        `${supabaseUrl}/functions/v1/binance-api?action=klines&symbol=${symbol}&interval=${selectedInterval}&limit=300`
       );
       
       if (!response.ok) throw new Error('Failed to fetch data');
       
-      const data = await response.json();
+      const { klines: data } = await response.json();
+      
+      if (!data || !Array.isArray(data)) {
+        throw new Error('Invalid data received');
+      }
       
       const candleData: CandlestickData<Time>[] = data.map((k: any) => ({
         time: (k[0] / 1000) as Time,
@@ -643,6 +648,7 @@ export default function TradingChart({
       }
 
     } catch (error: any) {
+      console.error('Chart data fetch error:', error);
       toast({
         title: 'Error fetching data',
         description: error.message,
@@ -651,67 +657,21 @@ export default function TradingChart({
     } finally {
       setIsLoading(false);
     }
-  }, [symbol, interval, toast, updateIndicators]);
+  }, [symbol, selectedInterval, toast, updateIndicators]);
 
-  // Setup WebSocket for real-time updates
+  // Setup polling for updates (WebSocket disabled due to CORS)
   useEffect(() => {
     fetchData();
 
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
-
-    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${interval}`);
-    wsRef.current = ws;
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.k && candlestickSeriesRef.current) {
-        const kline = data.k;
-        const candle: CandlestickData<Time> = {
-          time: (kline.t / 1000) as Time,
-          open: parseFloat(kline.o),
-          high: parseFloat(kline.h),
-          low: parseFloat(kline.l),
-          close: parseFloat(kline.c),
-        };
-        
-        candlestickSeriesRef.current.update(candle);
-        setCurrentPrice(candle.close);
-
-        if (volumeSeriesRef.current) {
-          volumeSeriesRef.current.update({
-            time: candle.time,
-            value: parseFloat(kline.v),
-            color: candle.close >= candle.open 
-              ? 'rgba(34, 197, 94, 0.3)' 
-              : 'rgba(239, 68, 68, 0.3)',
-          });
-        }
-
-        // Update candle data and recalculate indicators on candle close
-        if (kline.x) {
-          const updatedData = [...candleDataRef.current];
-          const lastIndex = updatedData.findIndex(c => c.time === candle.time);
-          if (lastIndex >= 0) {
-            updatedData[lastIndex] = candle;
-          } else {
-            updatedData.push(candle);
-          }
-          candleDataRef.current = updatedData;
-          updateIndicators(updatedData);
-        }
-      }
-    };
-
-    ws.onerror = () => {
-      console.error('WebSocket error');
-    };
+    // Poll for updates every 30 seconds instead of WebSocket
+    const pollInterval = setInterval(() => {
+      fetchData();
+    }, 30000);
 
     return () => {
-      ws.close();
+      clearInterval(pollInterval);
     };
-  }, [symbol, interval, fetchData, updateIndicators]);
+  }, [symbol, selectedInterval, fetchData]);
 
   // Zoom controls
   const handleZoomIn = () => {
@@ -803,10 +763,10 @@ export default function TradingChart({
               {INTERVALS.slice(0, 5).map(i => (
                 <button
                   key={i.value}
-                  onClick={() => setInterval(i.value)}
+                  onClick={() => setSelectedInterval(i.value)}
                   className={cn(
                     "px-2 py-1 text-xs font-medium transition-colors",
-                    interval === i.value 
+                    selectedInterval === i.value 
                       ? "bg-primary text-primary-foreground" 
                       : "hover:bg-muted"
                   )}
@@ -814,7 +774,7 @@ export default function TradingChart({
                   {i.label}
                 </button>
               ))}
-              <Select value={interval} onValueChange={setInterval}>
+              <Select value={selectedInterval} onValueChange={setSelectedInterval}>
                 <SelectTrigger className="w-[60px] border-0 rounded-none">
                   <SelectValue placeholder="..." />
                 </SelectTrigger>
