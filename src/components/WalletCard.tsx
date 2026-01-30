@@ -2,7 +2,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Wallet, RefreshCw, TrendingUp, TrendingDown, Link2Off, ShieldCheck, User } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Wallet, RefreshCw, TrendingUp, TrendingDown, Link2Off, ShieldCheck, User, AlertTriangle } from 'lucide-react';
 import { useWalletBalance, useOpenPositions, Wallet as WalletType } from '@/hooks/useWallets';
 
 interface WalletCardProps {
@@ -12,10 +13,17 @@ interface WalletCardProps {
 }
 
 export default function WalletCard({ compact = false, wallet, showRoleBadge = false }: WalletCardProps) {
-  const { balances, totalUSDT, isLoading, isRefreshing, refresh, hasWallets, wallet: activeWallet } = useWalletBalance(wallet?.id);
+  const { balances, totalUSDT, isLoading, isRefreshing, refresh, hasWallets, wallet: activeWallet, error } = useWalletBalance(wallet?.id);
   const { positions } = useOpenPositions();
 
   const displayWallet = wallet || activeWallet;
+
+  // Show error state with actionable message
+  const errorMessage = error?.message || '';
+  const isApiError = errorMessage.includes('Invalid API key') || 
+                     errorMessage.includes('IP not whitelisted') || 
+                     errorMessage.includes('unavailable in your region');
+
 
   if (!hasWallets && !wallet) {
     return compact ? (
@@ -63,6 +71,22 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
         )}
         {isLoading ? (
           <Skeleton className="h-16" />
+        ) : isApiError ? (
+          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-destructive">Connection Error</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {errorMessage.includes('IP not whitelisted') 
+                    ? 'Whitelist server IPs in your Binance API settings'
+                    : errorMessage.includes('unavailable in your region')
+                    ? 'Try using Binance US if in the US'
+                    : 'Check your API key configuration'}
+                </p>
+              </div>
+            </div>
+          </div>
         ) : (
           <>
             <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
@@ -119,6 +143,17 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
           </div>
+        ) : isApiError ? (
+          <Alert variant="destructive" className="border-destructive/30 bg-destructive/5">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="ml-2">
+              <p className="font-medium">Connection Error</p>
+              <p className="text-sm mt-1">{errorMessage}</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Required IPs: 188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35
+              </p>
+            </AlertDescription>
+          </Alert>
         ) : (
           <>
             {/* Total Balance */}
