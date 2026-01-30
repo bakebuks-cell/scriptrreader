@@ -33,7 +33,7 @@ const INTERVALS = [
 
 export default function CandlestickChart({ symbol: defaultSymbol = 'BTCUSDT', className }: CandlestickChartProps) {
   const [symbol, setSymbol] = useState(defaultSymbol);
-  const [interval, setInterval] = useState('1h');
+  const [selectedInterval, setSelectedInterval] = useState('1h');
   const [candles, setCandles] = useState<Candle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
@@ -43,13 +43,19 @@ export default function CandlestickChart({ symbol: defaultSymbol = 'BTCUSDT', cl
   const fetchCandles = async () => {
     setIsLoading(true);
     try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const response = await fetch(
-        `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=50`
+        `${supabaseUrl}/functions/v1/binance-api?action=klines&symbol=${symbol}&interval=${selectedInterval}&limit=50`
       );
       
       if (!response.ok) throw new Error('Failed to fetch candles');
       
-      const data = await response.json();
+      const { klines: data } = await response.json();
+      
+      if (!data || !Array.isArray(data)) {
+        throw new Error('Invalid data received');
+      }
+      
       const parsedCandles: Candle[] = data.map((k: any) => ({
         time: k[0],
         open: parseFloat(k[1]),
@@ -68,6 +74,7 @@ export default function CandlestickChart({ symbol: defaultSymbol = 'BTCUSDT', cl
         setPriceChange(((latest.close - first.open) / first.open) * 100);
       }
     } catch (error: any) {
+      console.error('Candle fetch error:', error);
       toast({
         title: 'Error fetching data',
         description: error.message,
@@ -81,49 +88,15 @@ export default function CandlestickChart({ symbol: defaultSymbol = 'BTCUSDT', cl
   useEffect(() => {
     fetchCandles();
     
-    // Set up WebSocket for real-time updates
-    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${interval}`);
-    
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.k) {
-        const kline = data.k;
-        const newCandle: Candle = {
-          time: kline.t,
-          open: parseFloat(kline.o),
-          high: parseFloat(kline.h),
-          low: parseFloat(kline.l),
-          close: parseFloat(kline.c),
-          volume: parseFloat(kline.v),
-        };
-        
-        setCandles(prev => {
-          const updated = [...prev];
-          const lastIndex = updated.length - 1;
-          
-          if (lastIndex >= 0 && updated[lastIndex].time === newCandle.time) {
-            updated[lastIndex] = newCandle;
-          } else if (kline.x) {
-            // Candle closed, add new one
-            updated.push(newCandle);
-            if (updated.length > 50) updated.shift();
-          }
-          
-          return updated;
-        });
-        
-        setCurrentPrice(newCandle.close);
-      }
-    };
-
-    ws.onerror = () => {
-      console.error('WebSocket error');
-    };
+    // Poll for updates every 30 seconds instead of WebSocket
+    const pollInterval = setInterval(() => {
+      fetchCandles();
+    }, 30000);
 
     return () => {
-      ws.close();
+      clearInterval(pollInterval);
     };
-  }, [symbol, interval]);
+  }, [symbol, selectedInterval]);
 
   // Calculate chart dimensions and scaling
   const chartData = useMemo(() => {
@@ -201,7 +174,7 @@ export default function CandlestickChart({ symbol: defaultSymbol = 'BTCUSDT', cl
               </SelectContent>
             </Select>
             
-            <Select value={interval} onValueChange={setInterval}>
+            <Select value={selectedInterval} onValueChange={setSelectedInterval}>
               <SelectTrigger className="w-[80px]">
                 <SelectValue />
               </SelectTrigger>

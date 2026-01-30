@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { TrendingUp, TrendingDown, Minus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 interface MetalPrice {
   symbol: string;
@@ -32,22 +33,30 @@ export default function PreciousMetalsRates({ className }: { className?: string 
   const fetchPrices = async () => {
     try {
       setError(null);
+      const symbols = PRECIOUS_METALS.map(m => m.symbol).join(',');
+      
+      // Use edge function to avoid CORS issues
+      const { data, error: fetchError } = await supabase.functions.invoke('binance-api', {
+        body: null,
+        headers: {},
+      });
+
+      // Construct URL with query params for GET-like behavior
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/binance-api?action=ticker&symbols=${symbols}`
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch ticker data');
+      }
+
+      const tickerData = await response.json();
       const results: Record<string, MetalPrice> = {};
 
-      await Promise.all(
-        PRECIOUS_METALS.map(async (metal) => {
-          try {
-            // Fetch 24hr ticker data
-            const response = await fetch(
-              `https://api.binance.com/api/v3/ticker/24hr?symbol=${metal.symbol}`
-            );
-            
-            if (!response.ok) {
-              throw new Error(`Failed to fetch ${metal.symbol}`);
-            }
-            
-            const data = await response.json();
-            
+      if (tickerData.tickers) {
+        tickerData.tickers.forEach((data: any) => {
+          const metal = PRECIOUS_METALS.find(m => m.symbol === data.symbol);
+          if (metal && data) {
             results[metal.symbol] = {
               symbol: metal.symbol,
               name: metal.name,
@@ -59,16 +68,15 @@ export default function PreciousMetalsRates({ className }: { className?: string 
               volume24h: parseFloat(data.quoteVolume),
               lastUpdate: new Date(),
             };
-          } catch (err) {
-            console.error(`Error fetching ${metal.symbol}:`, err);
           }
-        })
-      );
+        });
+      }
 
       setPrices(results);
       setLastRefresh(new Date());
       setIsLoading(false);
     } catch (err) {
+      console.error('Error fetching precious metals rates:', err);
       setError('Failed to fetch prices');
       setIsLoading(false);
     }

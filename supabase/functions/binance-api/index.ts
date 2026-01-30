@@ -195,6 +195,44 @@ async function placeOrder(
   return result
 }
 
+// Public endpoints that don't require authentication
+async function getPublicTicker(symbols: string[]): Promise<any[]> {
+  const results = await Promise.all(
+    symbols.map(async (symbol) => {
+      try {
+        const response = await fetch(
+          `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`
+        );
+        if (!response.ok) {
+          console.log(`Ticker not found for ${symbol}`);
+          return null;
+        }
+        return response.json();
+      } catch (err) {
+        console.error(`Error fetching ${symbol}:`, err);
+        return null;
+      }
+    })
+  );
+  return results.filter(Boolean);
+}
+
+// Fetch klines/candlestick data
+async function getKlines(symbol: string, interval: string, limit: number = 300): Promise<any[]> {
+  try {
+    const response = await fetch(
+      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to fetch klines for ${symbol}`);
+    }
+    return response.json();
+  } catch (err) {
+    console.error(`Error fetching klines:`, err);
+    throw err;
+  }
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -202,7 +240,37 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Get authorization header
+    // Parse request
+    const url = new URL(req.url)
+    const action = url.searchParams.get('action') || 'balance'
+    
+    // PUBLIC ENDPOINTS (no auth required)
+    if (action === 'ticker') {
+      const symbolsParam = url.searchParams.get('symbols') || 'BTCUSDT'
+      const symbols = symbolsParam.split(',').map(s => s.trim().toUpperCase())
+      
+      const tickers = await getPublicTicker(symbols)
+      
+      return new Response(
+        JSON.stringify({ tickers }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (action === 'klines') {
+      const symbolParam = url.searchParams.get('symbol') || 'BTCUSDT'
+      const intervalParam = url.searchParams.get('interval') || '1h'
+      const limitParam = parseInt(url.searchParams.get('limit') || '300', 10)
+      
+      const klines = await getKlines(symbolParam.toUpperCase(), intervalParam, limitParam)
+      
+      return new Response(
+        JSON.stringify({ klines }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // AUTHENTICATED ENDPOINTS
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(
@@ -227,10 +295,6 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Parse request
-    const url = new URL(req.url)
-    const action = url.searchParams.get('action') || 'balance'
-    
     // Get user's API keys
     const { apiKey, apiSecret } = await getUserApiKeys(supabase, user.id)
 
