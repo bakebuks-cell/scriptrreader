@@ -22,26 +22,41 @@ export default function Auth() {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
 
-  // Check for email verification success from URL
+  // Check for email verification success from URL and handle redirect
   useEffect(() => {
     const verified = searchParams.get('verified');
     const emailParam = searchParams.get('email');
     
     if (verified === 'true') {
       setVerifiedEmail(emailParam);
-      toast({
-        title: 'Email Verified!',
-        description: 'Your email has been verified. You can now sign in.',
-      });
+      
+      // If user is already logged in (Supabase auto-signs in after verification),
+      // redirect them to the dashboard immediately
+      if (!loading && user && role) {
+        toast({
+          title: 'Email Verified!',
+          description: 'Welcome! Redirecting to your dashboard...',
+        });
+        navigate(role === 'admin' ? '/admin' : '/dashboard', { replace: true });
+        return;
+      }
+      
+      // If still loading or no user yet, show verification success message
+      if (!loading && !user) {
+        toast({
+          title: 'Email Verified!',
+          description: 'Your email has been verified. You can now sign in.',
+        });
+      }
     }
-  }, [searchParams, toast]);
+  }, [searchParams, toast, loading, user, role, navigate]);
 
-  // Redirect if already logged in
+  // Redirect if already logged in (non-verification flow)
   useEffect(() => {
-    if (!loading && user && role) {
-      navigate(role === 'admin' ? '/admin' : '/dashboard');
+    if (!loading && user && role && !searchParams.get('verified')) {
+      navigate(role === 'admin' ? '/admin' : '/dashboard', { replace: true });
     }
-  }, [user, role, loading, navigate]);
+  }, [user, role, loading, navigate, searchParams]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
