@@ -11,7 +11,8 @@ import {
   Menu,
   Coins,
   User,
-  LineChart
+  LineChart,
+  Bot
 } from 'lucide-react';
 import {
   Sidebar,
@@ -19,6 +20,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -45,6 +47,10 @@ const navItems = [
   { title: 'Profile', icon: User, path: '/dashboard', tab: 'profile' },
 ];
 
+const botItems = [
+  { title: 'Market Maker', icon: Bot, path: '/market-maker', tab: 'market-maker' },
+];
+
 interface DashboardLayoutProps {
   children: ReactNode;
   activeTab: string;
@@ -53,6 +59,7 @@ interface DashboardLayoutProps {
 
 function SidebarNav({ activeTab, onTabChange }: { activeTab: string; onTabChange: (tab: string) => void }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, signOut } = useAuth();
   const { profile } = useProfile();
   const { state } = useSidebar();
@@ -61,6 +68,21 @@ function SidebarNav({ activeTab, onTabChange }: { activeTab: string; onTabChange
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
+  };
+
+  const handleNavClick = (item: typeof navItems[0] | typeof botItems[0]) => {
+    if (item.path === '/market-maker') {
+      navigate('/market-maker');
+    } else {
+      onTabChange(item.tab);
+    }
+  };
+
+  const isActive = (item: typeof navItems[0] | typeof botItems[0]) => {
+    if (item.path === '/market-maker') {
+      return location.pathname === '/market-maker';
+    }
+    return activeTab === item.tab;
   };
 
   return (
@@ -86,12 +108,41 @@ function SidebarNav({ activeTab, onTabChange }: { activeTab: string; onTabChange
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.tab}>
                   <SidebarMenuButton
-                    onClick={() => onTabChange(item.tab)}
-                    isActive={activeTab === item.tab}
+                    onClick={() => handleNavClick(item)}
+                    isActive={isActive(item)}
                     tooltip={item.title}
                     className={cn(
                       "transition-colors",
-                      activeTab === item.tab && "bg-sidebar-accent text-primary font-medium"
+                      isActive(item) && "bg-sidebar-accent text-primary font-medium"
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {!isCollapsed && <span>{item.title}</span>}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Bots Section */}
+        <SidebarGroup>
+          {!isCollapsed && (
+            <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Bots
+            </SidebarGroupLabel>
+          )}
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {botItems.map((item) => (
+                <SidebarMenuItem key={item.tab}>
+                  <SidebarMenuButton
+                    onClick={() => handleNavClick(item)}
+                    isActive={isActive(item)}
+                    tooltip={item.title}
+                    className={cn(
+                      "transition-colors",
+                      isActive(item) && "bg-sidebar-accent text-primary font-medium"
                     )}
                   >
                     <item.icon className="h-4 w-4" />
@@ -142,6 +193,8 @@ function SidebarNav({ activeTab, onTabChange }: { activeTab: string; onTabChange
 
 function TopBar({ activeTab }: { activeTab: string }) {
   const { profile } = useProfile();
+  const location = useLocation();
+  
   const tabTitles: Record<string, string> = {
     overview: 'Dashboard',
     charts: 'Price Charts',
@@ -151,7 +204,12 @@ function TopBar({ activeTab }: { activeTab: string }) {
     trades: 'Trade History',
     settings: 'Settings',
     profile: 'Profile',
+    'market-maker': 'Market Maker',
   };
+
+  const currentTitle = location.pathname === '/market-maker' 
+    ? 'Market Maker' 
+    : tabTitles[activeTab] || 'Dashboard';
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6">
@@ -160,7 +218,7 @@ function TopBar({ activeTab }: { activeTab: string }) {
       </SidebarTrigger>
       
       <div className="flex-1 flex items-center gap-3">
-        <h1 className="text-xl font-semibold">{tabTitles[activeTab] || 'Dashboard'}</h1>
+        <h1 className="text-xl font-semibold">{currentTitle}</h1>
         <PaidModeIndicator />
       </div>
 
