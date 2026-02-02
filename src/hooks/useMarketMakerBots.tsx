@@ -27,9 +27,11 @@ export type ModuleType =
   | 'exchange' 
   | 'notifications' 
   | 'market_pricing' 
+  | 'order_layers'
   | 'autocancel' 
   | 'stop_loss' 
-  | 'revert_backlog';
+  | 'revert_backlog'
+  | 'risk_control';
 
 export function useMarketMakerBots() {
   const { user } = useAuth();
