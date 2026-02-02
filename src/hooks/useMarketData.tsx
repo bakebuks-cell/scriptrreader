@@ -32,12 +32,7 @@ export function useMarketData(symbol: string, refreshInterval: number = 5000): U
     try {
       setError(null);
       
-      const { data, error: fnError } = await supabase.functions.invoke('binance-api', {
-        body: null,
-        headers: {},
-      });
-      
-      // Use URL params for GET request
+      // Fetch public ticker data (no API keys required)
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/binance-api?action=ticker&symbols=${symbol}`,
         {
