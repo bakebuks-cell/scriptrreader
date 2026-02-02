@@ -48,26 +48,26 @@ export function BasicSettingsPanel({ botId, onSave, onCancel }: BasicSettingsPan
 
   return (
     <Card className="border-border">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-6">
         <div>
-          <CardTitle>Basic settings</CardTitle>
+          <CardTitle className="text-lg sm:text-xl">Basic settings</CardTitle>
           <CardDescription>Give your bot a name!</CardDescription>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={handleSave} disabled={saveConfig.isPending}>
+          <Button onClick={handleSave} disabled={saveConfig.isPending} size="sm" className="h-9">
             <Save className="h-4 w-4 mr-2" />
             Save
           </Button>
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" onClick={onCancel} size="sm" className="h-9">
             <X className="h-4 w-4 mr-2" />
             Cancel
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6 p-4 sm:p-6 pt-0 sm:pt-0">
         <div className="grid gap-4">
-          <div className="flex items-center gap-4">
-            <Label htmlFor="name" className="w-40 flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <Label htmlFor="name" className="sm:w-40 flex items-center gap-2">
               Name
               <TooltipProvider>
                 <Tooltip>
@@ -89,8 +89,8 @@ export function BasicSettingsPanel({ botId, onSave, onCancel }: BasicSettingsPan
             />
           </div>
 
-          <div className="flex items-center gap-4">
-            <Label htmlFor="cooldown" className="w-40 flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <Label htmlFor="cooldown" className="sm:w-40 flex items-center gap-2">
               Cooldown period
               <TooltipProvider>
                 <Tooltip>
@@ -115,7 +115,7 @@ export function BasicSettingsPanel({ botId, onSave, onCancel }: BasicSettingsPan
                 value={settings.cooldownUnit}
                 onValueChange={(value: 'seconds' | 'minutes') => setSettings({ ...settings, cooldownUnit: value })}
               >
-                <SelectTrigger className="w-40 bg-muted/50">
+                <SelectTrigger className="w-28 sm:w-40 bg-muted/50">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

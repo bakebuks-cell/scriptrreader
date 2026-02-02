@@ -212,21 +212,21 @@ function TopBar({ activeTab }: { activeTab: string }) {
     : tabTitles[activeTab] || 'Dashboard';
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6">
-      <SidebarTrigger className="md:hidden">
+    <header className="sticky top-0 z-30 flex h-14 sm:h-16 items-center gap-2 sm:gap-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-3 sm:px-6 safe-area-inset-top">
+      <SidebarTrigger className="h-10 w-10 touch-target">
         <Menu className="h-5 w-5" />
       </SidebarTrigger>
       
-      <div className="flex-1 flex items-center gap-3">
-        <h1 className="text-xl font-semibold">{currentTitle}</h1>
+      <div className="flex-1 flex items-center gap-2 sm:gap-3 min-w-0">
+        <h1 className="text-base sm:text-xl font-semibold truncate">{currentTitle}</h1>
         <PaidModeIndicator />
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4">
         {profile && (
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted">
-            <Coins className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">{profile.coins} coins</span>
+          <div className="hidden xs:flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-muted">
+            <Coins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
+            <span className="text-xs sm:text-sm font-medium">{profile.coins}</span>
           </div>
         )}
         <ThemeToggle />
@@ -239,14 +239,19 @@ export function DashboardLayout({ children, activeTab, onTabChange }: DashboardL
   return (
     <SidebarProvider defaultOpen>
       <div className="flex min-h-screen w-full">
-        <Sidebar collapsible="icon" className="border-r border-sidebar-border">
+        <Sidebar collapsible="icon" className="border-r border-sidebar-border hidden md:flex">
+          <SidebarNav activeTab={activeTab} onTabChange={onTabChange} />
+        </Sidebar>
+
+        {/* Mobile sidebar - sheet-style */}
+        <Sidebar collapsible="offcanvas" className="border-r border-sidebar-border md:hidden">
           <SidebarNav activeTab={activeTab} onTabChange={onTabChange} />
         </Sidebar>
 
         <div className="flex-1 flex flex-col min-w-0">
           <TopBar activeTab={activeTab} />
-          <main className="flex-1 p-6 overflow-auto">
-            <div className="animate-fade-in">
+          <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-auto safe-area-inset-bottom">
+            <div className="animate-fade-in max-w-full">
               {children}
             </div>
           </main>

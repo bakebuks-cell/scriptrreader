@@ -139,23 +139,25 @@ export default function MarketMakerPage() {
 
   return (
     <DashboardLayout activeTab="market-maker" onTabChange={(tab) => navigate(`/dashboard?tab=${tab}`)}>
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {/* Bot Selector Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
-              <Bot className="h-6 w-6 text-primary-foreground" />
+        <div className="flex flex-col gap-4">
+          {/* Title row */}
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-lg bg-primary shrink-0">
+              <Bot className="h-5 w-5 sm:h-6 sm:w-6 text-primary-foreground" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold">Market Maker</h1>
-              <p className="text-sm text-muted-foreground">Configure your market maker bot</p>
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold truncate">Market Maker</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground hidden xs:block">Configure your market maker bot</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Actions row */}
+          <div className="flex flex-wrap items-center gap-2">
             {bots.length > 0 && (
               <Select value={selectedBotId ?? ''} onValueChange={setSelectedBotId}>
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-full xs:w-[180px] sm:w-[200px]">
                   <SelectValue placeholder="Select a bot" />
                 </SelectTrigger>
                 <SelectContent>
@@ -168,32 +170,35 @@ export default function MarketMakerPage() {
               </Select>
             )}
 
-            <Button onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Bot
-            </Button>
+            <div className="flex gap-2 ml-auto xs:ml-0">
+              <Button onClick={() => setCreateDialogOpen(true)} size="sm" className="h-9 sm:h-10">
+                <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+                <span className="hidden xs:inline">New Bot</span>
+                <span className="xs:hidden">New</span>
+              </Button>
 
-            {selectedBotId && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    Actions
-                    <ChevronDown className="h-4 w-4 ml-2" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setDeleteDialogOpen(true)} className="text-destructive">
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Bot
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+              {selectedBotId && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 sm:h-10">
+                      <span className="hidden sm:inline">Actions</span>
+                      <ChevronDown className="h-4 w-4 sm:ml-2" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setDeleteDialogOpen(true)} className="text-destructive">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Bot
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Main Content */}
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
           {/* Sidebar */}
           <ConfigSidebar activeSection={activeSection} onSectionChange={setActiveSection} />
           
