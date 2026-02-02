@@ -165,13 +165,13 @@ export function MarketPricingPanel({ botId, onSave, onCancel }: MarketPricingPan
               </Label>
               <Select
                 value={settings.strategy}
-                onValueChange={(value) => setSettings({ ...settings, strategy: value })}
+                onValueChange={(value) => setSettings({ ...settings, strategy: value === 'none' ? '' : value })}
               >
                 <SelectTrigger className="flex-1 bg-muted/50">
                   <SelectValue placeholder="No strategy selected" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No strategy selected</SelectItem>
+                  <SelectItem value="none">No strategy selected</SelectItem>
                   <SelectItem value="conservative">Conservative</SelectItem>
                   <SelectItem value="aggressive">Aggressive</SelectItem>
                 </SelectContent>
