@@ -13,7 +13,8 @@ import {
   Coins,
   User,
   LineChart,
-  Flag
+  Flag,
+  Bot
 } from 'lucide-react';
 import {
   Sidebar,
@@ -44,6 +45,7 @@ const navItems = [
   { title: 'Charts', icon: LineChart, tab: 'charts' },
   { title: 'Trades', icon: BarChart3, tab: 'trades' },
   { title: 'Wallets', icon: Wallet, tab: 'wallets' },
+  { title: 'Market Maker', icon: Bot, tab: 'market-maker' },
   { title: 'Settings', icon: Settings, tab: 'settings' },
   { title: 'Profile', icon: User, tab: 'profile' },
 ];
@@ -140,6 +142,7 @@ function AdminTopBar({ activeTab }: { activeTab: string }) {
     charts: 'Price Charts',
     trades: 'Trade Monitor',
     wallets: 'Wallet Overview',
+    'market-maker': 'Market Maker Control',
     settings: 'Settings',
     profile: 'Admin Profile',
   };
