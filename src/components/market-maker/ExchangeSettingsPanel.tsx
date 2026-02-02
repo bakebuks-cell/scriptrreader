@@ -65,9 +65,9 @@ export function ExchangeSettingsPanel({ botId, onSave, onCancel }: ExchangeSetti
 
   return (
     <Card className="border-border">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-6">
         <div>
-          <CardTitle>Exchange settings</CardTitle>
+          <CardTitle className="text-lg sm:text-xl">Exchange settings</CardTitle>
           <CardDescription>
             <span className="text-primary">Connect your bot</span> to your exchange account with API keys.{' '}
             <a href="#" className="text-primary hover:underline inline-flex items-center gap-1">
@@ -76,21 +76,21 @@ export function ExchangeSettingsPanel({ botId, onSave, onCancel }: ExchangeSetti
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={handleSave} disabled={saveConfig.isPending}>
+          <Button onClick={handleSave} disabled={saveConfig.isPending} size="sm" className="h-9">
             <Save className="h-4 w-4 mr-2" />
             Save
           </Button>
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" onClick={onCancel} size="sm" className="h-9">
             <X className="h-4 w-4 mr-2" />
             Cancel
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6 p-4 sm:p-6 pt-0 sm:pt-0">
         <div className="grid gap-6">
           {/* Paper Trading */}
-          <div className="flex items-center gap-4">
-            <Label className="w-40 flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <Label className="sm:w-40 flex items-center gap-2">
               Paper trading
               <TooltipProvider>
                 <Tooltip>
@@ -110,8 +110,8 @@ export function ExchangeSettingsPanel({ botId, onSave, onCancel }: ExchangeSetti
           </div>
 
           {/* Exchange */}
-          <div className="flex items-center gap-4">
-            <Label className="w-40">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <Label className="sm:w-40">
               Exchange <span className="text-destructive">*</span>
             </Label>
             <Select
@@ -129,8 +129,8 @@ export function ExchangeSettingsPanel({ botId, onSave, onCancel }: ExchangeSetti
           </div>
 
           {/* Load API Keys from Bot */}
-          <div className="flex items-center gap-4">
-            <Label className="w-40">Load API keys from bot</Label>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <Label className="sm:w-40">Load API keys from bot</Label>
             <Select
               value={settings.loadApiKeysFromBot}
               onValueChange={(value) => setSettings({ ...settings, loadApiKeysFromBot: value })}
@@ -150,26 +150,26 @@ export function ExchangeSettingsPanel({ botId, onSave, onCancel }: ExchangeSetti
           </div>
 
           {/* IP Addresses */}
-          <div className="flex items-start gap-4">
-            <Label className="w-40 pt-2">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4">
+            <Label className="sm:w-40 sm:pt-2">
               <span>IP Addresses</span>
               <p className="text-xs text-muted-foreground font-normal mt-1">
                 Whitelist these IP addresses at the exchange.
               </p>
             </Label>
             <div className="flex-1 flex items-center gap-2">
-              <div className="flex-1 px-3 py-2 rounded-md bg-muted/50 border border-primary text-sm text-primary font-mono">
+              <div className="flex-1 px-3 py-2 rounded-md bg-muted/50 border border-primary text-xs sm:text-sm text-primary font-mono break-all">
                 {IP_ADDRESSES}
               </div>
-              <Button variant="outline" size="icon" onClick={copyToClipboard}>
+              <Button variant="outline" size="icon" onClick={copyToClipboard} className="shrink-0">
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
           </div>
 
           {/* API Key */}
-          <div className="flex items-center gap-4">
-            <Label className="w-40">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <Label className="sm:w-40">
               {settings.exchange === 'binance' ? 'Binance' : 'Binance US'} Api Key <span className="text-destructive">*</span>
             </Label>
             <Input
@@ -182,8 +182,8 @@ export function ExchangeSettingsPanel({ botId, onSave, onCancel }: ExchangeSetti
           </div>
 
           {/* API Secret */}
-          <div className="flex items-center gap-4">
-            <Label className="w-40">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <Label className="sm:w-40">
               {settings.exchange === 'binance' ? 'Binance' : 'Binance US'} Api Secret <span className="text-destructive">*</span>
             </Label>
             <Input
