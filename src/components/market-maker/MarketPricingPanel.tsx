@@ -4,10 +4,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Save, X, Plus, Minus, HelpCircle, RefreshCw, ExternalLink } from 'lucide-react';
+import { Save, X, Plus, Minus, HelpCircle, RefreshCw, ExternalLink, Loader2, TrendingUp, TrendingDown } from 'lucide-react';
 import { useBotConfiguration } from '@/hooks/useMarketMakerBots';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { useMarketData, formatPrice, formatVolume, calculateSpread } from '@/hooks/useMarketData';
 
 interface MarketPricingPanelProps {
   botId: string;
@@ -46,6 +47,7 @@ const defaultSettings: MarketPricingSettings = {
 export function MarketPricingPanel({ botId, onSave, onCancel }: MarketPricingPanelProps) {
   const { getModuleConfig, saveConfig, configLoading } = useBotConfiguration(botId);
   const [settings, setSettings] = useState<MarketPricingSettings>(defaultSettings);
+  const { ticker, loading: tickerLoading, error: tickerError, refresh } = useMarketData(settings.market, 5000);
 
   useEffect(() => {
     const saved = getModuleConfig('market_pricing') as Partial<MarketPricingSettings>;
@@ -271,29 +273,88 @@ export function MarketPricingPanel({ botId, onSave, onCancel }: MarketPricingPan
           {/* Price Info Card */}
           <div className="bg-card border border-primary rounded-lg p-4">
             <div className="flex items-center justify-between mb-4">
-              <span className="font-semibold">{settings.market.replace('USDT', '/USDT')}</span>
-              <Button variant="ghost" size="icon">
-                <RefreshCw className="h-4 w-4" />
+              <span className="font-semibold">{settings.market.replace('USDT', '/USDT').replace('ARS', '/ARS')}</span>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={refresh}
+                disabled={tickerLoading}
+              >
+                {tickerLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
               </Button>
             </div>
-            <div className="space-y-2 text-sm">
-              <div>
-                <span className="text-muted-foreground">Last price:</span>
+            
+            {tickerError ? (
+              <div className="text-sm text-destructive">
+                Failed to load market data
               </div>
-              <div className="text-2xl font-bold text-primary">--</div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Best bid:</span>
-                <span className="text-primary">--</span>
+            ) : (
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Last price:</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-primary">
+                    {ticker ? formatPrice(ticker.lastPrice) : '--'}
+                  </span>
+                  {ticker && (
+                    <span className={cn(
+                      "flex items-center text-sm",
+                      parseFloat(ticker.priceChangePercent) >= 0 ? "text-green-500" : "text-red-500"
+                    )}>
+                      {parseFloat(ticker.priceChangePercent) >= 0 ? (
+                        <TrendingUp className="h-3 w-3 mr-1" />
+                      ) : (
+                        <TrendingDown className="h-3 w-3 mr-1" />
+                      )}
+                      {parseFloat(ticker.priceChangePercent).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Best bid:</span>
+                  <span className="text-green-500 font-mono">
+                    {ticker ? formatPrice(ticker.bidPrice) : '--'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Best ask:</span>
+                  <span className="text-red-500 font-mono">
+                    {ticker ? formatPrice(ticker.askPrice) : '--'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Spread:</span>
+                  <span className="text-primary font-mono">
+                    {ticker ? calculateSpread(ticker.bidPrice, ticker.askPrice) : '--'}
+                  </span>
+                </div>
+                <div className="border-t border-border pt-2 mt-2">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">24h High:</span>
+                    <span className="text-foreground font-mono">
+                      {ticker ? formatPrice(ticker.highPrice) : '--'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">24h Low:</span>
+                    <span className="text-foreground font-mono">
+                      {ticker ? formatPrice(ticker.lowPrice) : '--'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">24h Volume:</span>
+                    <span className="text-foreground font-mono">
+                      {ticker ? formatVolume(ticker.quoteVolume) + ' USDT' : '--'}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Best offer:</span>
-                <span className="text-primary">--</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Spread:</span>
-                <span className="text-primary">--</span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
 
