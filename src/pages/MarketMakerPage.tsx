@@ -13,6 +13,10 @@ import { AutocancelPanel } from '@/components/market-maker/AutocancelPanel';
 import { StopLossPanel } from '@/components/market-maker/StopLossPanel';
 import { RevertBacklogPanel } from '@/components/market-maker/RevertBacklogPanel';
 import { RiskControlPanel } from '@/components/market-maker/RiskControlPanel';
+import { PerformanceDashboard } from '@/components/market-maker/PerformanceDashboard';
+import { ProfitOptimizationPanel } from '@/components/market-maker/ProfitOptimizationPanel';
+import { MarketRegimePanel } from '@/components/market-maker/MarketRegimePanel';
+import { ExecutionAuditPanel } from '@/components/market-maker/ExecutionAuditPanel';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -138,6 +142,14 @@ export default function MarketMakerPage() {
         return <RevertBacklogPanel botId={selectedBotId} />;
       case 'risk_control':
         return <RiskControlPanel botId={selectedBotId} />;
+      case 'performance_dashboard':
+        return <PerformanceDashboard botId={selectedBotId} />;
+      case 'profit_optimization':
+        return <ProfitOptimizationPanel botId={selectedBotId} />;
+      case 'market_regime':
+        return <MarketRegimePanel botId={selectedBotId} />;
+      case 'execution_audit':
+        return <ExecutionAuditPanel botId={selectedBotId} />;
       default:
         return null;
     }

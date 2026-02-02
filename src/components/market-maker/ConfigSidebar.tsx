@@ -7,7 +7,11 @@ import {
   ArrowDownCircle, 
   RotateCcw,
   Layers,
-  Shield
+  Shield,
+  Activity,
+  Target,
+  Waves,
+  FileText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -21,7 +25,11 @@ export type ConfigSection =
   | 'autocancel' 
   | 'stop_loss' 
   | 'revert_backlog'
-  | 'risk_control';
+  | 'risk_control'
+  | 'performance_dashboard'
+  | 'profit_optimization'
+  | 'market_regime'
+  | 'execution_audit';
 
 interface ConfigSidebarProps {
   activeSection: ConfigSection;
@@ -43,7 +51,14 @@ const marketMakerItems = [
   { id: 'risk_control' as const, label: 'Risk Control', shortLabel: 'Risk', icon: Shield },
 ];
 
-const allItems = [...generalItems, ...marketMakerItems];
+const advancedItems = [
+  { id: 'performance_dashboard' as const, label: 'Performance', shortLabel: 'P&L', icon: Activity },
+  { id: 'profit_optimization' as const, label: 'Profit Optimization', shortLabel: 'Profit', icon: Target },
+  { id: 'market_regime' as const, label: 'Market Regime', shortLabel: 'Regime', icon: Waves },
+  { id: 'execution_audit' as const, label: 'Execution Audit', shortLabel: 'Audit', icon: FileText },
+];
+
+const allItems = [...generalItems, ...marketMakerItems, ...advancedItems];
 
 export function ConfigSidebar({ activeSection, onSectionChange }: ConfigSidebarProps) {
   return (
@@ -106,6 +121,30 @@ export function ConfigSidebar({ activeSection, onSectionChange }: ConfigSidebarP
             </h3>
             <div className="space-y-1">
               {marketMakerItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => onSectionChange(item.id)}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
+                    activeSection === item.id
+                      ? "bg-primary text-primary-foreground"
+                      : "text-foreground hover:bg-muted"
+                  )}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Advanced Section */}
+          <div>
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              ADVANCED
+            </h3>
+            <div className="space-y-1">
+              {advancedItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => onSectionChange(item.id)}
