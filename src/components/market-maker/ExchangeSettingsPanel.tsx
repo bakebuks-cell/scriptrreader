@@ -139,7 +139,7 @@ export function ExchangeSettingsPanel({ botId, onSave, onCancel }: ExchangeSetti
                 <SelectValue placeholder="Select a bot" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">None</SelectItem>
+                <SelectItem value="none">None</SelectItem>
                 {otherBots.map((bot) => (
                   <SelectItem key={bot.id} value={bot.id}>
                     {bot.name}
