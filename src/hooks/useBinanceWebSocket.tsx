@@ -53,7 +53,8 @@ interface UseBinanceWebSocketResult {
   disconnect: () => void;
 }
 
-const BINANCE_WS_BASE = 'wss://stream.binance.com:9443/ws';
+// Use edge function proxy to bypass geo-restrictions
+const PROXY_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/binance-websocket-proxy`;
 
 export function useBinanceWebSocket(symbols: string[]): UseBinanceWebSocketResult {
   const [tickers, setTickers] = useState<Map<string, BinanceTickerStream>>(new Map());
@@ -63,135 +64,76 @@ export function useBinanceWebSocket(symbols: string[]): UseBinanceWebSocketResul
     reconnecting: false,
   });
   
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const maxReconnectAttempts = 5;
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
 
-  const clearReconnectTimeout = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-  }, []);
-
   const disconnect = useCallback(() => {
-    clearReconnectTimeout();
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
     }
     if (mountedRef.current) {
       setState(prev => ({ ...prev, isConnected: false }));
     }
-  }, [clearReconnectTimeout]);
+  }, []);
+
+  const fetchTickers = useCallback(async () => {
+    if (symbols.length === 0) return;
+
+    try {
+      const response = await fetch(PROXY_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ symbols, mode: 'polling' }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Proxy error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.tickers && mountedRef.current) {
+        setTickers(prev => {
+          const next = new Map(prev);
+          for (const ticker of data.tickers) {
+            next.set(ticker.symbol, ticker);
+          }
+          return next;
+        });
+
+        setState({
+          isConnected: true,
+          error: null,
+          reconnecting: false,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch tickers:', err);
+      if (mountedRef.current) {
+        setState(prev => ({
+          ...prev,
+          error: err instanceof Error ? err.message : 'Failed to fetch data',
+        }));
+      }
+    }
+  }, [symbols]);
 
   const connect = useCallback(() => {
     if (symbols.length === 0) return;
     
     disconnect();
     
-    // Build the combined stream URL for all symbols
-    const streams = symbols.map(s => `${s.toLowerCase()}@ticker`).join('/');
-    const wsUrl = `${BINANCE_WS_BASE}/${streams}`;
-
-    try {
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        if (!mountedRef.current) return;
-        console.log('Binance WebSocket connected');
-        reconnectAttemptsRef.current = 0;
-        setState({
-          isConnected: true,
-          error: null,
-          reconnecting: false,
-        });
-      };
-
-      ws.onmessage = (event) => {
-        if (!mountedRef.current) return;
-        try {
-          const data = JSON.parse(event.data);
-          
-          // Handle 24hr ticker stream
-          if (data.e === '24hrTicker') {
-            const ticker: BinanceTickerStream = {
-              symbol: data.s,
-              lastPrice: parseFloat(data.c),
-              bidPrice: parseFloat(data.b),
-              askPrice: parseFloat(data.a),
-              priceChange: parseFloat(data.p),
-              priceChangePercent: parseFloat(data.P),
-              highPrice: parseFloat(data.h),
-              lowPrice: parseFloat(data.l),
-              volume: parseFloat(data.v),
-              quoteVolume: parseFloat(data.q),
-            };
-
-            setTickers(prev => {
-              const next = new Map(prev);
-              next.set(ticker.symbol, ticker);
-              return next;
-            });
-          }
-        } catch (err) {
-          console.error('Error parsing WebSocket message:', err);
-        }
-      };
-
-      ws.onerror = (event) => {
-        console.error('Binance WebSocket error:', event);
-        if (!mountedRef.current) return;
-        setState(prev => ({
-          ...prev,
-          error: 'WebSocket connection error',
-        }));
-      };
-
-      ws.onclose = (event) => {
-        console.log('Binance WebSocket closed:', event.code, event.reason);
-        if (!mountedRef.current) return;
-        
-        setState(prev => ({ ...prev, isConnected: false }));
-        
-        // Auto-reconnect logic
-        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
-          reconnectAttemptsRef.current++;
-          
-          setState(prev => ({
-            ...prev,
-            reconnecting: true,
-            error: `Reconnecting... (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`,
-          }));
-          
-          reconnectTimeoutRef.current = setTimeout(() => {
-            if (mountedRef.current) {
-              connect();
-            }
-          }, delay);
-        } else {
-          setState(prev => ({
-            ...prev,
-            reconnecting: false,
-            error: 'Max reconnection attempts reached. Please refresh the page.',
-          }));
-        }
-      };
-    } catch (err) {
-      console.error('Failed to create WebSocket:', err);
-      if (mountedRef.current) {
-        setState({
-          isConnected: false,
-          error: err instanceof Error ? err.message : 'Failed to connect',
-          reconnecting: false,
-        });
-      }
-    }
-  }, [symbols, disconnect]);
+    // Fetch immediately
+    fetchTickers();
+    
+    // Then poll every 3 seconds
+    pollingIntervalRef.current = setInterval(fetchTickers, 3000);
+    
+  }, [symbols, disconnect, fetchTickers]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -213,6 +155,8 @@ export function useBinanceWebSocket(symbols: string[]): UseBinanceWebSocketResul
     disconnect,
   };
 }
+
+const BINANCE_WS_BASE = 'wss://stream.binance.com:9443/ws';
 
 // Hook for mini ticker stream (lighter weight, updates more frequently)
 export function useBinanceMiniTicker(symbols: string[]) {
