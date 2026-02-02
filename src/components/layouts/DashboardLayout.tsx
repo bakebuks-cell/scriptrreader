@@ -239,12 +239,11 @@ export function DashboardLayout({ children, activeTab, onTabChange }: DashboardL
   return (
     <SidebarProvider defaultOpen>
       <div className="flex min-h-screen w-full">
-        <Sidebar collapsible="icon" className="border-r border-sidebar-border hidden md:flex">
-          <SidebarNav activeTab={activeTab} onTabChange={onTabChange} />
-        </Sidebar>
-
-        {/* Mobile sidebar - sheet-style */}
-        <Sidebar collapsible="offcanvas" className="border-r border-sidebar-border md:hidden">
+        {/* Single responsive sidebar - offcanvas on mobile, icon-collapsible on desktop */}
+        <Sidebar 
+          collapsible="icon" 
+          className="border-r border-sidebar-border"
+        >
           <SidebarNav activeTab={activeTab} onTabChange={onTabChange} />
         </Sidebar>
 
