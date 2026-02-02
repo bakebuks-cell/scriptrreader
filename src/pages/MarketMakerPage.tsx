@@ -8,15 +8,17 @@ import { BasicSettingsPanel } from '@/components/market-maker/BasicSettingsPanel
 import { ExchangeSettingsPanel } from '@/components/market-maker/ExchangeSettingsPanel';
 import { NotificationsPanel } from '@/components/market-maker/NotificationsPanel';
 import { MarketPricingPanel } from '@/components/market-maker/MarketPricingPanel';
+import { OrderLayersPanel } from '@/components/market-maker/OrderLayersPanel';
 import { AutocancelPanel } from '@/components/market-maker/AutocancelPanel';
 import { StopLossPanel } from '@/components/market-maker/StopLossPanel';
 import { RevertBacklogPanel } from '@/components/market-maker/RevertBacklogPanel';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { RiskControlPanel } from '@/components/market-maker/RiskControlPanel';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Bot, ChevronDown, Settings, Trash2 } from 'lucide-react';
+import { Plus, Bot, ChevronDown, Trash2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -126,12 +128,16 @@ export default function MarketMakerPage() {
         return <NotificationsPanel botId={selectedBotId} />;
       case 'market_pricing':
         return <MarketPricingPanel botId={selectedBotId} />;
+      case 'order_layers':
+        return <OrderLayersPanel botId={selectedBotId} />;
       case 'autocancel':
         return <AutocancelPanel botId={selectedBotId} />;
       case 'stop_loss':
         return <StopLossPanel botId={selectedBotId} />;
       case 'revert_backlog':
         return <RevertBacklogPanel botId={selectedBotId} />;
+      case 'risk_control':
+        return <RiskControlPanel botId={selectedBotId} />;
       default:
         return null;
     }

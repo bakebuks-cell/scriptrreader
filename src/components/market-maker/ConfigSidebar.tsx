@@ -5,7 +5,9 @@ import {
   BarChart3, 
   XCircle, 
   ArrowDownCircle, 
-  RotateCcw 
+  RotateCcw,
+  Layers,
+  Shield
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -15,9 +17,11 @@ export type ConfigSection =
   | 'exchange' 
   | 'notifications' 
   | 'market_pricing' 
+  | 'order_layers'
   | 'autocancel' 
   | 'stop_loss' 
-  | 'revert_backlog';
+  | 'revert_backlog'
+  | 'risk_control';
 
 interface ConfigSidebarProps {
   activeSection: ConfigSection;
@@ -32,9 +36,11 @@ const generalItems = [
 
 const marketMakerItems = [
   { id: 'market_pricing' as const, label: 'Market & Pricing', shortLabel: 'Market', icon: BarChart3 },
+  { id: 'order_layers' as const, label: 'Order Layers', shortLabel: 'Layers', icon: Layers },
   { id: 'autocancel' as const, label: 'Autocancel', shortLabel: 'Cancel', icon: XCircle },
   { id: 'stop_loss' as const, label: 'Stop-loss', shortLabel: 'Stop', icon: ArrowDownCircle },
   { id: 'revert_backlog' as const, label: 'Revert & backlog', shortLabel: 'Revert', icon: RotateCcw },
+  { id: 'risk_control' as const, label: 'Risk Control', shortLabel: 'Risk', icon: Shield },
 ];
 
 const allItems = [...generalItems, ...marketMakerItems];
