@@ -32,6 +32,44 @@ export type Database = {
         }
         Relationships: []
       }
+      bot_configurations: {
+        Row: {
+          bot_id: string
+          created_at: string
+          id: string
+          module_type: string
+          settings_json: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bot_id: string
+          created_at?: string
+          id?: string
+          module_type: string
+          settings_json?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bot_id?: string
+          created_at?: string
+          id?: string
+          module_type?: string
+          settings_json?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_configurations_bot_id_fkey"
+            columns: ["bot_id"]
+            isOneToOne: false
+            referencedRelation: "market_maker_bots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coin_audit_log: {
         Row: {
           action: string
@@ -161,6 +199,33 @@ export type Database = {
           id?: string
           name?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      market_maker_bots: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
