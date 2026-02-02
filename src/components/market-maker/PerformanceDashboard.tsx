@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -13,9 +14,14 @@ import {
   Activity,
   BarChart3,
   Clock,
-  RefreshCw
+  RefreshCw,
+  Wifi,
+  WifiOff,
+  Zap,
+  AlertTriangle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePerformanceWebSocket, BinanceTickerStream } from '@/hooks/useBinanceWebSocket';
 import type { 
   PerformanceDashboardData, 
   PairExposure, 
@@ -29,19 +35,17 @@ interface PerformanceDashboardProps {
   botId: string;
 }
 
-// Mock data generator for demo purposes
-const generateMockData = (): PerformanceDashboardData => ({
-  exposures: [
-    { symbol: 'BTCUSDT', baseBalance: 0.5, quoteBalance: 15000, netExposure: 15000, exposurePercent: 50, direction: 'long' },
-    { symbol: 'ETHUSDT', baseBalance: 5, quoteBalance: 8000, netExposure: -2000, exposurePercent: -25, direction: 'short' },
-    { symbol: 'BNBUSDT', baseBalance: 20, quoteBalance: 6000, netExposure: 1000, exposurePercent: 15, direction: 'long' },
-  ],
+// Trading pairs to monitor (can be made configurable)
+const MONITORED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'];
+
+// Generate mock base data that gets enhanced with real WebSocket data
+const generateBaseData = (): Omit<PerformanceDashboardData, 'exposures'> => ({
   pnl: {
-    floatingPnL: 245.67,
+    floatingPnL: 0,
     realizedPnL: 1234.56,
-    totalPnL: 1480.23,
+    totalPnL: 1234.56,
     totalFees: 89.45,
-    netPnL: 1390.78,
+    netPnL: 1145.11,
     slippageImpact: -23.40,
     avgSlippagePercent: 0.12,
   },
@@ -58,32 +62,111 @@ const generateMockData = (): PerformanceDashboardData => ({
     { sessionId: '1', startTime: new Date(Date.now() - 3600000).toISOString(), tradesCount: 45, winRate: 62, pnl: 456.78, fees: 23.45, volume: 25000, avgTradeSize: 555.56, maxDrawdown: 2.5, sharpeRatio: 1.8 },
     { sessionId: '2', startTime: new Date(Date.now() - 7200000).toISOString(), endTime: new Date(Date.now() - 3600000).toISOString(), tradesCount: 38, winRate: 58, pnl: 234.56, fees: 18.90, volume: 18000, avgTradeSize: 473.68, maxDrawdown: 3.2, sharpeRatio: 1.4 },
   ],
-  pairPerformance: [
-    { symbol: 'BTCUSDT', tradesCount: 28, buyVolume: 12000, sellVolume: 11500, pnl: 567.89, fees: 34.56, avgSpread: 0.08, winRate: 64, profitFactor: 1.8 },
-    { symbol: 'ETHUSDT', tradesCount: 22, buyVolume: 8000, sellVolume: 7800, pnl: 345.67, fees: 21.34, avgSpread: 0.12, winRate: 59, profitFactor: 1.5 },
-    { symbol: 'BNBUSDT', tradesCount: 15, buyVolume: 4500, sellVolume: 4200, pnl: 178.90, fees: 11.23, avgSpread: 0.15, winRate: 53, profitFactor: 1.2 },
-  ],
+  pairPerformance: [],
   lastUpdated: new Date().toISOString(),
 });
 
+// Mock position data (in production, this would come from user's exchange account)
+const MOCK_POSITIONS: Record<string, { baseBalance: number; quoteBalance: number }> = {
+  BTCUSDT: { baseBalance: 0.5, quoteBalance: 15000 },
+  ETHUSDT: { baseBalance: 5, quoteBalance: 8000 },
+  BNBUSDT: { baseBalance: 20, quoteBalance: 6000 },
+  SOLUSDT: { baseBalance: 50, quoteBalance: 3000 },
+  XRPUSDT: { baseBalance: 1000, quoteBalance: 500 },
+};
+
 export function PerformanceDashboard({ botId }: PerformanceDashboardProps) {
-  const [data, setData] = useState<PerformanceDashboardData>(generateMockData());
+  const { tickers, performanceData, isConnected, error, reconnecting } = usePerformanceWebSocket(MONITORED_SYMBOLS);
+  const [baseData] = useState(generateBaseData);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Simulate real-time updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setData(generateMockData());
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  // Compute real-time exposures from WebSocket data
+  const exposures: PairExposure[] = useMemo(() => {
+    return MONITORED_SYMBOLS.map(symbol => {
+      const ticker = tickers.get(symbol);
+      const position = MOCK_POSITIONS[symbol] || { baseBalance: 0, quoteBalance: 0 };
+      
+      const price = ticker?.lastPrice || 0;
+      const baseValue = position.baseBalance * price;
+      const netExposure = baseValue - position.quoteBalance;
+      const totalValue = baseValue + position.quoteBalance;
+      const exposurePercent = totalValue > 0 ? (netExposure / totalValue) * 100 : 0;
+      
+      let direction: 'long' | 'short' | 'neutral' = 'neutral';
+      if (exposurePercent > 5) direction = 'long';
+      else if (exposurePercent < -5) direction = 'short';
+      
+      return {
+        symbol,
+        baseBalance: position.baseBalance,
+        quoteBalance: position.quoteBalance,
+        netExposure,
+        exposurePercent,
+        direction,
+      };
+    });
+  }, [tickers]);
+
+  // Compute real-time pair performance from WebSocket data
+  const pairPerformance: PairPerformance[] = useMemo(() => {
+    return MONITORED_SYMBOLS.map(symbol => {
+      const ticker = tickers.get(symbol);
+      const spread = ticker && ticker.bidPrice > 0 
+        ? ((ticker.askPrice - ticker.bidPrice) / ticker.bidPrice) * 100 
+        : 0;
+      
+      // Simulate P&L based on price change (in production, this would be from trade history)
+      const pnl = ticker ? ticker.priceChangePercent * 10 + (Math.random() - 0.5) * 50 : 0;
+      
+      return {
+        symbol,
+        tradesCount: Math.floor(Math.random() * 30) + 10,
+        buyVolume: ticker ? ticker.quoteVolume * 0.48 : 0,
+        sellVolume: ticker ? ticker.quoteVolume * 0.52 : 0,
+        pnl,
+        fees: Math.abs(pnl) * 0.05,
+        avgSpread: spread,
+        winRate: 50 + (ticker?.priceChangePercent || 0) * 2,
+        profitFactor: 1 + (ticker?.priceChangePercent || 0) / 10,
+      };
+    });
+  }, [tickers]);
+
+  // Compute floating P&L from positions and current prices
+  const floatingPnL = useMemo(() => {
+    let total = 0;
+    MONITORED_SYMBOLS.forEach(symbol => {
+      const ticker = tickers.get(symbol);
+      const position = MOCK_POSITIONS[symbol];
+      if (ticker && position) {
+        // Simulate floating P&L based on position and price movement
+        total += position.baseBalance * ticker.priceChange;
+      }
+    });
+    return total;
+  }, [tickers]);
+
+  // Combined data with real-time updates
+  const data: PerformanceDashboardData = useMemo(() => ({
+    ...baseData,
+    exposures,
+    pairPerformance,
+    pnl: {
+      ...baseData.pnl,
+      floatingPnL,
+      totalPnL: baseData.pnl.realizedPnL + floatingPnL,
+      netPnL: baseData.pnl.realizedPnL + floatingPnL - baseData.pnl.totalFees,
+    },
+    inventory: {
+      ...baseData.inventory,
+      totalValue: exposures.reduce((sum, e) => sum + Math.abs(e.netExposure) + e.quoteBalance, 0),
+    },
+    lastUpdated: performanceData.lastUpdate.toISOString(),
+  }), [baseData, exposures, pairPerformance, floatingPnL, performanceData.lastUpdate]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setData(generateMockData());
-      setIsRefreshing(false);
-    }, 500);
+    setTimeout(() => setIsRefreshing(false), 500);
   };
 
   const formatCurrency = (value: number) => {
@@ -99,7 +182,7 @@ export function PerformanceDashboard({ botId }: PerformanceDashboardProps) {
   const getDirectionIcon = (direction: 'long' | 'short' | 'neutral') => {
     switch (direction) {
       case 'long': return <TrendingUp className="h-4 w-4 text-green-500" />;
-      case 'short': return <TrendingDown className="h-4 w-4 text-red-500" />;
+      case 'short': return <TrendingDown className="h-4 w-4 text-destructive" />;
       default: return <Minus className="h-4 w-4 text-muted-foreground" />;
     }
   };
@@ -113,6 +196,32 @@ export function PerformanceDashboard({ botId }: PerformanceDashboardProps) {
             Performance Dashboard
           </CardTitle>
           <div className="flex items-center gap-2">
+            {/* WebSocket Connection Status */}
+            <Badge 
+              variant={isConnected ? 'default' : 'destructive'} 
+              className={cn(
+                "text-xs gap-1",
+                reconnecting && "animate-pulse"
+              )}
+            >
+              {isConnected ? (
+                <>
+                  <Wifi className="h-3 w-3" />
+                  <Zap className="h-3 w-3" />
+                  Live
+                </>
+              ) : reconnecting ? (
+                <>
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  Reconnecting...
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-3 w-3" />
+                  Offline
+                </>
+              )}
+            </Badge>
             <Badge variant="outline" className="text-xs">
               <Clock className="h-3 w-3 mr-1" />
               {new Date(data.lastUpdated).toLocaleTimeString()}
@@ -126,6 +235,16 @@ export function PerformanceDashboard({ botId }: PerformanceDashboardProps) {
             </button>
           </div>
         </div>
+        
+        {/* Connection Error Alert */}
+        {error && !reconnecting && (
+          <Alert variant="destructive" className="mt-3">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              {error}
+            </AlertDescription>
+          </Alert>
+        )}
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Quick Stats Row */}
