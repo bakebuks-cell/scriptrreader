@@ -33,6 +33,7 @@ import CoinManagement from '@/components/admin/CoinManagement';
 import AdminProfile from '@/components/profile/AdminProfile';
 import AdminPineScriptEditor from '@/components/admin/AdminPineScriptEditor';
 import AdminReportsSection from '@/components/admin/AdminReportsSection';
+import AdminMarketMakerControl from '@/components/admin/AdminMarketMakerControl';
 import TradingChart from '@/components/TradingChart';
 import PreciousMetalsRates from '@/components/PreciousMetalsRates';
 
@@ -371,6 +372,9 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         );
+
+      case 'market-maker':
+        return <AdminMarketMakerControl />;
 
       case 'settings':
         return (

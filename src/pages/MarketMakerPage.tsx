@@ -17,6 +17,7 @@ import { PerformanceDashboard } from '@/components/market-maker/PerformanceDashb
 import { ProfitOptimizationPanel } from '@/components/market-maker/ProfitOptimizationPanel';
 import { MarketRegimePanel } from '@/components/market-maker/MarketRegimePanel';
 import { ExecutionAuditPanel } from '@/components/market-maker/ExecutionAuditPanel';
+import BacktestingSimulationPanel from '@/components/market-maker/BacktestingSimulationPanel';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -150,6 +151,8 @@ export default function MarketMakerPage() {
         return <MarketRegimePanel botId={selectedBotId} />;
       case 'execution_audit':
         return <ExecutionAuditPanel botId={selectedBotId} />;
+      case 'backtesting':
+        return <BacktestingSimulationPanel botId={selectedBotId} />;
       default:
         return null;
     }

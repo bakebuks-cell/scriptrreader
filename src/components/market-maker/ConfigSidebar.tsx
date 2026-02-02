@@ -11,7 +11,8 @@ import {
   Activity,
   Target,
   Waves,
-  FileText
+  FileText,
+  History
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -29,7 +30,8 @@ export type ConfigSection =
   | 'performance_dashboard'
   | 'profit_optimization'
   | 'market_regime'
-  | 'execution_audit';
+  | 'execution_audit'
+  | 'backtesting';
 
 interface ConfigSidebarProps {
   activeSection: ConfigSection;
@@ -56,6 +58,7 @@ const advancedItems = [
   { id: 'profit_optimization' as const, label: 'Profit Optimization', shortLabel: 'Profit', icon: Target },
   { id: 'market_regime' as const, label: 'Market Regime', shortLabel: 'Regime', icon: Waves },
   { id: 'execution_audit' as const, label: 'Execution Audit', shortLabel: 'Audit', icon: FileText },
+  { id: 'backtesting' as const, label: 'Backtesting & Simulation', shortLabel: 'Backtest', icon: History },
 ];
 
 const allItems = [...generalItems, ...marketMakerItems, ...advancedItems];
