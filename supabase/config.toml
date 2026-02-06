@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.pine-script-engine]
 verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.binance-websocket-proxy]
+verify_jwt = false
