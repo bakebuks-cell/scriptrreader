@@ -15,7 +15,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
-  Coins, 
   Bot, 
   TrendingUp, 
   Code, 
@@ -29,15 +28,14 @@ import {
   BarChart3,
   Key
 } from 'lucide-react';
-import PineScriptEditor from '@/components/PineScriptEditor';
 import WalletCard from '@/components/WalletCard';
 import BinanceApiKeyForm from '@/components/BinanceApiKeyForm';
 import UserProfile from '@/components/profile/UserProfile';
 import TradingChart from '@/components/TradingChart';
-import ScriptAnalyticsDashboard from '@/components/analytics/ScriptAnalyticsDashboard';
-import ScriptExportButton from '@/components/ScriptExportButton';
 import PreciousMetalsRates from '@/components/PreciousMetalsRates';
 import UserOnboarding from '@/components/onboarding/UserOnboarding';
+import LibraryView from '@/components/library/LibraryView';
+import ManualCloseTradesButton from '@/components/ManualCloseTradesButton';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
@@ -145,28 +143,7 @@ export default function UserDashboard() {
         return (
           <div className="space-y-6">
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Coins Card */}
-              <Card className="stat-card">
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Available Coins</CardTitle>
-                  <Coins className="h-5 w-5 text-primary" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">{coinsRemaining}</div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {coinsRemaining === 0 ? (
-                      <span className="text-destructive flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3" />
-                        No trades remaining
-                      </span>
-                    ) : (
-                      `${coinsRemaining} trade${coinsRemaining !== 1 ? 's' : ''} remaining`
-                    )}
-                  </p>
-                </CardContent>
-              </Card>
-
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Bot Status Card */}
               <Card className="stat-card">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -235,21 +212,6 @@ export default function UserDashboard() {
                 </CardContent>
               </Card>
             </div>
-
-            {/* Warning if no coins */}
-            {coinsRemaining === 0 && (
-              <Card className="border-destructive/50 bg-destructive/5">
-                <CardContent className="flex items-center gap-4 py-4">
-                  <AlertTriangle className="h-6 w-6 text-destructive" />
-                  <div>
-                    <p className="font-medium text-destructive">No Coins Remaining</p>
-                    <p className="text-sm text-muted-foreground">
-                      You've used all your free trades. Trading is currently disabled.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
 
             {/* Warning if no API keys */}
             {!hasApiKeys && (
@@ -355,50 +317,18 @@ export default function UserDashboard() {
 
       case 'scripts':
         return (
-          <div className="space-y-6">
-            <Tabs defaultValue="editor" className="w-full">
-              <div className="flex items-center justify-between mb-4">
-                <TabsList>
-                  <TabsTrigger value="editor" className="flex items-center gap-2">
-                    <Code className="h-4 w-4" />
-                    Editor
-                  </TabsTrigger>
-                  <TabsTrigger value="analytics" className="flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4" />
-                    Analytics
-                  </TabsTrigger>
-                </TabsList>
-                <ScriptExportButton scripts={scripts} />
-              </div>
-              
-              <TabsContent value="editor">
-                <Card className="dashboard-card">
-                  <CardHeader>
-                    <CardTitle>Pine Script Editor</CardTitle>
-                    <CardDescription>
-                      Manage your trading strategies. Admin scripts are read-only templates you can reference.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <PineScriptEditor
-                      scripts={scripts}
-                      onSave={handleSaveScript}
-                      onUpdate={handleUpdateScript}
-                      onDelete={deleteScript}
-                      onToggleActivation={handleToggleActivation}
-                      isLoading={scriptsLoading}
-                      isSaving={isCreating || isScriptUpdating}
-                      isToggling={isToggling}
-                    />
-                  </CardContent>
-                </Card>
-              </TabsContent>
-              
-              <TabsContent value="analytics">
-                <ScriptAnalyticsDashboard />
-              </TabsContent>
-            </Tabs>
-          </div>
+          <LibraryView
+            scripts={scripts}
+            ownScripts={ownScripts}
+            adminScripts={adminScripts}
+            onSave={handleSaveScript}
+            onUpdate={handleUpdateScript}
+            onDelete={deleteScript}
+            onToggleActivation={handleToggleActivation}
+            isLoading={scriptsLoading}
+            isSaving={isCreating || isScriptUpdating}
+            isToggling={isToggling}
+          />
         );
 
       case 'wallet':
@@ -413,8 +343,13 @@ export default function UserDashboard() {
         return (
           <Card className="dashboard-card">
             <CardHeader>
-              <CardTitle>Trade History</CardTitle>
-              <CardDescription>All your executed trades</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Trade History</CardTitle>
+                  <CardDescription>All your executed trades</CardDescription>
+                </div>
+                <ManualCloseTradesButton />
+              </div>
             </CardHeader>
             <CardContent>
               {tradesLoading ? (
@@ -549,7 +484,7 @@ export default function UserDashboard() {
         return <UserProfile />;
 
       case 'analytics':
-        return <ScriptAnalyticsDashboard />;
+        return null;
 
       default:
         return null;

@@ -40,7 +40,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { title: 'Users', icon: Users, tab: 'users' },
   { title: 'Coins', icon: Coins, tab: 'coins' },
-  { title: 'Pine Scripts', icon: Code, tab: 'scripts' },
+  { title: 'Library', icon: Code, tab: 'scripts' },
   { title: 'Reports', icon: Flag, tab: 'reports' },
   { title: 'Charts', icon: LineChart, tab: 'charts' },
   { title: 'Trades', icon: BarChart3, tab: 'trades' },
@@ -137,7 +137,7 @@ function AdminTopBar({ activeTab }: { activeTab: string }) {
   const tabTitles: Record<string, string> = {
     users: 'User Management',
     coins: 'Coin Management',
-    scripts: 'Pine Scripts',
+    scripts: 'Library',
     reports: 'Script Reports',
     charts: 'Price Charts',
     trades: 'Trade Monitor',

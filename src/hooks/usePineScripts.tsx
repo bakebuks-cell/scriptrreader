@@ -198,13 +198,10 @@ export function usePineScripts() {
   // Toggle script activation (only for own scripts)
   const toggleActivation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      // First check if this is user's own script (not admin script)
       const script = scripts?.find(s => s.id === id);
       if (!script) throw new Error('Script not found');
-      if (script.admin_tag !== null && script.created_by !== user?.id) {
-        throw new Error('Cannot activate/deactivate admin scripts');
-      }
-      if (script.created_by !== user?.id) {
+      // Allow toggling admin scripts (Company Library) and own scripts
+      if (script.admin_tag === null && script.created_by !== user?.id) {
         throw new Error('Cannot modify scripts you do not own');
       }
 

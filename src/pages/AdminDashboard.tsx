@@ -16,7 +16,6 @@ import {
   Users, 
   Code, 
   BarChart3, 
-  Coins,
   Bot,
   Copy,
   Eye,
@@ -28,6 +27,7 @@ import {
   Wallet,
   Settings
 } from 'lucide-react';
+import ManualCloseTradesButton from '@/components/ManualCloseTradesButton';
 import { useToast } from '@/hooks/use-toast';
 import CoinManagement from '@/components/admin/CoinManagement';
 import AdminProfile from '@/components/profile/AdminProfile';
@@ -43,7 +43,7 @@ export default function AdminDashboard() {
   const { user, role, loading: authLoading } = useAuth();
   const { users, isLoading: usersLoading } = useAdminUsers();
   const { scripts, isLoading: scriptsLoading } = useAdminPineScripts();
-  const { trades, isLoading: tradesLoading } = useAllTrades();
+  const { trades, isLoading: tradesLoading, activeTrades: adminActiveTrades, closeAllTrades, isClosingAll } = useAllTrades();
   const { flags, toggleFlag, isToggling } = useAdminFeatureFlags();
   const { wallets, isLoading: walletsLoading } = useAdminWallets();
   const { toast } = useToast();
@@ -85,7 +85,6 @@ export default function AdminDashboard() {
     return null;
   }
 
-  const totalCoins = users.reduce((sum, u) => sum + u.coins, 0);
   const activeBots = users.filter(u => u.bot_enabled).length;
   const connectedWallets = wallets?.length || 0;
 
@@ -101,7 +100,7 @@ export default function AdminDashboard() {
         return (
           <div className="space-y-6">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <Card className="stat-card">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
@@ -110,17 +109,6 @@ export default function AdminDashboard() {
                 <CardContent>
                   <div className="text-3xl font-bold">{users.length}</div>
                   <p className="text-xs text-muted-foreground mt-1">{activeBots} with active bots</p>
-                </CardContent>
-              </Card>
-
-              <Card className="stat-card">
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Coins</CardTitle>
-                  <Coins className="h-5 w-5 text-primary" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">{totalCoins}</div>
-                  <p className="text-xs text-muted-foreground mt-1">Available across users</p>
                 </CardContent>
               </Card>
 
@@ -261,8 +249,17 @@ export default function AdminDashboard() {
 
             <Card className="dashboard-card">
               <CardHeader>
-                <CardTitle>Trade Monitor</CardTitle>
-                <CardDescription>All trades across all users</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Trade Monitor</CardTitle>
+                    <CardDescription>All trades across all users</CardDescription>
+                  </div>
+                  <ManualCloseTradesButton 
+                    activeTrades={adminActiveTrades}
+                    onCloseAll={closeAllTrades}
+                    isClosing={isClosingAll}
+                  />
+                </div>
               </CardHeader>
               <CardContent>
                 {tradesLoading ? (
