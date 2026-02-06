@@ -64,7 +64,8 @@ export default function UserDashboard() {
   const { isPaidModeEnabled } = useFeatureFlags();
   
   // Check if user has API keys configured
-  const hasApiKeys = hasWallets && activeWallet?.api_key_encrypted;
+  // TODO: Temporarily bypassed for testing — restore with: const hasApiKeys = hasWallets && activeWallet?.api_key_encrypted;
+  const hasApiKeys = true;
   
   // Check if user needs onboarding (new user with no scripts and no API keys)
   const needsOnboarding = !dismissedOnboarding && !scriptsLoading && ownScripts.length === 0 && !hasApiKeys;
