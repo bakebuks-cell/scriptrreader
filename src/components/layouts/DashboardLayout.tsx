@@ -46,9 +46,11 @@ const navItems = [
   { title: 'Profile', icon: User, path: '/dashboard', tab: 'profile' },
 ];
 
-const botItems = [
-  { title: 'Market Maker', icon: Bot, path: '/market-maker', tab: 'market-maker' },
-];
+// TODO: Market Maker hidden temporarily — unhide when ready
+// const botItems = [
+//   { title: 'Market Maker', icon: Bot, path: '/market-maker', tab: 'market-maker' },
+// ];
+const botItems: typeof navItems = [];
 
 interface DashboardLayoutProps {
   children: ReactNode;
