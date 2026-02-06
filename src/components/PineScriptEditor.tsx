@@ -241,7 +241,7 @@ export default function PineScriptEditor({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleTestScript = () => {
+  const handleTestScript = async () => {
     if (!formData.script_content.trim()) {
       toast({ title: 'Error', description: 'Script content is required', variant: 'destructive' });
       return;
@@ -253,11 +253,27 @@ export default function PineScriptEditor({
     
     setShowSignalPreview(true);
     // Test with the first symbol
-    evaluateScript.mutate({
-      scriptContent: formData.script_content,
-      symbol: formData.symbols[0],
-      timeframe: formData.allowed_timeframes[0] || '1h',
-    });
+    evaluateScript.mutate(
+      {
+        scriptContent: formData.script_content,
+        symbol: formData.symbols[0],
+        timeframe: formData.allowed_timeframes[0] || '1h',
+      },
+      {
+        onSuccess: () => {
+          // Auto-activate bot on successful test (item #8 from requirements)
+          if (selectedScript && onToggleActivation) {
+            const currentActive = usePerUserActivation && 'user_is_active' in selectedScript
+              ? selectedScript.user_is_active
+              : selectedScript.is_active;
+            if (!currentActive) {
+              onToggleActivation(selectedScript.id, true);
+              toast({ title: 'Bot Activated', description: 'Script tested successfully — bot is now running' });
+            }
+          }
+        },
+      }
+    );
   };
 
   const isAttached = selectedScript ? attachedScriptIds.includes(selectedScript.id) : false;
