@@ -184,7 +184,7 @@ function TopBar({ activeTab }: { activeTab: string }) {
   const tabTitles: Record<string, string> = {
     overview: 'Dashboard',
     charts: 'Price Charts',
-    scripts: 'Pine Script Editor',
+    scripts: 'Library',
     analytics: 'Script Analytics',
     wallet: 'Wallet',
     trades: 'Trade History',

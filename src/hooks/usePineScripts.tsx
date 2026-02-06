@@ -81,7 +81,7 @@ export function usePineScripts() {
         script_content: input.script_content,
         symbol: input.symbol,
         allowed_timeframes: input.allowed_timeframes,
-        is_active: input.is_active ?? true,
+        is_active: input.is_active ?? false,
         description: input.description || null,
         candle_type: input.candle_type || 'regular',
         market_type: input.market_type || 'spot',

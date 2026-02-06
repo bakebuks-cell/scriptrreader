@@ -421,14 +421,14 @@ export default function PineScriptEditor({
                       value={formData.name}
                       onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                       placeholder="My Strategy"
-                      disabled={readOnly}
+                      disabled={readOnly || companyMode}
                     />
                   </div>
 
                   <SymbolMultiSelect
                     value={formData.symbols}
                     onChange={(symbols) => setFormData(prev => ({ ...prev, symbols }))}
-                    disabled={readOnly}
+                    disabled={readOnly && !companyMode}
                     label="Trading Symbols"
                     placeholder="Select 1-10 symbols..."
                   />
@@ -440,7 +440,7 @@ export default function PineScriptEditor({
                       value={formData.description}
                       onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                       placeholder="Brief description of your strategy"
-                      disabled={readOnly}
+                      disabled={readOnly || companyMode}
                     />
                   </div>
 
@@ -452,7 +452,7 @@ export default function PineScriptEditor({
                           <Checkbox
                             checked={formData.allowed_timeframes.includes(value)}
                             onCheckedChange={(checked) => handleTimeframeChange(value, checked as boolean)}
-                            disabled={readOnly}
+                            disabled={readOnly || companyMode}
                           />
                           <span className="text-sm">{label}</span>
                         </label>
@@ -473,7 +473,7 @@ export default function PineScriptEditor({
                       onChange={(e) => setFormData(prev => ({ ...prev, script_content: e.target.value }))}
                       className="font-mono text-sm min-h-[300px] bg-accent/30"
                       placeholder="Enter your Pine Script code here..."
-                      disabled={readOnly}
+                      disabled={readOnly || companyMode}
                     />
                   </div>
 
@@ -516,7 +516,7 @@ export default function PineScriptEditor({
                   <BotConfigForm
                     config={botConfig}
                     onChange={setBotConfig}
-                    disabled={readOnly}
+                    disabled={readOnly && !companyMode}
                   />
                 </TabsContent>
               </Tabs>
