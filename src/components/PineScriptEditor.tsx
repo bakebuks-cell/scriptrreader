@@ -44,7 +44,7 @@ interface PineScript {
 }
 
 interface PineScriptEditorProps {
-  scripts: PineScript[];
+  scripts: any[];
   onSave: (script: Omit<PineScript, 'id' | 'created_by' | 'created_at' | 'updated_at' | 'webhook_secret' | 'admin_tag'>) => Promise<void>;
   onUpdate: (id: string, updates: Partial<PineScript>) => Promise<void>;
   onDelete: (id: string) => Promise<void | string>;
@@ -58,6 +58,7 @@ interface PineScriptEditorProps {
   canAttach?: boolean;
   readOnly?: boolean;
   companyMode?: boolean;
+  usePerUserActivation?: boolean;
 }
 
 const DEFAULT_PINE_SCRIPT = '';
@@ -89,6 +90,7 @@ export default function PineScriptEditor({
   canAttach = false,
   readOnly = false,
   companyMode = false,
+  usePerUserActivation = false,
 }: PineScriptEditorProps) {
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
@@ -305,6 +307,11 @@ export default function PineScriptEditor({
                   const canToggle = companyMode || (isOwnScript && !isAdminScript);
                   const canEdit = (isOwnScript && !isAdminScript) || isAdmin;
                   
+                  // Use per-user activation state when available
+                  const scriptActive = usePerUserActivation && 'user_is_active' in script
+                    ? script.user_is_active
+                    : script.is_active;
+                  
                   return (
                     <div
                       key={script.id}
@@ -325,10 +332,10 @@ export default function PineScriptEditor({
                             </Badge>
                           )}
                           <Badge 
-                            variant={script.is_active ? 'default' : 'outline'} 
-                            className={`shrink-0 ${script.is_active ? 'bg-green-600' : ''}`}
+                            variant={scriptActive ? 'default' : 'outline'} 
+                            className={`shrink-0 ${scriptActive ? 'bg-green-600' : ''}`}
                           >
-                            {script.is_active ? 'Enabled' : 'Disabled'}
+                            {scriptActive ? 'Enabled' : 'Disabled'}
                           </Badge>
                         </div>
                       </div>
@@ -348,17 +355,17 @@ export default function PineScriptEditor({
                           {canAttach && attachedScriptIds.includes(script.id) && (
                             <Badge variant="secondary" className="text-xs">Attached to Bot</Badge>
                           )}
-                          {/* Activation Toggle - Only for own non-admin scripts */}
+                          {/* Activation Toggle */}
                           {canToggle && onToggleActivation && (
                             <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                               <Switch
-                                checked={script.is_active}
+                                checked={scriptActive}
                                 onCheckedChange={(checked) => onToggleActivation(script.id, checked)}
                                 disabled={isToggling}
                                 className="scale-75"
                               />
                               <span className="text-xs text-muted-foreground">
-                                {script.is_active ? 'On' : 'Off'}
+                                {scriptActive ? 'On' : 'Off'}
                               </span>
                             </div>
                           )}
@@ -517,6 +524,12 @@ export default function PineScriptEditor({
                     config={botConfig}
                     onChange={setBotConfig}
                     disabled={readOnly && !companyMode}
+                    adminLimits={companyMode && selectedScript ? {
+                      max_capital: selectedScript.max_capital || 1000,
+                      max_position_size: selectedScript.position_size_value || 100,
+                      max_trades_per_day: selectedScript.max_trades_per_day || 10,
+                      max_leverage: selectedScript.leverage || 1,
+                    } : undefined}
                   />
                 </TabsContent>
               </Tabs>
@@ -553,8 +566,11 @@ export default function PineScriptEditor({
                   )}
 
                   {/* Run/Stop button - auto-activates the bot */}
-                  {selectedScript && onToggleActivation && (
-                    selectedScript.is_active ? (
+                  {selectedScript && onToggleActivation && (() => {
+                    const currentActive = usePerUserActivation && 'user_is_active' in selectedScript
+                      ? selectedScript.user_is_active
+                      : selectedScript.is_active;
+                    return currentActive ? (
                       <Button 
                         variant="outline"
                         onClick={() => onToggleActivation(selectedScript.id, false)}
@@ -573,8 +589,8 @@ export default function PineScriptEditor({
                         <Play className="h-4 w-4" />
                         Run
                       </Button>
-                    )
-                  )}
+                    );
+                  })()}
 
                   {/* Delete - available in both edit and company mode */}
                   {(!readOnly || companyMode) && selectedScript && (

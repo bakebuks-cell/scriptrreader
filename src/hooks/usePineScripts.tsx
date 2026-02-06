@@ -27,6 +27,12 @@ export interface PineScript {
   max_trades_per_day: number;
 }
 
+// Extended with per-user activation state
+export interface PineScriptWithUserState extends PineScript {
+  user_is_active: boolean; // per-user activation state (from user_scripts)
+  user_script_id: string | null; // user_scripts row id
+}
+
 export interface CreatePineScriptInput {
   name: string;
   description?: string;
@@ -34,7 +40,6 @@ export interface CreatePineScriptInput {
   symbol: string;
   allowed_timeframes: string[];
   is_active?: boolean;
-  // Bot configuration fields
   candle_type?: string;
   market_type?: string;
   trading_pairs?: string[];
@@ -47,15 +52,16 @@ export interface CreatePineScriptInput {
 }
 
 // User hook - sees own scripts AND admin scripts (read-only for admin scripts)
+// Uses user_scripts table for per-user activation of Company Library scripts
 export function usePineScripts() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: scripts, isLoading, error } = useQuery({
+  // Fetch all scripts user can see
+  const { data: scripts, isLoading: scriptsLoading } = useQuery({
     queryKey: ['pine-scripts', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      // Fetch all scripts user can see (own + admin scripts via RLS)
       const { data, error } = await supabase
         .from('pine_scripts')
         .select('*')
@@ -67,15 +73,49 @@ export function usePineScripts() {
     enabled: !!user?.id,
   });
 
-  // Separate user's own scripts from admin scripts
-  const ownScripts = scripts?.filter(s => s.created_by === user?.id) ?? [];
-  const adminScripts = scripts?.filter(s => s.admin_tag !== null && s.created_by !== user?.id) ?? [];
+  // Fetch user's per-user activation records
+  const { data: userScriptRecords, isLoading: userScriptsLoading } = useQuery({
+    queryKey: ['user-scripts', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase
+        .from('user_scripts')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  const isLoading = scriptsLoading || userScriptsLoading;
+
+  // Build admin scripts with per-user activation state
+  const adminScripts: PineScriptWithUserState[] = (scripts ?? [])
+    .filter(s => s.admin_tag !== null && s.created_by !== user?.id)
+    .map(s => {
+      const userRecord = userScriptRecords?.find(us => us.script_id === s.id);
+      return {
+        ...s,
+        user_is_active: userRecord?.is_active ?? false,
+        user_script_id: userRecord?.id ?? null,
+      };
+    });
+
+  // Own scripts use their native is_active
+  const ownScripts: PineScriptWithUserState[] = (scripts ?? [])
+    .filter(s => s.created_by === user?.id)
+    .map(s => ({
+      ...s,
+      user_is_active: s.is_active,
+      user_script_id: null,
+    }));
 
   const createScript = useMutation({
     mutationFn: async (input: CreatePineScriptInput) => {
       if (!user?.id) throw new Error('Not authenticated');
 
-      // Clean up the input data - ensure proper types and remove undefined values
       const cleanInput = {
         name: input.name,
         script_content: input.script_content,
@@ -95,7 +135,6 @@ export function usePineScripts() {
         created_by: user.id,
       };
 
-      // Use .select() without .single() to avoid JSON coercion errors
       const { data, error } = await supabase
         .from('pine_scripts')
         .insert(cleanInput)
@@ -119,7 +158,6 @@ export function usePineScripts() {
 
   const updateScript = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<PineScript> & { id: string }) => {
-      // Clean up the update data
       const cleanUpdates: Record<string, any> = {};
       if (updates.name !== undefined) cleanUpdates.name = updates.name;
       if (updates.description !== undefined) cleanUpdates.description = updates.description || null;
@@ -137,7 +175,6 @@ export function usePineScripts() {
       if (updates.leverage !== undefined) cleanUpdates.leverage = updates.leverage;
       if (updates.max_trades_per_day !== undefined) cleanUpdates.max_trades_per_day = updates.max_trades_per_day;
 
-      // Use .select() without .single() to avoid JSON coercion errors
       const { data, error } = await supabase
         .from('pine_scripts')
         .update(cleanUpdates)
@@ -162,6 +199,23 @@ export function usePineScripts() {
 
   const deleteScript = useMutation({
     mutationFn: async (id: string) => {
+      const script = scripts?.find(s => s.id === id);
+      
+      // For admin scripts, remove the user_scripts record (not the global script)
+      if (script?.admin_tag !== null && script?.created_by !== user?.id) {
+        const { error } = await supabase
+          .from('user_scripts')
+          .delete()
+          .eq('script_id', id)
+          .eq('user_id', user!.id);
+        if (error) {
+          console.error('User script removal error:', error);
+          throw new Error(error.message || 'Failed to remove script from library');
+        }
+        return id;
+      }
+
+      // For own scripts, actually delete
       const { error } = await supabase.from('pine_scripts').delete().eq('id', id);
       if (error) {
         console.error('Script deletion error:', error);
@@ -170,67 +224,81 @@ export function usePineScripts() {
       return id;
     },
     onMutate: async (id: string) => {
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['pine-scripts', user?.id] });
-      
-      // Snapshot the previous value
       const previousScripts = queryClient.getQueryData(['pine-scripts', user?.id]);
-      
-      // Optimistically remove the script from the cache
       queryClient.setQueryData(['pine-scripts', user?.id], (old: PineScript[] | undefined) => 
         old ? old.filter(script => script.id !== id) : []
       );
-      
       return { previousScripts };
     },
     onError: (err, id, context) => {
-      // Rollback on error
       if (context?.previousScripts) {
         queryClient.setQueryData(['pine-scripts', user?.id], context.previousScripts);
       }
     },
     onSettled: () => {
-      // Always refetch to ensure sync
       queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['user-scripts', user?.id] });
     },
   });
 
-  // Toggle script activation (only for own scripts)
+  // Toggle activation - uses user_scripts for admin scripts, pine_scripts for own scripts
   const toggleActivation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
       const script = scripts?.find(s => s.id === id);
       if (!script) throw new Error('Script not found');
-      // Allow toggling admin scripts (Company Library) and own scripts
-      if (script.admin_tag === null && script.created_by !== user?.id) {
+      if (!user?.id) throw new Error('Not authenticated');
+
+      // For admin/company scripts - use user_scripts table for per-user state
+      if (script.admin_tag !== null && script.created_by !== user.id) {
+        const existingRecord = userScriptRecords?.find(us => us.script_id === id);
+        
+        if (existingRecord) {
+          // Update existing record
+          const { error } = await supabase
+            .from('user_scripts')
+            .update({ is_active })
+            .eq('id', existingRecord.id);
+          if (error) throw error;
+        } else {
+          // Create new record
+          const { error } = await supabase
+            .from('user_scripts')
+            .insert({ user_id: user.id, script_id: id, is_active });
+          if (error) throw error;
+        }
+        return { id, is_active };
+      }
+
+      // For own scripts - update pine_scripts directly
+      if (script.created_by !== user.id) {
         throw new Error('Cannot modify scripts you do not own');
       }
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('pine_scripts')
         .update({ is_active })
         .eq('id', id)
-        .select()
-        .single();
+        .select();
 
       if (error) throw error;
-      return data as PineScript;
+      return { id, is_active };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['user-scripts', user?.id] });
     },
   });
 
-  // Helper: Check if user can edit a script
+  // Helper functions
   const canEditScript = (script: PineScript) => {
     return script.created_by === user?.id && script.admin_tag === null;
   };
 
-  // Helper: Check if user can activate/deactivate a script
   const canToggleScript = (script: PineScript) => {
     return script.created_by === user?.id && script.admin_tag === null;
   };
 
-  // Helper: Check if script is an admin script
   const isAdminScript = (script: PineScript) => {
     return script.admin_tag !== null;
   };
@@ -240,7 +308,7 @@ export function usePineScripts() {
     ownScripts,
     adminScripts,
     isLoading,
-    error,
+    error: null,
     createScript: createScript.mutateAsync,
     updateScript: updateScript.mutateAsync,
     deleteScript: deleteScript.mutateAsync,
@@ -274,7 +342,6 @@ export function useAdminPineScripts() {
     enabled: isAdmin,
   });
 
-  // Admin scripts (created by admin with admin_tag)
   const adminScripts = scripts?.filter(s => s.admin_tag) ?? [];
   const userScripts = scripts?.filter(s => !s.admin_tag) ?? [];
 
@@ -282,7 +349,6 @@ export function useAdminPineScripts() {
     mutationFn: async (input: CreatePineScriptInput & { admin_tag?: string }) => {
       if (!user?.id) throw new Error('Not authenticated');
 
-      // Clean up the input data
       const cleanInput = {
         name: input.name,
         script_content: input.script_content,
@@ -303,7 +369,6 @@ export function useAdminPineScripts() {
         admin_tag: input.admin_tag || 'ADMIN',
       };
 
-      // Use .select() without .single() to avoid JSON coercion errors
       const { data, error } = await supabase
         .from('pine_scripts')
         .insert(cleanInput)
@@ -327,7 +392,6 @@ export function useAdminPineScripts() {
 
   const updateScript = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<PineScript> & { id: string }) => {
-      // Clean up the update data
       const cleanUpdates: Record<string, any> = {};
       if (updates.name !== undefined) cleanUpdates.name = updates.name;
       if (updates.description !== undefined) cleanUpdates.description = updates.description || null;
@@ -345,7 +409,6 @@ export function useAdminPineScripts() {
       if (updates.leverage !== undefined) cleanUpdates.leverage = updates.leverage;
       if (updates.max_trades_per_day !== undefined) cleanUpdates.max_trades_per_day = updates.max_trades_per_day;
 
-      // Use .select() without .single() to avoid JSON coercion errors
       const { data, error } = await supabase
         .from('pine_scripts')
         .update(cleanUpdates)
@@ -380,11 +443,9 @@ export function useAdminPineScripts() {
     onMutate: async (id: string) => {
       await queryClient.cancelQueries({ queryKey: ['admin-pine-scripts'] });
       const previousScripts = queryClient.getQueryData(['admin-pine-scripts']);
-      
       queryClient.setQueryData(['admin-pine-scripts'], (old: PineScript[] | undefined) => 
         old ? old.filter(script => script.id !== id) : []
       );
-      
       return { previousScripts };
     },
     onError: (err, id, context) => {
@@ -424,7 +485,6 @@ export function useAdminPineScripts() {
     },
   });
 
-  // Toggle script activation (admin can toggle any script)
   const toggleActivation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
       const { data, error } = await supabase

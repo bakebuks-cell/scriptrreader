@@ -32,6 +32,7 @@ import { useToast } from '@/hooks/use-toast';
 import CoinManagement from '@/components/admin/CoinManagement';
 import AdminProfile from '@/components/profile/AdminProfile';
 import AdminPineScriptEditor from '@/components/admin/AdminPineScriptEditor';
+import DeleteUserButton from '@/components/admin/DeleteUserButton';
 import AdminReportsSection from '@/components/admin/AdminReportsSection';
 import AdminMarketMakerControl from '@/components/admin/AdminMarketMakerControl';
 import TradingChart from '@/components/TradingChart';
@@ -158,12 +159,13 @@ export default function AdminDashboard() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b text-left text-sm text-muted-foreground">
+                         <tr className="border-b text-left text-sm text-muted-foreground">
                           <th className="pb-3 font-medium">Email</th>
                           <th className="pb-3 font-medium">Role</th>
                           <th className="pb-3 font-medium">Coins</th>
                           <th className="pb-3 font-medium">Bot Status</th>
                           <th className="pb-3 font-medium">Joined</th>
+                          <th className="pb-3 font-medium">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -186,6 +188,11 @@ export default function AdminDashboard() {
                             </td>
                             <td className="py-3 text-sm text-muted-foreground">
                               {new Date(u.created_at).toLocaleDateString()}
+                            </td>
+                            <td className="py-3">
+                              {u.role !== 'admin' && (
+                                <DeleteUserButton userId={u.user_id} userEmail={u.email} />
+                              )}
                             </td>
                           </tr>
                         ))}
