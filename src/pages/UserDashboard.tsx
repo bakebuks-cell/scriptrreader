@@ -329,6 +329,9 @@ export default function UserDashboard() {
             isLoading={scriptsLoading}
             isSaving={isCreating || isScriptUpdating}
             isToggling={isToggling}
+            botEnabled={profile?.bot_enabled ?? false}
+            onToggleBot={toggleBot}
+            isBotUpdating={isUpdating}
           />
         );
 

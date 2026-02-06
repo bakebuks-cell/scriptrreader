@@ -1,6 +1,8 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Bot, Shield, BookOpen, BarChart3 } from 'lucide-react';
+import { Bot, Shield, BookOpen, BarChart3, Power } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import PineScriptEditor from '@/components/PineScriptEditor';
 import ManualCloseTradesButton from '@/components/ManualCloseTradesButton';
 import ScriptExportButton from '@/components/ScriptExportButton';
@@ -18,6 +20,9 @@ interface LibraryViewProps {
   isLoading: boolean;
   isSaving: boolean;
   isToggling: boolean;
+  botEnabled?: boolean;
+  onToggleBot?: () => void;
+  isBotUpdating?: boolean;
 }
 
 function BotStatusSummary({ scripts }: { scripts: PineScriptWithUserState[] }) {
@@ -74,9 +79,40 @@ export default function LibraryView({
   isLoading,
   isSaving,
   isToggling,
+  botEnabled,
+  onToggleBot,
+  isBotUpdating,
 }: LibraryViewProps) {
   return (
     <div className="space-y-6">
+      {/* Trading Bot Status Banner */}
+      {onToggleBot !== undefined && (
+        <Card className={botEnabled ? 'border-green-500/30 bg-green-500/5' : 'border-border'}>
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg ${botEnabled ? 'bg-green-500/10' : 'bg-muted'}`}>
+                <Power className={`h-5 w-5 ${botEnabled ? 'text-green-500' : 'text-muted-foreground'}`} />
+              </div>
+              <div>
+                <p className="font-medium">Trading Bot</p>
+                <p className="text-xs text-muted-foreground">
+                  {botEnabled ? 'Bot is running and executing trades' : 'Bot is stopped — no trades will be executed'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge variant={botEnabled ? 'default' : 'secondary'}>
+                {botEnabled ? 'Active' : 'Inactive'}
+              </Badge>
+              <Switch
+                checked={botEnabled ?? false}
+                onCheckedChange={onToggleBot}
+                disabled={isBotUpdating}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <Tabs defaultValue="company" className="w-full">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <TabsList>
