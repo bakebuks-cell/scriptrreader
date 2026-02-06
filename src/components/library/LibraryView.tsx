@@ -5,11 +5,12 @@ import PineScriptEditor from '@/components/PineScriptEditor';
 import ManualCloseTradesButton from '@/components/ManualCloseTradesButton';
 import ScriptExportButton from '@/components/ScriptExportButton';
 import ScriptAnalyticsDashboard from '@/components/analytics/ScriptAnalyticsDashboard';
+import type { PineScriptWithUserState } from '@/hooks/usePineScripts';
 
 interface LibraryViewProps {
   scripts: any[];
-  ownScripts: any[];
-  adminScripts: any[];
+  ownScripts: PineScriptWithUserState[];
+  adminScripts: PineScriptWithUserState[];
   onSave: (script: any) => Promise<void>;
   onUpdate: (id: string, updates: any) => Promise<void>;
   onDelete: (id: string) => Promise<void | string>;
@@ -19,9 +20,9 @@ interface LibraryViewProps {
   isToggling: boolean;
 }
 
-function BotStatusSummary({ scripts }: { scripts: any[] }) {
-  const active = scripts.filter(s => s.is_active).length;
-  const inactive = scripts.filter(s => !s.is_active).length;
+function BotStatusSummary({ scripts }: { scripts: PineScriptWithUserState[] }) {
+  const active = scripts.filter(s => s.user_is_active).length;
+  const inactive = scripts.filter(s => !s.user_is_active).length;
 
   return (
     <div className="grid grid-cols-3 gap-4 mb-6">
@@ -107,7 +108,7 @@ export default function LibraryView({
                 Company Library
               </CardTitle>
               <CardDescription>
-                Admin-managed strategies. You can activate/deactivate bots and manually close trades.
+                Admin-managed strategies. You can activate/deactivate bots, select coins, and manually close trades.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -122,6 +123,7 @@ export default function LibraryView({
                 isToggling={isToggling}
                 readOnly
                 companyMode
+                usePerUserActivation
               />
             </CardContent>
           </Card>

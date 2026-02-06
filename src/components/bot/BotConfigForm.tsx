@@ -54,6 +54,13 @@ export interface StrategyConfig {
   is_active: boolean;
 }
 
+export interface AdminLimits {
+  max_capital: number;
+  max_position_size: number;
+  max_trades_per_day: number;
+  max_leverage: number;
+}
+
 interface BotConfigFormProps {
   config: BotConfig;
   onChange: (config: BotConfig) => void;
@@ -61,6 +68,7 @@ interface BotConfigFormProps {
   onStrategyChange?: (config: StrategyConfig) => void;
   disabled?: boolean;
   showStrategySection?: boolean;
+  adminLimits?: AdminLimits;
 }
 
 const DEFAULT_PINE_SCRIPT = `// PineTrader Strategy Template
@@ -109,13 +117,30 @@ export default function BotConfigForm({
   strategyConfig,
   onStrategyChange,
   disabled = false,
-  showStrategySection = false
+  showStrategySection = false,
+  adminLimits,
 }: BotConfigFormProps) {
   const [customPair, setCustomPair] = useState('');
   const [copied, setCopied] = useState(false);
 
   const handleChange = <K extends keyof BotConfig>(key: K, value: BotConfig[K]) => {
-    onChange({ ...config, [key]: value });
+    // Enforce admin limits when in company mode
+    let clampedValue = value;
+    if (adminLimits) {
+      if (key === 'max_capital' && typeof value === 'number') {
+        clampedValue = Math.min(value, adminLimits.max_capital) as BotConfig[K];
+      }
+      if (key === 'position_size_value' && typeof value === 'number') {
+        clampedValue = Math.min(value, adminLimits.max_position_size) as BotConfig[K];
+      }
+      if (key === 'max_trades_per_day' && typeof value === 'number') {
+        clampedValue = Math.min(value, adminLimits.max_trades_per_day) as BotConfig[K];
+      }
+      if (key === 'leverage' && typeof value === 'number') {
+        clampedValue = Math.min(value, adminLimits.max_leverage) as BotConfig[K];
+      }
+    }
+    onChange({ ...config, [key]: clampedValue });
   };
 
   const handleStrategyFieldChange = <K extends keyof StrategyConfig>(key: K, value: StrategyConfig[K]) => {
@@ -444,10 +469,15 @@ export default function BotConfigForm({
                 value={config.position_size_value}
                 onChange={(e) => handleChange('position_size_value', parseFloat(e.target.value) || 0)}
                 min={config.position_size_type === 'percentage' ? 1 : 10}
-                max={config.position_size_type === 'percentage' ? 100 : 1000000}
+                max={adminLimits ? adminLimits.max_position_size : (config.position_size_type === 'percentage' ? 100 : 1000000)}
                 step={config.position_size_type === 'percentage' ? 1 : 10}
                 disabled={disabled}
               />
+              {adminLimits && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Max: {adminLimits.max_position_size} {config.position_size_type === 'percentage' ? '%' : 'USDT'}
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="max_capital" className="text-xs text-muted-foreground">
@@ -459,10 +489,15 @@ export default function BotConfigForm({
                 value={config.max_capital}
                 onChange={(e) => handleChange('max_capital', parseFloat(e.target.value) || 0)}
                 min={100}
-                max={10000000}
+                max={adminLimits ? adminLimits.max_capital : 10000000}
                 step={100}
                 disabled={disabled}
               />
+              {adminLimits && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Max: {adminLimits.max_capital} USDT
+                </p>
+              )}
             </div>
           </div>
         </CardContent>
@@ -541,16 +576,22 @@ export default function BotConfigForm({
               value={[config.max_trades_per_day]}
               onValueChange={([value]) => handleChange('max_trades_per_day', value)}
               min={1}
-              max={50}
+              max={adminLimits ? adminLimits.max_trades_per_day : 50}
               step={1}
               disabled={disabled}
               className="w-full"
             />
             <div className="flex justify-between text-xs text-muted-foreground mt-1">
               <span>1</span>
-              <span>10</span>
-              <span>25</span>
-              <span>50</span>
+              {adminLimits ? (
+                <span>Max: {adminLimits.max_trades_per_day}</span>
+              ) : (
+                <>
+                  <span>10</span>
+                  <span>25</span>
+                  <span>50</span>
+                </>
+              )}
             </div>
           </div>
         </CardContent>
