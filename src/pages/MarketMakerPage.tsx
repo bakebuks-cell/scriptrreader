@@ -24,7 +24,6 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, Bot, ChevronDown, Trash2 } from 'lucide-react';
-import ManualCloseTradesButton from '@/components/ManualCloseTradesButton';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -193,7 +192,6 @@ export default function MarketMakerPage() {
             )}
 
             <div className="flex gap-2 ml-auto xs:ml-0">
-              <ManualCloseTradesButton />
               <Button onClick={() => setCreateDialogOpen(true)} size="sm" className="h-9 sm:h-10">
                 <Plus className="h-4 w-4 mr-1 sm:mr-2" />
                 <span className="hidden xs:inline">New Bot</span>
