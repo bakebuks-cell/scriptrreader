@@ -57,47 +57,10 @@ interface PineScriptEditorProps {
   isToggling?: boolean;
   canAttach?: boolean;
   readOnly?: boolean;
+  companyMode?: boolean;
 }
 
-const DEFAULT_PINE_SCRIPT = `// PineTrader Strategy Template
-// Customize your entry, exit, SL, and TP logic below
-
-//@version=5
-strategy("My Strategy", overlay=true)
-
-// Input parameters
-fastLength = input.int(12, "Fast MA Length")
-slowLength = input.int(26, "Slow MA Length")
-stopLossPercent = input.float(2.0, "Stop Loss %")
-takeProfitPercent = input.float(4.0, "Take Profit %")
-
-// Calculate indicators
-fastMA = ta.ema(close, fastLength)
-slowMA = ta.ema(close, slowLength)
-
-// Entry conditions
-longCondition = ta.crossover(fastMA, slowMA)
-shortCondition = ta.crossunder(fastMA, slowMA)
-
-// Calculate SL/TP levels
-longSL = close * (1 - stopLossPercent / 100)
-longTP = close * (1 + takeProfitPercent / 100)
-shortSL = close * (1 + stopLossPercent / 100)
-shortTP = close * (1 - takeProfitPercent / 100)
-
-// Execute trades
-if longCondition
-    strategy.entry("Long", strategy.long)
-    strategy.exit("Long Exit", "Long", stop=longSL, limit=longTP)
-
-if shortCondition
-    strategy.entry("Short", strategy.short)
-    strategy.exit("Short Exit", "Short", stop=shortSL, limit=shortTP)
-
-// Plot indicators
-plot(fastMA, color=color.blue, title="Fast MA")
-plot(slowMA, color=color.red, title="Slow MA")
-`;
+const DEFAULT_PINE_SCRIPT = '';
 
 const DEFAULT_BOT_CONFIG: BotConfig = {
   candle_type: 'regular',
@@ -125,6 +88,7 @@ export default function PineScriptEditor({
   isToggling,
   canAttach = false,
   readOnly = false,
+  companyMode = false,
 }: PineScriptEditorProps) {
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
@@ -143,7 +107,7 @@ export default function PineScriptEditor({
     symbols: ['BTCUSDT'] as string[],
     script_content: DEFAULT_PINE_SCRIPT,
     allowed_timeframes: ['1h', '4h'],
-    is_active: true,
+    is_active: false,
   });
 
   const [botConfig, setBotConfig] = useState<BotConfig>(DEFAULT_BOT_CONFIG);
@@ -184,7 +148,7 @@ export default function PineScriptEditor({
       symbols: ['BTCUSDT'],
       script_content: DEFAULT_PINE_SCRIPT,
       allowed_timeframes: ['1h', '4h'],
-      is_active: true,
+      is_active: false,
     });
     setBotConfig(DEFAULT_BOT_CONFIG);
     setSelectedScript(null);
@@ -307,7 +271,7 @@ export default function PineScriptEditor({
                 <Code className="h-5 w-5" />
                 Scripts
               </span>
-              {!readOnly && (
+              {!readOnly && !companyMode && (
                 <Button 
                   size="sm" 
                   onClick={() => { resetForm(); setIsCreating(true); }}
@@ -338,7 +302,7 @@ export default function PineScriptEditor({
                 {scripts.map((script) => {
                   const isAdminScript = script.admin_tag !== null;
                   const isOwnScript = script.created_by === user?.id;
-                  const canToggle = isOwnScript && !isAdminScript;
+                  const canToggle = companyMode || (isOwnScript && !isAdminScript);
                   const canEdit = (isOwnScript && !isAdminScript) || isAdmin;
                   
                   return (
@@ -567,7 +531,7 @@ export default function PineScriptEditor({
             {(isCreating || selectedScript) && (
               <div className="flex items-center justify-between pt-4 border-t">
                 <div className="flex items-center gap-2">
-                  {!readOnly && (
+                  {!readOnly && !companyMode && (
                     <>
                       <Button onClick={handleSave} disabled={isSaving}>
                         <Save className="h-4 w-4 mr-2" />
@@ -585,28 +549,59 @@ export default function PineScriptEditor({
                         )}
                         Test Script
                       </Button>
-                      {selectedScript && (
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="destructive" size="icon">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Delete Script</DialogTitle>
-                              <DialogDescription>
-                                Are you sure you want to delete "{selectedScript.name}"? This action cannot be undone.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="flex justify-end gap-2">
-                              <Button variant="outline">Cancel</Button>
-                              <Button variant="destructive" onClick={handleDelete}>Delete</Button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      )}
                     </>
+                  )}
+
+                  {/* Run/Stop button - auto-activates the bot */}
+                  {selectedScript && onToggleActivation && (
+                    selectedScript.is_active ? (
+                      <Button 
+                        variant="outline"
+                        onClick={() => onToggleActivation(selectedScript.id, false)}
+                        disabled={isToggling}
+                        className="gap-2"
+                      >
+                        <Pause className="h-4 w-4" />
+                        Stop
+                      </Button>
+                    ) : (
+                      <Button 
+                        onClick={() => onToggleActivation(selectedScript.id, true)}
+                        disabled={isToggling}
+                        className="gap-2"
+                      >
+                        <Play className="h-4 w-4" />
+                        Run
+                      </Button>
+                    )
+                  )}
+
+                  {/* Delete - available in both edit and company mode */}
+                  {(!readOnly || companyMode) && selectedScript && (
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="destructive" size="icon">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>{companyMode ? 'Remove Script' : 'Delete Script'}</DialogTitle>
+                          <DialogDescription>
+                            {companyMode 
+                              ? `Remove "${selectedScript.name}" from your library?`
+                              : `Are you sure you want to delete "${selectedScript.name}"? This action cannot be undone.`
+                            }
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline">Cancel</Button>
+                          <Button variant="destructive" onClick={handleDelete}>
+                            {companyMode ? 'Remove' : 'Delete'}
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   )}
                 </div>
 

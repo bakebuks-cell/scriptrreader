@@ -9,7 +9,6 @@ import {
   LogOut,
   TrendingUp,
   Menu,
-  Coins,
   User,
   LineChart,
   Bot
@@ -39,7 +38,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { title: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', tab: 'overview' },
   { title: 'Charts', icon: LineChart, path: '/dashboard', tab: 'charts' },
-  { title: 'Pine Script', icon: Code, path: '/dashboard', tab: 'scripts' },
+  { title: 'Library', icon: Code, path: '/dashboard', tab: 'scripts' },
   { title: 'Analytics', icon: BarChart3, path: '/dashboard', tab: 'analytics' },
   { title: 'Wallet', icon: Wallet, path: '/dashboard', tab: 'wallet' },
   { title: 'Trades', icon: TrendingUp, path: '/dashboard', tab: 'trades' },
@@ -154,19 +153,6 @@ function SidebarNav({ activeTab, onTabChange }: { activeTab: string; onTabChange
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Coin Status */}
-        {!isCollapsed && profile && (
-          <div className="mt-4 mx-2 p-3 rounded-lg bg-sidebar-accent/50 border border-sidebar-border">
-            <div className="flex items-center gap-2 text-sm">
-              <Coins className="h-4 w-4 text-primary" />
-              <span className="text-muted-foreground">Coins:</span>
-              <span className="font-semibold text-sidebar-foreground">{profile.coins}</span>
-            </div>
-            {profile.coins === 0 && (
-              <p className="text-xs text-destructive mt-1">No trades remaining</p>
-            )}
-          </div>
-        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border px-2 py-3">
@@ -223,12 +209,6 @@ function TopBar({ activeTab }: { activeTab: string }) {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-4">
-        {profile && (
-          <div className="hidden xs:flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-muted">
-            <Coins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
-            <span className="text-xs sm:text-sm font-medium">{profile.coins}</span>
-          </div>
-        )}
         <ThemeToggle />
       </div>
     </header>
