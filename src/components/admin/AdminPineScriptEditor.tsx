@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAdminPineScripts, PineScript, CreatePineScriptInput } from '@/hooks/usePineScripts';
+import AdminUserBotsOverview from './AdminUserBotsOverview';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +19,8 @@ import {
   Users,
   Edit,
   Settings2,
-  CheckCircle2
+  CheckCircle2,
+  Bot
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AVAILABLE_TIMEFRAMES, MAX_SYMBOLS_PER_SCRIPT } from '@/lib/constants';
@@ -85,6 +87,8 @@ export default function AdminPineScriptEditor() {
   const { 
     adminScripts, 
     userScripts, 
+    allUserScriptRecords,
+    allProfiles,
     isLoading, 
     createAdminScript, 
     updateScript, 
@@ -370,6 +374,10 @@ export default function AdminPineScriptEditor() {
             <Users className="h-4 w-4" />
             User Scripts ({userScripts.length})
           </TabsTrigger>
+          <TabsTrigger value="user-bots" className="gap-2">
+            <Bot className="h-4 w-4" />
+            User Bots
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="admin" className="space-y-4 mt-4">
@@ -621,6 +629,14 @@ export default function AdminPineScriptEditor() {
               </Card>
             ))
           )}
+        </TabsContent>
+
+        <TabsContent value="user-bots" className="mt-4">
+          <AdminUserBotsOverview
+            scripts={[...adminScripts, ...userScripts]}
+            allUserScriptRecords={allUserScriptRecords}
+            allProfiles={allProfiles}
+          />
         </TabsContent>
       </Tabs>
 
