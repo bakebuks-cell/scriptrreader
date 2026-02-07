@@ -52,7 +52,7 @@ export interface CreatePineScriptInput {
 }
 
 // User hook - sees own scripts AND admin scripts (read-only for admin scripts)
-// Uses user_scripts table for per-user activation of Company Library scripts
+// Uses user_scripts table for per-user activation of Common Library scripts
 export function usePineScripts() {
   const { user } = useAuth();
   const queryClient = useQueryClient();

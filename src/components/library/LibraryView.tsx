@@ -118,7 +118,7 @@ export default function LibraryView({
           <TabsList>
             <TabsTrigger value="company" className="flex items-center gap-2">
               <Shield className="h-4 w-4" />
-              Company Library
+              Common Library
             </TabsTrigger>
             <TabsTrigger value="own" className="flex items-center gap-2">
               <BookOpen className="h-4 w-4" />
@@ -141,7 +141,7 @@ export default function LibraryView({
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Shield className="h-5 w-5 text-primary" />
-                Company Library
+                Common Library
               </CardTitle>
               <CardDescription>
                 Admin-managed strategies. You can activate/deactivate bots, select coins, and manually close trades.
