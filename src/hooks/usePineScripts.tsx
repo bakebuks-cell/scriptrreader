@@ -502,11 +502,43 @@ export function useAdminPineScripts() {
     },
   });
 
+  // Fetch all user_scripts records (per-user activation states)
+  const { data: allUserScriptRecords, isLoading: userScriptRecordsLoading } = useQuery({
+    queryKey: ['admin-all-user-scripts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_scripts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: isAdmin,
+  });
+
+  // Fetch all profiles for user info
+  const { data: allProfiles, isLoading: profilesLoading } = useQuery({
+    queryKey: ['admin-all-profiles'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, email, display_name, bot_enabled')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: isAdmin,
+  });
+
   return {
     scripts: scripts ?? [],
     adminScripts,
     userScripts,
-    isLoading,
+    allUserScriptRecords: allUserScriptRecords ?? [],
+    allProfiles: allProfiles ?? [],
+    isLoading: isLoading || userScriptRecordsLoading || profilesLoading,
     error,
     createAdminScript: createAdminScript.mutateAsync,
     updateScript: updateScript.mutateAsync,
