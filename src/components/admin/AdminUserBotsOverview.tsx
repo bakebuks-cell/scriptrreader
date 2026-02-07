@@ -202,7 +202,7 @@ export default function AdminUserBotsOverview({
                     {/* Company Scripts */}
                     {userData.companyScripts.length > 0 && (
                       <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1">Company Scripts</p>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Common Scripts</p>
                         <div className="flex flex-wrap gap-2">
                           {userData.companyScripts.map(({ script, isActive }) => (
                             <Badge
