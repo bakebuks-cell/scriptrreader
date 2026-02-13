@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Shield, Power } from 'lucide-react';
 import { AVAILABLE_TIMEFRAMES, MAX_SYMBOLS_PER_SCRIPT } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
-import { useEvaluateScript } from '@/hooks/usePineScriptEngine';
+import { useEvaluateScript, useRunEngine } from '@/hooks/usePineScriptEngine';
 import SignalPreview from '@/components/SignalPreview';
 import BotConfigForm, { BotConfig } from '@/components/bot/BotConfigForm';
 import PineScriptActions from '@/components/PineScriptActions';
@@ -102,6 +102,8 @@ export default function PineScriptEditor({
   
   // Test script mutation
   const evaluateScript = useEvaluateScript();
+  const runEngine = useRunEngine();
+  const [isRunning, setIsRunning] = useState(false);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -585,7 +587,7 @@ export default function PineScriptEditor({
 
 
 
-                   {/* Run/Stop button - auto-activates the bot */}
+                   {/* Run/Stop button - auto-activates the bot and runs engine */}
                   {selectedScript && onToggleActivation && (() => {
                     const currentActive = usePerUserActivation && 'user_is_active' in selectedScript
                       ? selectedScript.user_is_active
@@ -597,7 +599,7 @@ export default function PineScriptEditor({
                           await onToggleActivation(selectedScript.id, false);
                           toast({ title: 'Bot Stopped', description: `"${selectedScript.name}" has been stopped` });
                         }}
-                        disabled={isToggling}
+                        disabled={isToggling || isRunning}
                         className="gap-2 border-destructive/50 text-destructive hover:bg-destructive/10"
                       >
                         {isToggling ? (
@@ -610,18 +612,72 @@ export default function PineScriptEditor({
                     ) : (
                       <Button 
                         onClick={async () => {
-                          await onToggleActivation(selectedScript.id, true);
-                          toast({ title: 'Bot Running', description: `"${selectedScript.name}" is now active and executing trades` });
+                          setIsRunning(true);
+                          try {
+                            // Step 1: Activate the script
+                            await onToggleActivation(selectedScript.id, true);
+                            toast({ title: 'Bot Activated', description: `"${selectedScript.name}" is now active. Running engine...` });
+                            
+                            // Step 2: Actually run the engine to evaluate and execute trades
+                            const result = await runEngine.mutateAsync();
+                            
+                            // Step 3: Show detailed results
+                            const scriptResults = result.results.filter(
+                              (r: any) => r.scriptId === selectedScript.id
+                            );
+                            
+                            if (scriptResults.length === 0) {
+                              toast({ 
+                                title: 'Engine Complete', 
+                                description: `No matching signals found for "${selectedScript.name}" at this time. The bot will keep monitoring.`,
+                              });
+                            } else {
+                              const executed = scriptResults.filter((r: any) => r.executed);
+                              const signals = scriptResults.filter((r: any) => r.signal?.action !== 'NONE');
+                              const errors = scriptResults.filter((r: any) => r.error);
+                              
+                              if (executed.length > 0) {
+                                toast({ 
+                                  title: '✅ Trades Executed!', 
+                                  description: `${executed.length} trade(s) placed for "${selectedScript.name}". ${executed.map((r: any) => `${r.signal?.action} ${r.symbol} @ ${r.signal?.price?.toFixed(2)}`).join(', ')}`,
+                                });
+                              } else if (errors.length > 0) {
+                                toast({ 
+                                  title: '⚠️ Signal Found but Trade Failed', 
+                                  description: errors.map((r: any) => r.error).join('; '),
+                                  variant: 'destructive',
+                                });
+                              } else if (signals.length > 0) {
+                                toast({ 
+                                  title: 'Signal Detected', 
+                                  description: signals.map((r: any) => `${r.signal?.action} ${r.symbol} — ${r.reason || 'conditions met'}`).join('; '),
+                                });
+                              } else {
+                                toast({ 
+                                  title: 'No Signal', 
+                                  description: scriptResults.map((r: any) => r.reason || r.signal?.reason || 'No entry conditions met').join('; '),
+                                });
+                              }
+                            }
+                          } catch (err: any) {
+                            toast({ 
+                              title: 'Engine Error', 
+                              description: err.message || 'Failed to run engine',
+                              variant: 'destructive',
+                            });
+                          } finally {
+                            setIsRunning(false);
+                          }
                         }}
-                        disabled={isToggling}
+                        disabled={isToggling || isRunning}
                         className="gap-2 bg-green-600 hover:bg-green-700"
                       >
-                        {isToggling ? (
+                        {(isToggling || isRunning) ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           <Play className="h-4 w-4" />
                         )}
-                        {isToggling ? 'Starting...' : 'Run'}
+                        {isRunning ? 'Running...' : isToggling ? 'Starting...' : 'Run'}
                       </Button>
                     );
                   })()}
