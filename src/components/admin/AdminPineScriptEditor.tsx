@@ -20,7 +20,11 @@ import {
   Edit,
   Settings2,
   CheckCircle2,
-  Bot
+  Bot,
+  Power,
+  PowerOff,
+  Archive,
+  RotateCcw
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AVAILABLE_TIMEFRAMES, MAX_SYMBOLS_PER_SCRIPT } from '@/lib/constants';
@@ -86,7 +90,10 @@ const DEFAULT_BOT_CONFIG: BotConfig = {
 export default function AdminPineScriptEditor() {
   const { 
     adminScripts, 
-    userScripts, 
+    userScripts,
+    activeUserScripts,
+    inactiveUserScripts,
+    storedUserScripts,
     allUserScriptRecords,
     allProfiles,
     isLoading, 
@@ -95,10 +102,12 @@ export default function AdminPineScriptEditor() {
     deleteScript,
     copyScript,
     toggleActivation,
+    restoreScript,
     isCreating,
     isUpdating,
     isCopying,
-    isToggling
+    isToggling,
+    isRestoring
   } = useAdminPineScripts();
   const { toast } = useToast();
 
@@ -188,7 +197,16 @@ export default function AdminPineScriptEditor() {
   const handleDeleteScript = async (id: string) => {
     try {
       await deleteScript(id);
-      toast({ title: 'Success', description: 'Script deleted!' });
+      toast({ title: 'Success', description: 'Script archived!' });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleRestoreScript = async (id: string) => {
+    try {
+      await restoreScript(id);
+      toast({ title: 'Success', description: 'Script restored!' });
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     }
@@ -241,6 +259,110 @@ export default function AdminPineScriptEditor() {
       </div>
     );
   }
+
+  const renderUserScriptCard = (script: PineScript) => (
+    <Card key={script.id}>
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
+              {script.name}
+              <Badge variant="outline" className="text-xs">User Script</Badge>
+              <Badge 
+                variant={script.is_active ? 'default' : 'outline'} 
+                className={`gap-1 ${script.is_active ? 'bg-green-600' : ''}`}
+              >
+                {script.is_active ? '🟢 Active' : '🔴 Inactive'}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                {script.market_type || 'spot'}
+              </Badge>
+            </CardTitle>
+            <CardDescription>
+              {(() => {
+                const symbols = script.trading_pairs?.length ? script.trading_pairs : [script.symbol];
+                const displaySymbols = symbols.slice(0, 3).join(', ');
+                const remaining = symbols.length - 3;
+                return remaining > 0 ? `${displaySymbols} (+${remaining} more)` : displaySymbols;
+              })()} • {script.allowed_timeframes?.join(', ')}
+              {script.created_by && (
+                <span className="ml-2 text-xs opacity-70">• Owner: {script.created_by.slice(0, 8)}...</span>
+              )}
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <Switch
+                checked={script.is_active}
+                onCheckedChange={(checked) => toggleActivation({ id: script.id, is_active: checked })}
+                disabled={isToggling}
+              />
+              <span className="text-xs text-muted-foreground">
+                {script.is_active ? 'On' : 'Off'}
+              </span>
+            </div>
+            <Button variant="ghost" size="icon" onClick={() => handleEditScript(script)} title="Edit script">
+              <Edit className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => handleCopyScript(script)} disabled={isCopying}>
+              <Copy className="h-4 w-4" />
+              Copy
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Archive User Script?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will move "{script.name}" to the Stored section. You can restore it later.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={() => handleDeleteScript(script.id)}
+                    className="bg-destructive text-destructive-foreground"
+                  >
+                    Archive
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {script.description && (
+          <p className="text-sm text-muted-foreground mb-2">{script.description}</p>
+        )}
+        <div className="grid grid-cols-4 gap-2 mb-2 text-xs">
+          <div className="bg-muted/50 rounded p-2">
+            <span className="text-muted-foreground">Size:</span>{' '}
+            {script.position_size_value} {script.position_size_type === 'percentage' ? '%' : 'USDT'}
+          </div>
+          <div className="bg-muted/50 rounded p-2">
+            <span className="text-muted-foreground">Max Cap:</span>{' '}
+            {script.max_capital} USDT
+          </div>
+          <div className="bg-muted/50 rounded p-2">
+            <span className="text-muted-foreground">Max Trades:</span>{' '}
+            {script.max_trades_per_day}/day
+          </div>
+          <div className="bg-muted/50 rounded p-2">
+            <span className="text-muted-foreground">Pairs:</span>{' '}
+            {script.trading_pairs?.length || 1}
+          </div>
+        </div>
+        <div className="bg-muted/50 rounded-lg p-3 font-mono text-xs overflow-x-auto max-h-24">
+          <pre className="whitespace-pre-wrap">{script.script_content.slice(0, 200)}...</pre>
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="space-y-6">
@@ -361,14 +483,22 @@ export default function AdminPineScriptEditor() {
       </div>
 
       <Tabs defaultValue="admin" className="w-full">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="admin" className="gap-2">
             <Shield className="h-4 w-4" />
             Admin Scripts ({adminScripts.length})
           </TabsTrigger>
-          <TabsTrigger value="user" className="gap-2">
-            <Users className="h-4 w-4" />
-            User Scripts ({userScripts.length})
+          <TabsTrigger value="active-user" className="gap-2">
+            <Power className="h-4 w-4" />
+            Active ({activeUserScripts.length})
+          </TabsTrigger>
+          <TabsTrigger value="inactive-user" className="gap-2">
+            <PowerOff className="h-4 w-4" />
+            Inactive ({inactiveUserScripts.length})
+          </TabsTrigger>
+          <TabsTrigger value="stored-user" className="gap-2">
+            <Archive className="h-4 w-4" />
+            Stored ({storedUserScripts.length})
           </TabsTrigger>
           <TabsTrigger value="user-bots" className="gap-2">
             <Bot className="h-4 w-4" />
@@ -497,32 +627,61 @@ export default function AdminPineScriptEditor() {
           )}
         </TabsContent>
 
-        <TabsContent value="user" className="space-y-4 mt-4">
-          {userScripts.length === 0 ? (
+        {/* Active User Scripts */}
+        <TabsContent value="active-user" className="space-y-4 mt-4">
+          {activeUserScripts.length === 0 ? (
             <Card>
               <CardContent className="py-12">
                 <div className="text-center">
-                  <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium">No user scripts yet</p>
-                  <p className="text-muted-foreground">User scripts will appear here</p>
+                  <Power className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">No active user scripts</p>
+                  <p className="text-muted-foreground">Active user scripts will appear here</p>
                 </div>
               </CardContent>
             </Card>
           ) : (
-            userScripts.map((script) => (
-              <Card key={script.id}>
+            activeUserScripts.map((script) => renderUserScriptCard(script))
+          )}
+        </TabsContent>
+
+        {/* Inactive User Scripts */}
+        <TabsContent value="inactive-user" className="space-y-4 mt-4">
+          {inactiveUserScripts.length === 0 ? (
+            <Card>
+              <CardContent className="py-12">
+                <div className="text-center">
+                  <PowerOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">No inactive user scripts</p>
+                  <p className="text-muted-foreground">Deactivated user scripts will appear here</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            inactiveUserScripts.map((script) => renderUserScriptCard(script))
+          )}
+        </TabsContent>
+
+        {/* Stored (Deleted) User Scripts */}
+        <TabsContent value="stored-user" className="space-y-4 mt-4">
+          {storedUserScripts.length === 0 ? (
+            <Card>
+              <CardContent className="py-12">
+                <div className="text-center">
+                  <Archive className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">No stored scripts</p>
+                  <p className="text-muted-foreground">Deleted user scripts will be stored here</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            storedUserScripts.map((script) => (
+              <Card key={script.id} className="opacity-75">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <div>
                       <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
                         {script.name}
-                        <Badge variant="outline" className="text-xs">User Script</Badge>
-                        <Badge 
-                          variant={script.is_active ? 'default' : 'outline'} 
-                          className={`gap-1 ${script.is_active ? 'bg-green-600' : ''}`}
-                        >
-                          {script.is_active ? '🟢 Active' : '🔴 Inactive'}
-                        </Badge>
+                        <Badge variant="outline" className="text-xs">Stored</Badge>
                         <Badge variant="outline" className="text-xs">
                           {script.market_type || 'spot'}
                         </Badge>
@@ -540,24 +699,15 @@ export default function AdminPineScriptEditor() {
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
-                      {/* Activation Toggle */}
-                      <div className="flex items-center gap-1.5">
-                        <Switch
-                          checked={script.is_active}
-                          onCheckedChange={(checked) => toggleActivation({ id: script.id, is_active: checked })}
-                          disabled={isToggling}
-                        />
-                        <span className="text-xs text-muted-foreground">
-                          {script.is_active ? 'On' : 'Off'}
-                        </span>
-                      </div>
                       <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        onClick={() => handleEditScript(script)}
-                        title="Edit script"
+                        variant="outline" 
+                        size="sm" 
+                        className="gap-2"
+                        onClick={() => handleRestoreScript(script.id)}
+                        disabled={isRestoring}
                       >
-                        <Edit className="h-4 w-4" />
+                        <RotateCcw className="h-4 w-4" />
+                        Restore
                       </Button>
                       <Button 
                         variant="outline" 
@@ -569,55 +719,18 @@ export default function AdminPineScriptEditor() {
                         <Copy className="h-4 w-4" />
                         Copy
                       </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete User Script?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete "{script.name}" created by user. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction 
-                              onClick={() => handleDeleteScript(script.id)}
-                              className="bg-destructive text-destructive-foreground"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => handleEditScript(script)}
+                        title="View script"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {script.description && (
-                    <p className="text-sm text-muted-foreground mb-2">{script.description}</p>
-                  )}
-                  <div className="grid grid-cols-4 gap-2 mb-2 text-xs">
-                    <div className="bg-muted/50 rounded p-2">
-                      <span className="text-muted-foreground">Size:</span>{' '}
-                      {script.position_size_value} {script.position_size_type === 'percentage' ? '%' : 'USDT'}
-                    </div>
-                    <div className="bg-muted/50 rounded p-2">
-                      <span className="text-muted-foreground">Max Cap:</span>{' '}
-                      {script.max_capital} USDT
-                    </div>
-                    <div className="bg-muted/50 rounded p-2">
-                      <span className="text-muted-foreground">Max Trades:</span>{' '}
-                      {script.max_trades_per_day}/day
-                    </div>
-                    <div className="bg-muted/50 rounded p-2">
-                      <span className="text-muted-foreground">Pairs:</span>{' '}
-                      {script.trading_pairs?.length || 1}
-                    </div>
-                  </div>
                   <div className="bg-muted/50 rounded-lg p-3 font-mono text-xs overflow-x-auto max-h-24">
                     <pre className="whitespace-pre-wrap">{script.script_content.slice(0, 200)}...</pre>
                   </div>

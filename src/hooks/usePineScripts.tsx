@@ -15,6 +15,7 @@ export interface PineScript {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
   // Bot configuration fields
   candle_type: string;
   market_type: string;
@@ -103,9 +104,9 @@ export function usePineScripts() {
       };
     });
 
-  // Own scripts use their native is_active
+  // Own scripts use their native is_active (exclude soft-deleted)
   const ownScripts: PineScriptWithUserState[] = (scripts ?? [])
-    .filter(s => s.created_by === user?.id)
+    .filter(s => s.created_by === user?.id && !s.deleted_at)
     .map(s => ({
       ...s,
       user_is_active: s.is_active,
@@ -215,8 +216,11 @@ export function usePineScripts() {
         return id;
       }
 
-      // For own scripts, actually delete
-      const { error } = await supabase.from('pine_scripts').delete().eq('id', id);
+      // For own scripts, soft-delete
+      const { error } = await supabase
+        .from('pine_scripts')
+        .update({ deleted_at: new Date().toISOString(), is_active: false })
+        .eq('id', id);
       if (error) {
         console.error('Script deletion error:', error);
         throw new Error(error.message || 'Failed to delete script');
@@ -343,7 +347,12 @@ export function useAdminPineScripts() {
   });
 
   const adminScripts = scripts?.filter(s => s.admin_tag) ?? [];
-  const userScripts = scripts?.filter(s => !s.admin_tag) ?? [];
+  const allUserScripts = scripts?.filter(s => !s.admin_tag) ?? [];
+  const activeUserScripts = allUserScripts.filter(s => s.is_active && !(s as any).deleted_at);
+  const inactiveUserScripts = allUserScripts.filter(s => !s.is_active && !(s as any).deleted_at);
+  const storedUserScripts = allUserScripts.filter(s => !!(s as any).deleted_at);
+  // Keep backward compat
+  const userScripts = allUserScripts.filter(s => !(s as any).deleted_at);
 
   const createAdminScript = useMutation({
     mutationFn: async (input: CreatePineScriptInput & { admin_tag?: string }) => {
@@ -433,10 +442,23 @@ export function useAdminPineScripts() {
 
   const deleteScript = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('pine_scripts').delete().eq('id', id);
-      if (error) {
-        console.error('Admin script deletion error:', error);
-        throw new Error(error.message || 'Failed to delete script');
+      const script = scripts?.find(s => s.id === id);
+      // Soft-delete user scripts, hard-delete admin scripts
+      if (script && !script.admin_tag) {
+        const { error } = await supabase
+          .from('pine_scripts')
+          .update({ deleted_at: new Date().toISOString(), is_active: false })
+          .eq('id', id);
+        if (error) {
+          console.error('Script soft-delete error:', error);
+          throw new Error(error.message || 'Failed to archive script');
+        }
+      } else {
+        const { error } = await supabase.from('pine_scripts').delete().eq('id', id);
+        if (error) {
+          console.error('Admin script deletion error:', error);
+          throw new Error(error.message || 'Failed to delete script');
+        }
       }
       return id;
     },
@@ -532,10 +554,30 @@ export function useAdminPineScripts() {
     enabled: isAdmin,
   });
 
+  // Restore a soft-deleted script
+  const restoreScript = useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase
+        .from('pine_scripts')
+        .update({ deleted_at: null })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as PineScript;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-pine-scripts'] });
+    },
+  });
+
   return {
     scripts: scripts ?? [],
     adminScripts,
     userScripts,
+    activeUserScripts,
+    inactiveUserScripts,
+    storedUserScripts,
     allUserScriptRecords: allUserScriptRecords ?? [],
     allProfiles: allProfiles ?? [],
     isLoading: isLoading || userScriptRecordsLoading || profilesLoading,
@@ -545,10 +587,12 @@ export function useAdminPineScripts() {
     deleteScript: deleteScript.mutateAsync,
     copyScript: copyScript.mutateAsync,
     toggleActivation: toggleActivation.mutateAsync,
+    restoreScript: restoreScript.mutateAsync,
     isCreating: createAdminScript.isPending,
     isUpdating: updateScript.isPending,
     isDeleting: deleteScript.isPending,
     isCopying: copyScript.isPending,
     isToggling: toggleActivation.isPending,
+    isRestoring: restoreScript.isPending,
   };
 }
