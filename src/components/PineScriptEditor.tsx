@@ -444,7 +444,7 @@ export default function PineScriptEditor({
                       value={formData.name}
                       onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                       placeholder="My Strategy"
-                      disabled={readOnly || companyMode}
+                      disabled={readOnly && !companyMode}
                     />
                   </div>
 
@@ -463,7 +463,7 @@ export default function PineScriptEditor({
                       value={formData.description}
                       onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                       placeholder="Brief description of your strategy"
-                      disabled={readOnly || companyMode}
+                      disabled={readOnly && !companyMode}
                     />
                   </div>
 
@@ -475,7 +475,7 @@ export default function PineScriptEditor({
                           <Checkbox
                             checked={formData.allowed_timeframes.includes(value)}
                             onCheckedChange={(checked) => handleTimeframeChange(value, checked as boolean)}
-                            disabled={readOnly || companyMode}
+                            disabled={readOnly && !companyMode}
                           />
                           <span className="text-sm">{label}</span>
                         </label>
@@ -566,22 +566,26 @@ export default function PineScriptEditor({
                         <Save className="h-4 w-4 mr-2" />
                         {isSaving ? 'Saving...' : 'Save'}
                       </Button>
-                      <Button 
-                        variant="secondary" 
-                        onClick={handleTestScript}
-                        disabled={evaluateScript.isPending}
-                      >
-                        {evaluateScript.isPending ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <FlaskConical className="h-4 w-4 mr-2" />
-                        )}
-                        Test Script
-                      </Button>
                     </>
                   )}
 
-                  {/* Run/Stop button - auto-activates the bot */}
+                  {/* Test Script - available for own scripts and company mode */}
+                  <Button 
+                    variant="secondary" 
+                    onClick={handleTestScript}
+                    disabled={evaluateScript.isPending}
+                  >
+                    {evaluateScript.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <FlaskConical className="h-4 w-4 mr-2" />
+                    )}
+                    Test Script
+                  </Button>
+
+
+
+                   {/* Run/Stop button - auto-activates the bot */}
                   {selectedScript && onToggleActivation && (() => {
                     const currentActive = usePerUserActivation && 'user_is_active' in selectedScript
                       ? selectedScript.user_is_active
@@ -589,21 +593,35 @@ export default function PineScriptEditor({
                     return currentActive ? (
                       <Button 
                         variant="outline"
-                        onClick={() => onToggleActivation(selectedScript.id, false)}
+                        onClick={async () => {
+                          await onToggleActivation(selectedScript.id, false);
+                          toast({ title: 'Bot Stopped', description: `"${selectedScript.name}" has been stopped` });
+                        }}
                         disabled={isToggling}
-                        className="gap-2"
+                        className="gap-2 border-destructive/50 text-destructive hover:bg-destructive/10"
                       >
-                        <Pause className="h-4 w-4" />
-                        Stop
+                        {isToggling ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Pause className="h-4 w-4" />
+                        )}
+                        {isToggling ? 'Stopping...' : 'Stop'}
                       </Button>
                     ) : (
                       <Button 
-                        onClick={() => onToggleActivation(selectedScript.id, true)}
+                        onClick={async () => {
+                          await onToggleActivation(selectedScript.id, true);
+                          toast({ title: 'Bot Running', description: `"${selectedScript.name}" is now active and executing trades` });
+                        }}
                         disabled={isToggling}
-                        className="gap-2"
+                        className="gap-2 bg-green-600 hover:bg-green-700"
                       >
-                        <Play className="h-4 w-4" />
-                        Run
+                        {isToggling ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Play className="h-4 w-4" />
+                        )}
+                        {isToggling ? 'Starting...' : 'Run'}
                       </Button>
                     );
                   })()}
