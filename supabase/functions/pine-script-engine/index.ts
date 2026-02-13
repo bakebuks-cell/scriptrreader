@@ -1189,11 +1189,13 @@ Deno.serve(async (req) => {
         
         console.log(`[ENGINE] Found ${userScripts?.length || 0} active user_scripts`)
         
-        // Also get user-created scripts that are active
+        // Also get user-created scripts that are active (exclude admin scripts - they're handled via user_scripts)
         const { data: createdScripts, error: createdError } = await supabase
           .from('pine_scripts')
           .select('*')
           .eq('is_active', true)
+          .is('admin_tag', null)
+          .is('deleted_at', null)
           .not('created_by', 'is', null)
         
         if (createdError) {

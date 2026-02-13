@@ -236,6 +236,7 @@ export type Database = {
           candle_type: string | null
           created_at: string
           created_by: string | null
+          deleted_at: string | null
           description: string | null
           id: string
           is_active: boolean
@@ -259,6 +260,7 @@ export type Database = {
           candle_type?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           description?: string | null
           id?: string
           is_active?: boolean
@@ -282,6 +284,7 @@ export type Database = {
           candle_type?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           description?: string | null
           id?: string
           is_active?: boolean
