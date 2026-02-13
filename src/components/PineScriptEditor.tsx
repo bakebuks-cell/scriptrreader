@@ -4,7 +4,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -110,7 +109,7 @@ export default function PineScriptEditor({
     description: '',
     symbols: ['BTCUSDT'] as string[],
     script_content: DEFAULT_PINE_SCRIPT,
-    allowed_timeframes: ['1h', '4h'],
+    allowed_timeframes: ['1h'],
     is_active: false,
   });
 
@@ -151,7 +150,7 @@ export default function PineScriptEditor({
       description: '',
       symbols: ['BTCUSDT'],
       script_content: DEFAULT_PINE_SCRIPT,
-      allowed_timeframes: ['1h', '4h'],
+      allowed_timeframes: ['1h'],
       is_active: false,
     });
     setBotConfig(DEFAULT_BOT_CONFIG);
@@ -666,7 +665,7 @@ export default function PineScriptEditor({
                           }
                         }}
                         disabled={isToggling || isRunning}
-                        className="gap-2 bg-green-600 hover:bg-green-700"
+                        className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
                       >
                         {(isToggling || isRunning) ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
