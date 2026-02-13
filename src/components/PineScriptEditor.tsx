@@ -222,18 +222,11 @@ export default function PineScriptEditor({
     }
   };
 
-  const handleTimeframeChange = (timeframe: string, checked: boolean) => {
-    if (checked) {
-      setFormData(prev => ({
-        ...prev,
-        allowed_timeframes: [...prev.allowed_timeframes, timeframe]
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        allowed_timeframes: prev.allowed_timeframes.filter(t => t !== timeframe)
-      }));
-    }
+  const handleTimeframeChange = (timeframe: string) => {
+    setFormData(prev => ({
+      ...prev,
+      allowed_timeframes: [timeframe]
+    }));
   };
 
   const handleCopyScript = async () => {
@@ -473,11 +466,14 @@ export default function PineScriptEditor({
                     <Label>Allowed Timeframes</Label>
                     <div className="grid grid-cols-4 gap-2 mt-2">
                       {AVAILABLE_TIMEFRAMES.map(({ value, label }) => (
-                        <label key={value} className="flex items-center gap-2 p-2 rounded border border-border hover:bg-accent cursor-pointer">
-                          <Checkbox
+                        <label key={value} className={`flex items-center gap-2 p-2 rounded border cursor-pointer ${formData.allowed_timeframes.includes(value) ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}`}>
+                          <input
+                            type="radio"
+                            name="timeframe"
                             checked={formData.allowed_timeframes.includes(value)}
-                            onCheckedChange={(checked) => handleTimeframeChange(value, checked as boolean)}
+                            onChange={() => handleTimeframeChange(value)}
                             disabled={readOnly && !companyMode}
+                            className="accent-primary"
                           />
                           <span className="text-sm">{label}</span>
                         </label>

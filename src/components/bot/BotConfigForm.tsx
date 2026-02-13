@@ -149,19 +149,12 @@ export default function BotConfigForm({
     }
   };
 
-  const handleTimeframeChange = (timeframe: string, checked: boolean) => {
+  const handleTimeframeChange = (timeframe: string) => {
     if (!strategyConfig || !onStrategyChange) return;
-    if (checked) {
-      onStrategyChange({
-        ...strategyConfig,
-        allowed_timeframes: [...strategyConfig.allowed_timeframes, timeframe]
-      });
-    } else {
-      onStrategyChange({
-        ...strategyConfig,
-        allowed_timeframes: strategyConfig.allowed_timeframes.filter(t => t !== timeframe)
-      });
-    }
+    onStrategyChange({
+      ...strategyConfig,
+      allowed_timeframes: [timeframe]
+    });
   };
 
   const handleCopyScript = async () => {
@@ -252,11 +245,14 @@ export default function BotConfigForm({
               <Label className="text-xs text-muted-foreground">Allowed Timeframes (must match script)</Label>
               <div className="grid grid-cols-4 gap-2 mt-2">
                 {AVAILABLE_TIMEFRAMES.map(({ value, label }) => (
-                  <label key={value} className="flex items-center gap-2 p-2 rounded border border-border hover:bg-accent cursor-pointer">
-                    <Checkbox
+                  <label key={value} className={`flex items-center gap-2 p-2 rounded border cursor-pointer ${strategyConfig.allowed_timeframes.includes(value) ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}`}>
+                    <input
+                      type="radio"
+                      name="bot-timeframe"
                       checked={strategyConfig.allowed_timeframes.includes(value)}
-                      onCheckedChange={(checked) => handleTimeframeChange(value, checked as boolean)}
+                      onChange={() => handleTimeframeChange(value)}
                       disabled={disabled}
+                      className="accent-primary"
                     />
                     <span className="text-xs">{label}</span>
                   </label>
