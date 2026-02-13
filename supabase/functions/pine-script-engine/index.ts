@@ -712,41 +712,26 @@ function evaluateStrategy(
 ): TradeSignal {
   const lastIndex = ohlcv.length - 1
   
-  // Scan the last 5 candles (not just the very last one) to catch signals
-  // that may have occurred between engine runs
-  const scanDepth = Math.min(5, lastIndex)
+  console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}`)
   
-  console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}, scanning last ${scanDepth} candles`)
+  // Check entry conditions
+  let shouldEnter = strategy.entryConditions.length > 0
   
-  let signalIndex = -1
-  
-  for (let checkIdx = lastIndex; checkIdx > lastIndex - scanDepth; checkIdx--) {
-    if (checkIdx < 1) break // need at least 1 previous candle for crossover
-    
-    let shouldEnter = strategy.entryConditions.length > 0
-    
-    for (const condition of strategy.entryConditions) {
-      const result = evaluateCondition(condition, indicators, ohlcv, checkIdx)
-      if (condition.logic === 'and') {
-        shouldEnter = shouldEnter && result
-      } else {
-        shouldEnter = shouldEnter || result
-      }
-    }
-    
-    if (shouldEnter) {
-      signalIndex = checkIdx
-      console.log(`[EVAL] Signal found at candle index ${checkIdx} (${lastIndex - checkIdx} candles ago)`)
-      break // use the most recent signal
+  for (const condition of strategy.entryConditions) {
+    const result = evaluateCondition(condition, indicators, ohlcv, lastIndex)
+    if (condition.logic === 'and') {
+      shouldEnter = shouldEnter && result
+    } else {
+      shouldEnter = shouldEnter || result
     }
   }
   
-  if (signalIndex === -1) {
-    console.log(`[EVAL] No entry signal in last ${scanDepth} candles`)
-    return { action: 'NONE', price: currentPrice, reason: 'No entry conditions met in recent candles' }
+  if (!shouldEnter) {
+    console.log(`[EVAL] No entry signal - conditions not met`)
+    return { action: 'NONE', price: currentPrice, reason: 'No entry conditions met' }
   }
   
-  console.log(`[EVAL] ENTRY SIGNAL DETECTED at candle ${signalIndex}!`)
+  console.log(`[EVAL] ENTRY SIGNAL DETECTED!`)
   
   // Determine direction
   const action: 'BUY' | 'SELL' = strategy.direction === 'short' ? 'SELL' : 'BUY'
@@ -1219,40 +1204,13 @@ Deno.serve(async (req) => {
         
         console.log(`[ENGINE] Found ${createdScripts?.length || 0} active user-created scripts`)
         
-        // Fetch all bot_configurations to get user-specific overrides for timeframe/pair
-        const allUserIds = [
-          ...(userScripts || []).map((us: any) => us.user_id),
-          ...(createdScripts || []).map((s: any) => s.created_by),
-        ].filter(Boolean)
-        
-        const { data: botConfigs } = await supabase
-          .from('bot_configurations')
-          .select('user_id, bot_id, module_type, settings_json')
-          .in('user_id', allUserIds.length > 0 ? allUserIds : ['__none__'])
-        
-        console.log(`[ENGINE] Found ${botConfigs?.length || 0} bot configurations`)
-        
-        // Build lookup: user_id+script_id -> config
-        const configLookup = new Map<string, any>()
-        for (const cfg of (botConfigs || [])) {
-          if (cfg.module_type === 'pine_script' || cfg.module_type === 'trading_bot') {
-            const key = `${cfg.user_id}:${cfg.bot_id}`
-            configLookup.set(key, cfg.settings_json)
-          }
-        }
-        
         // Combine all scripts to process
         const allScripts: any[] = [
-          ...(userScripts || []).filter((us: any) => us.script != null).map((us: any) => {
-            const cfg = configLookup.get(`${us.user_id}:${us.script_id}`)
-            return {
-              script_id: us.script_id,
-              user_id: us.user_id,
-              script: us.script,
-              userTimeframe: cfg?.timeframe,
-              userSymbol: cfg?.symbol || cfg?.trading_pair,
-            }
-          }),
+          ...(userScripts || []).filter((us: any) => us.script != null).map((us: any) => ({
+            script_id: us.script_id,
+            user_id: us.user_id,
+            script: us.script,
+          })),
           ...(createdScripts || []).map((s: any) => ({
             script_id: s.id,
             user_id: s.created_by,
@@ -1274,29 +1232,30 @@ Deno.serve(async (req) => {
           )
         }
         
-        // Group by symbol+timeframe (using user overrides when available)
-        const bySymbolTimeframe = new Map<string, any[]>()
+        // Group by symbol+timeframe
+        const bySymbolTimeframe: Record<string, any[]> = {}
         for (const us of allScripts) {
-          const sym = us.userSymbol || us.script.symbol
-          const tf = us.userTimeframe || us.script.allowed_timeframes?.[0] || '1h'
+          const sym = us.script.symbol
+          const tf = us.script.allowed_timeframes?.[0] || '1h'
           const key = `${sym}:${tf}`
-          if (!bySymbolTimeframe.has(key)) {
-            bySymbolTimeframe.set(key, [])
+          if (!bySymbolTimeframe[key]) {
+            bySymbolTimeframe[key] = []
           }
-          bySymbolTimeframe.get(key)!.push(us)
+          bySymbolTimeframe[key].push(us)
         }
         
         // Process each symbol+timeframe combination
-        for (const [key, scripts] of bySymbolTimeframe) {
+        for (const key of Object.keys(bySymbolTimeframe)) {
+          const groupedScripts = bySymbolTimeframe[key]
           const [symbol, timeframe] = key.split(':')
-          console.log(`[ENGINE] Processing ${key}: ${scripts.length} scripts`)
+          console.log(`[ENGINE] Processing ${key}: ${groupedScripts.length} scripts`)
           
           try {
             const ohlcv = await fetchOHLCV(symbol, timeframe, 200)
             const currentPrice = await getCurrentPrice(symbol)
             const indicators = calculateAllIndicators(ohlcv)
             
-            for (const us of scripts) {
+            for (const us of groupedScripts) {
               try {
                 console.log(`[ENGINE] Evaluating script "${us.script.name}" for user ${us.user_id}`)
                 const strategy = parsePineScript(us.script.script_content)
