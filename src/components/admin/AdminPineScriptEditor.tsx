@@ -222,16 +222,12 @@ export default function AdminPineScriptEditor() {
     if (isNew) {
       setNewScript(prev => ({
         ...prev,
-        allowed_timeframes: prev.allowed_timeframes?.includes(tf)
-          ? prev.allowed_timeframes.filter(t => t !== tf)
-          : [...(prev.allowed_timeframes || []), tf]
+        allowed_timeframes: [tf]
       }));
     } else if (editingScript) {
       setEditingScript(prev => prev ? ({
         ...prev,
-        allowed_timeframes: prev.allowed_timeframes.includes(tf)
-          ? prev.allowed_timeframes.filter(t => t !== tf)
-          : [...prev.allowed_timeframes, tf]
+        allowed_timeframes: [tf]
       }) : null);
     }
   };
