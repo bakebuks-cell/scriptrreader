@@ -714,24 +714,38 @@ function evaluateStrategy(
   
   console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}`)
   
-  // Check entry conditions
-  let shouldEnter = strategy.entryConditions.length > 0
+  // Scan last 5 candles to catch signals (critical for 1m timeframe)
+  const scanDepth = Math.min(5, lastIndex)
+  let shouldEnter = false
+  let signalIndex = lastIndex
   
-  for (const condition of strategy.entryConditions) {
-    const result = evaluateCondition(condition, indicators, ohlcv, lastIndex)
-    if (condition.logic === 'and') {
-      shouldEnter = shouldEnter && result
-    } else {
-      shouldEnter = shouldEnter || result
+  for (let checkIdx = lastIndex; checkIdx > lastIndex - scanDepth; checkIdx--) {
+    if (checkIdx < 1) break
+    let conditionsMet = strategy.entryConditions.length > 0
+    
+    for (const condition of strategy.entryConditions) {
+      const result = evaluateCondition(condition, indicators, ohlcv, checkIdx)
+      if (condition.logic === 'and') {
+        conditionsMet = conditionsMet && result
+      } else {
+        conditionsMet = conditionsMet || result
+      }
+    }
+    
+    if (conditionsMet) {
+      shouldEnter = true
+      signalIndex = checkIdx
+      console.log(`[EVAL] Signal found at candle index ${checkIdx} (${lastIndex - checkIdx} candles ago)`)
+      break
     }
   }
   
   if (!shouldEnter) {
-    console.log(`[EVAL] No entry signal - conditions not met`)
-    return { action: 'NONE', price: currentPrice, reason: 'No entry conditions met' }
+    console.log(`[EVAL] No entry signal in last ${scanDepth} candles`)
+    return { action: 'NONE', price: currentPrice, reason: 'No entry conditions met in recent candles' }
   }
   
-  console.log(`[EVAL] ENTRY SIGNAL DETECTED!`)
+  console.log(`[EVAL] ENTRY SIGNAL DETECTED at candle ${signalIndex}!`)
   
   // Determine direction
   const action: 'BUY' | 'SELL' = strategy.direction === 'short' ? 'SELL' : 'BUY'
@@ -877,14 +891,41 @@ async function executeTrade(
       return { success: false, error: 'Already traded on this candle' }
     }
     
-    // Get API keys
-    const { data: apiKeys, error: keysError } = await supabase
-      .from('exchange_keys')
+    // Get API keys - check wallets table first (primary), then exchange_keys (legacy)
+    let apiKeys: { api_key_encrypted: string; api_secret_encrypted: string } | null = null
+    let keysError: any = null
+    
+    // Primary: wallets table
+    const { data: walletKeys, error: walletKeysError } = await supabase
+      .from('wallets')
       .select('api_key_encrypted, api_secret_encrypted')
       .eq('user_id', userId)
-      .eq('exchange', 'binance')
       .eq('is_active', true)
+      .not('api_key_encrypted', 'is', null)
+      .not('api_secret_encrypted', 'is', null)
+      .limit(1)
       .maybeSingle()
+    
+    if (walletKeys) {
+      apiKeys = walletKeys
+      console.log(`[TRADE] Found API keys in wallets table for user ${userId}`)
+    } else {
+      // Fallback: legacy exchange_keys table
+      const { data: legacyKeys, error: legacyError } = await supabase
+        .from('exchange_keys')
+        .select('api_key_encrypted, api_secret_encrypted')
+        .eq('user_id', userId)
+        .eq('exchange', 'binance')
+        .eq('is_active', true)
+        .maybeSingle()
+      
+      if (legacyKeys) {
+        apiKeys = legacyKeys
+        console.log(`[TRADE] Found API keys in exchange_keys table for user ${userId}`)
+      } else {
+        keysError = walletKeysError || legacyError
+      }
+    }
     
     if (keysError || !apiKeys) {
       console.log(`[TRADE] No API keys for user ${userId} — recording signal only`)
