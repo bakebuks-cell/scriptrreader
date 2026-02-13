@@ -739,10 +739,10 @@ async function executeTrade(
   timeframe: string
 ): Promise<{ success: boolean; error?: string; tradeId?: string }> {
   try {
-    // Get user profile to check coins
+    // Get user profile to check coins and free trades
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('coins, bot_enabled')
+      .select('coins, bot_enabled, free_trades_remaining')
       .eq('user_id', userId)
       .single()
     
@@ -754,8 +754,12 @@ async function executeTrade(
       return { success: false, error: 'Bot is disabled' }
     }
     
-    if (profile.coins <= 0) {
-      return { success: false, error: 'Insufficient coins' }
+    // Check if user has free trades OR coins available
+    const hasFreeTradesLeft = (profile.free_trades_remaining ?? 0) > 0
+    const hasCoins = profile.coins > 0
+    
+    if (!hasFreeTradesLeft && !hasCoins) {
+      return { success: false, error: 'No free trades or coins remaining' }
     }
     
     // Check for duplicate trade on same candle
@@ -788,11 +792,18 @@ async function executeTrade(
       return { success: false, error: 'No Binance API keys configured' }
     }
     
-    // Lock coin
-    await supabase
-      .from('profiles')
-      .update({ coins: profile.coins - 1 })
-      .eq('user_id', userId)
+    // Deduct free trade first, then coins
+    if (hasFreeTradesLeft) {
+      await supabase
+        .from('profiles')
+        .update({ free_trades_remaining: (profile.free_trades_remaining ?? 0) - 1 })
+        .eq('user_id', userId)
+    } else {
+      await supabase
+        .from('profiles')
+        .update({ coins: profile.coins - 1 })
+        .eq('user_id', userId)
+    }
     
     // Create pending trade record
     const { data: trade, error: tradeError } = await supabase
@@ -814,11 +825,18 @@ async function executeTrade(
       .single()
     
     if (tradeError) {
-      // Refund coin
-      await supabase
-        .from('profiles')
-        .update({ coins: profile.coins })
-        .eq('user_id', userId)
+      // Refund: free trade or coin
+      if (hasFreeTradesLeft) {
+        await supabase
+          .from('profiles')
+          .update({ free_trades_remaining: (profile.free_trades_remaining ?? 0) })
+          .eq('user_id', userId)
+      } else {
+        await supabase
+          .from('profiles')
+          .update({ coins: profile.coins })
+          .eq('user_id', userId)
+      }
       return { success: false, error: 'Failed to create trade record' }
     }
     
@@ -903,11 +921,18 @@ async function executeTrade(
         })
         .eq('id', trade.id)
       
-      // Refund coin
-      await supabase
-        .from('profiles')
-        .update({ coins: profile.coins })
-        .eq('user_id', userId)
+      // Refund: free trade or coin
+      if (hasFreeTradesLeft) {
+        await supabase
+          .from('profiles')
+          .update({ free_trades_remaining: (profile.free_trades_remaining ?? 0) })
+          .eq('user_id', userId)
+      } else {
+        await supabase
+          .from('profiles')
+          .update({ coins: profile.coins })
+          .eq('user_id', userId)
+      }
       
       return { success: false, error: execError instanceof Error ? execError.message : 'Trade execution failed' }
     }
@@ -1015,8 +1040,10 @@ Deno.serve(async (req) => {
         }
         
         // Combine and process
+        // For user_scripts (admin/common library scripts): user opted in, don't require global is_active
+        // For user-created scripts: require their own is_active
         const allScripts: UserScript[] = [
-          ...(userScripts || []).filter((us: any) => us.script?.is_active),
+          ...(userScripts || []).filter((us: any) => us.script != null),
           ...(createdScripts || []).map((s: any) => ({
             script_id: s.id,
             user_id: s.created_by,
@@ -1024,21 +1051,24 @@ Deno.serve(async (req) => {
           })),
         ]
         
-        // Group by symbol to reduce API calls
-        const bySymbol = new Map<string, UserScript[]>()
+        // Group by symbol+timeframe to reduce API calls
+        const bySymbolTimeframe = new Map<string, UserScript[]>()
         for (const us of allScripts) {
           const symbol = us.script.symbol
-          if (!bySymbol.has(symbol)) {
-            bySymbol.set(symbol, [])
+          const timeframe = us.script.allowed_timeframes?.[0] || '1h'
+          const key = `${symbol}:${timeframe}`
+          if (!bySymbolTimeframe.has(key)) {
+            bySymbolTimeframe.set(key, [])
           }
-          bySymbol.get(symbol)!.push(us)
+          bySymbolTimeframe.get(key)!.push(us)
         }
         
-        // Process each symbol
-        for (const [symbol, scripts] of bySymbol) {
+        // Process each symbol+timeframe combination
+        for (const [key, scripts] of bySymbolTimeframe) {
+          const [symbol, timeframe] = key.split(':')
           try {
-            // Fetch market data once per symbol
-            const ohlcv = await fetchOHLCV(symbol, '1h', 200)
+            // Fetch market data with the correct timeframe
+            const ohlcv = await fetchOHLCV(symbol, timeframe, 200)
             const currentPrice = await getCurrentPrice(symbol)
             const indicators = calculateAllIndicators(ohlcv)
             
@@ -1055,13 +1085,14 @@ Deno.serve(async (req) => {
                     us.script_id,
                     signal,
                     symbol,
-                    '1h'
+                    timeframe
                   )
                   
                   results.push({
                     scriptId: us.script_id,
                     userId: us.user_id,
                     symbol,
+                    timeframe,
                     signal,
                     executed: execResult.success,
                     error: execResult.error,
@@ -1072,6 +1103,7 @@ Deno.serve(async (req) => {
                     scriptId: us.script_id,
                     userId: us.user_id,
                     symbol,
+                    timeframe,
                     signal,
                     executed: false,
                     reason: signal.reason,
