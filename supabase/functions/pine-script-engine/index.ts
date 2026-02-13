@@ -1,9 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
-import { createHmac } from 'https://deno.land/std@0.177.0/node/crypto.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
 // ============================================
@@ -63,7 +62,7 @@ interface StopLossConfig {
 }
 
 interface TakeProfitConfig {
-  type: 'percent' | 'atr' | 'fixed' | 'rr'  // rr = risk-reward ratio
+  type: 'percent' | 'atr' | 'fixed' | 'rr'
   value: number
 }
 
@@ -92,10 +91,17 @@ interface UserScript {
 // BINANCE API HELPERS
 // ============================================
 
-function createSignature(queryString: string, apiSecret: string): string {
-  const hmac = createHmac('sha256', apiSecret)
-  hmac.update(queryString)
-  return hmac.digest('hex')
+async function createSignature(queryString: string, apiSecret: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(apiSecret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(queryString))
+  return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 async function binanceRequest(
@@ -113,7 +119,7 @@ async function binanceRequest(
   const timestamp = Date.now().toString()
   const allParams = { ...params, timestamp }
   const queryString = new URLSearchParams(allParams).toString()
-  const signature = createSignature(queryString, apiSecret)
+  const signature = await createSignature(queryString, apiSecret)
   const signedQuery = `${queryString}&signature=${signature}`
   
   const url = `${baseUrl}${endpoint}?${signedQuery}`
@@ -134,16 +140,19 @@ async function binanceRequest(
   return response.json()
 }
 
-// Fetch public kline data (no auth needed)
 async function fetchOHLCV(symbol: string, interval: string, limit: number = 100): Promise<OHLCV[]> {
   const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
+  console.log(`[ENGINE] Fetching OHLCV: ${symbol} ${interval} limit=${limit}`)
   
   const response = await fetch(url)
   if (!response.ok) {
+    const body = await response.text()
+    console.error(`[ENGINE] OHLCV fetch failed: ${response.status} - ${body}`)
     throw new Error(`Failed to fetch OHLCV data: ${response.status}`)
   }
   
   const data = await response.json()
+  console.log(`[ENGINE] Got ${data.length} candles for ${symbol}`)
   
   return data.map((k: any[]) => ({
     openTime: k[0],
@@ -156,7 +165,6 @@ async function fetchOHLCV(symbol: string, interval: string, limit: number = 100)
   }))
 }
 
-// Fetch current price
 async function getCurrentPrice(symbol: string): Promise<number> {
   const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`
   const response = await fetch(url)
@@ -172,15 +180,15 @@ async function getCurrentPrice(symbol: string): Promise<number> {
 // ============================================
 
 function calculateEMA(prices: number[], period: number): number[] {
+  if (prices.length < period) return []
   const ema: number[] = []
   const multiplier = 2 / (period + 1)
   
-  // First EMA is SMA
   let sum = 0
-  for (let i = 0; i < period && i < prices.length; i++) {
+  for (let i = 0; i < period; i++) {
     sum += prices[i]
   }
-  ema.push(sum / Math.min(period, prices.length))
+  ema.push(sum / period)
   
   for (let i = period; i < prices.length; i++) {
     const value = (prices[i] - ema[ema.length - 1]) * multiplier + ema[ema.length - 1]
@@ -191,6 +199,7 @@ function calculateEMA(prices: number[], period: number): number[] {
 }
 
 function calculateSMA(prices: number[], period: number): number[] {
+  if (prices.length < period) return []
   const sma: number[] = []
   
   for (let i = period - 1; i < prices.length; i++) {
@@ -241,11 +250,17 @@ function calculateMACD(prices: number[], fastPeriod: number = 12, slowPeriod: nu
   const fastEMA = calculateEMA(prices, fastPeriod)
   const slowEMA = calculateEMA(prices, slowPeriod)
   
+  if (fastEMA.length === 0 || slowEMA.length === 0) {
+    return { macd: [], signal: [], histogram: [] }
+  }
+  
   const macdLine: number[] = []
   const offset = slowPeriod - fastPeriod
   
   for (let i = 0; i < slowEMA.length; i++) {
-    macdLine.push(fastEMA[i + offset] - slowEMA[i])
+    if (i + offset < fastEMA.length) {
+      macdLine.push(fastEMA[i + offset] - slowEMA[i])
+    }
   }
   
   const signalLine = calculateEMA(macdLine, signalPeriod)
@@ -253,7 +268,9 @@ function calculateMACD(prices: number[], fastPeriod: number = 12, slowPeriod: nu
   
   const signalOffset = signalPeriod - 1
   for (let i = 0; i < signalLine.length; i++) {
-    histogram.push(macdLine[i + signalOffset] - signalLine[i])
+    if (i + signalOffset < macdLine.length) {
+      histogram.push(macdLine[i + signalOffset] - signalLine[i])
+    }
   }
   
   return { macd: macdLine, signal: signalLine, histogram }
@@ -267,6 +284,7 @@ function calculateBollingerBands(prices: number[], period: number = 20, stdDev: 
   for (let i = period - 1; i < prices.length; i++) {
     const slice = prices.slice(i - period + 1, i + 1)
     const mean = middle[i - period + 1]
+    if (mean === undefined) continue
     const variance = slice.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / period
     const std = Math.sqrt(variance)
     
@@ -328,7 +346,7 @@ function calculateAllIndicators(ohlcv: OHLCV[]): IndicatorValues {
 }
 
 // ============================================
-// PINE SCRIPT PARSER
+// PINE SCRIPT PARSER (Enhanced for BB strategy)
 // ============================================
 
 function parsePineScript(scriptContent: string): ParsedStrategy {
@@ -341,142 +359,183 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
     riskPercent: 1,
   }
   
-  const lines = scriptContent.split('\n').map(l => l.trim().toLowerCase())
+  const content = scriptContent.toLowerCase()
   
   // Parse direction
-  if (scriptContent.toLowerCase().includes('strategy.long') || scriptContent.toLowerCase().includes('direction.long')) {
+  if (content.includes('strategy.long') && !content.includes('strategy.short')) {
     strategy.direction = 'long'
-  } else if (scriptContent.toLowerCase().includes('strategy.short') || scriptContent.toLowerCase().includes('direction.short')) {
+  } else if (content.includes('strategy.short') && !content.includes('strategy.long')) {
     strategy.direction = 'short'
   }
   
-  // Parse entry conditions
-  const entryPatterns = [
-    // EMA crossovers
+  // ---- BOLLINGER BANDS DETECTION ----
+  const hasBB = content.includes('sma(close') && (content.includes('stdev') || content.includes('bb') || content.includes('upper_band') || content.includes('lower_band'))
+  
+  if (hasBB) {
+    console.log('[PARSER] Detected Bollinger Bands strategy')
+    
+    // Parse BB parameters
+    let bbLength = 20
+    let bbMult = 2.0
+    const lengthMatch = scriptContent.match(/length\s*=\s*input\s*\(\s*(\d+)/i)
+    const multMatch = scriptContent.match(/mult\s*=\s*input\s*\(\s*([\d.]+)/i)
+    if (lengthMatch) bbLength = parseInt(lengthMatch[1])
+    if (multMatch) bbMult = parseFloat(multMatch[1])
+    console.log(`[PARSER] BB params: length=${bbLength}, mult=${bbMult}`)
+    
+    // Check for crossover/crossunder with lower_band/upper_band
+    const hasLongEntry = content.includes('crossover(close, lower_band)') || 
+                         content.includes('crossover(close,lower_band)') ||
+                         content.includes('ta.crossover(close, lower_band)')
+    const hasShortEntry = content.includes('crossunder(close, upper_band)') || 
+                          content.includes('crossunder(close,upper_band)') ||
+                          content.includes('ta.crossunder(close, upper_band)')
+    
+    if (hasLongEntry) {
+      strategy.entryConditions.push({
+        type: 'crossover',
+        indicator1: { name: 'close' },
+        indicator2: { name: 'bb_lower' },
+        logic: 'and',
+      })
+      console.log('[PARSER] Added BB long entry: close crossover lower_band')
+    }
+    
+    if (hasShortEntry) {
+      // For short entries, we handle separately
+      if (!hasLongEntry) {
+        strategy.entryConditions.push({
+          type: 'crossunder',
+          indicator1: { name: 'close' },
+          indicator2: { name: 'bb_upper' },
+          logic: 'and',
+        })
+        console.log('[PARSER] Added BB short entry: close crossunder upper_band')
+      }
+    }
+    
+    // BB touch conditions (fallback)
+    if (strategy.entryConditions.length === 0) {
+      if (content.includes('close') && content.includes('lower_band')) {
+        strategy.entryConditions.push({
+          type: 'below',
+          indicator1: { name: 'close' },
+          indicator2: { name: 'bb_lower' },
+          logic: 'and',
+        })
+      }
+      if (content.includes('close') && content.includes('upper_band')) {
+        strategy.exitConditions.push({
+          type: 'above',
+          indicator1: { name: 'close' },
+          indicator2: { name: 'bb_upper' },
+          logic: 'and',
+        })
+      }
+    }
+    
+    // Exit conditions for BB
+    if (content.includes('crossunder(close, basis)') || content.includes('crossunder(close,basis)')) {
+      strategy.exitConditions.push({
+        type: 'crossunder',
+        indicator1: { name: 'close' },
+        indicator2: { name: 'bb_middle' },
+        logic: 'and',
+      })
+    }
+    if (content.includes('crossover(close, basis)') || content.includes('crossover(close,basis)')) {
+      strategy.exitConditions.push({
+        type: 'crossover',
+        indicator1: { name: 'close' },
+        indicator2: { name: 'bb_middle' },
+        logic: 'and',
+      })
+    }
+  }
+  
+  // ---- EMA/SMA CROSSOVER DETECTION ----
+  const emaCrossPatterns = [
     { pattern: /ta\.crossover\s*\(\s*ema\s*\(\s*close\s*,\s*(\d+)\s*\)\s*,\s*ema\s*\(\s*close\s*,\s*(\d+)\s*\)\s*\)/gi, type: 'crossover' as const },
     { pattern: /crossover\s*\(\s*ema(\d+)\s*,\s*ema(\d+)\s*\)/gi, type: 'crossover' as const },
-    { pattern: /ema\s*\(\s*close\s*,\s*(\d+)\s*\)\s*>\s*ema\s*\(\s*close\s*,\s*(\d+)\s*\)/gi, type: 'above' as const },
-    // SMA crossovers
-    { pattern: /ta\.crossover\s*\(\s*sma\s*\(\s*close\s*,\s*(\d+)\s*\)\s*,\s*sma\s*\(\s*close\s*,\s*(\d+)\s*\)\s*\)/gi, type: 'crossover' as const },
-    // RSI conditions
-    { pattern: /rsi\s*<\s*(\d+)/gi, type: 'rsi_below' as const },
-    { pattern: /rsi\s*>\s*(\d+)/gi, type: 'rsi_above' as const },
-    // MACD crossovers
-    { pattern: /ta\.crossover\s*\(\s*macd\s*,\s*signal\s*\)/gi, type: 'macd_cross_up' as const },
-    { pattern: /ta\.crossunder\s*\(\s*macd\s*,\s*signal\s*\)/gi, type: 'macd_cross_down' as const },
-    { pattern: /macd\s*>\s*signal/gi, type: 'macd_above_signal' as const },
-    { pattern: /macd\s*<\s*signal/gi, type: 'macd_below_signal' as const },
-    // Price vs indicators
-    { pattern: /close\s*>\s*ema\s*\(\s*close\s*,\s*(\d+)\s*\)/gi, type: 'price_above_ema' as const },
-    { pattern: /close\s*<\s*ema\s*\(\s*close\s*,\s*(\d+)\s*\)/gi, type: 'price_below_ema' as const },
-    // Bollinger Bands
-    { pattern: /close\s*<\s*bb\.lower/gi, type: 'bb_lower_touch' as const },
-    { pattern: /close\s*>\s*bb\.upper/gi, type: 'bb_upper_touch' as const },
+    { pattern: /crossover\s*\(\s*ema\s*\(\s*close\s*,\s*(\d+)\s*\)\s*,\s*ema\s*\(\s*close\s*,\s*(\d+)\s*\)\s*\)/gi, type: 'crossover' as const },
   ]
   
-  for (const { pattern, type } of entryPatterns) {
+  for (const { pattern, type } of emaCrossPatterns) {
     let match
     while ((match = pattern.exec(scriptContent)) !== null) {
-      switch (type) {
-        case 'crossover':
-          strategy.entryConditions.push({
-            type: 'crossover',
-            indicator1: { name: 'ema', period: parseInt(match[1]) },
-            indicator2: { name: 'ema', period: parseInt(match[2]) },
-            logic: 'and',
-          })
-          break
-        case 'above':
-          strategy.entryConditions.push({
-            type: 'above',
-            indicator1: { name: 'ema', period: parseInt(match[1]) },
-            indicator2: { name: 'ema', period: parseInt(match[2]) },
-            logic: 'and',
-          })
-          break
-        case 'rsi_below':
-          strategy.entryConditions.push({
-            type: 'below',
-            indicator1: { name: 'rsi', period: 14 },
-            indicator2: parseInt(match[1]),
-            logic: 'and',
-          })
-          break
-        case 'rsi_above':
-          strategy.entryConditions.push({
-            type: 'above',
-            indicator1: { name: 'rsi', period: 14 },
-            indicator2: parseInt(match[1]),
-            logic: 'and',
-          })
-          break
-        case 'macd_cross_up':
-        case 'macd_above_signal':
-          strategy.entryConditions.push({
-            type: type === 'macd_cross_up' ? 'crossover' : 'above',
-            indicator1: { name: 'macd' },
-            indicator2: { name: 'macd_signal' },
-            logic: 'and',
-          })
-          break
-        case 'macd_cross_down':
-        case 'macd_below_signal':
-          strategy.entryConditions.push({
-            type: type === 'macd_cross_down' ? 'crossunder' : 'below',
-            indicator1: { name: 'macd' },
-            indicator2: { name: 'macd_signal' },
-            logic: 'and',
-          })
-          break
-        case 'price_above_ema':
-          strategy.entryConditions.push({
-            type: 'above',
-            indicator1: { name: 'close' },
-            indicator2: { name: 'ema', period: parseInt(match[1]) },
-            logic: 'and',
-          })
-          break
-        case 'price_below_ema':
-          strategy.entryConditions.push({
-            type: 'below',
-            indicator1: { name: 'close' },
-            indicator2: { name: 'ema', period: parseInt(match[1]) },
-            logic: 'and',
-          })
-          break
-        case 'bb_lower_touch':
-          strategy.entryConditions.push({
-            type: 'below',
-            indicator1: { name: 'close' },
-            indicator2: { name: 'bb_lower' },
-            logic: 'and',
-          })
-          break
-        case 'bb_upper_touch':
-          strategy.entryConditions.push({
-            type: 'above',
-            indicator1: { name: 'close' },
-            indicator2: { name: 'bb_upper' },
-            logic: 'and',
-          })
-          break
+      strategy.entryConditions.push({
+        type,
+        indicator1: { name: 'ema', period: parseInt(match[1]) },
+        indicator2: { name: 'ema', period: parseInt(match[2]) },
+        logic: 'and',
+      })
+    }
+  }
+  
+  // ---- RSI CONDITIONS ----
+  const rsiBelow = scriptContent.match(/rsi\s*<\s*(\d+)/gi)
+  if (rsiBelow) {
+    for (const m of rsiBelow) {
+      const val = m.match(/(\d+)/)
+      if (val) {
+        strategy.entryConditions.push({
+          type: 'below',
+          indicator1: { name: 'rsi', period: 14 },
+          indicator2: parseInt(val[1]),
+          logic: 'and',
+        })
       }
     }
   }
   
-  // Parse stop loss
+  const rsiAbove = scriptContent.match(/rsi\s*>\s*(\d+)/gi)
+  if (rsiAbove) {
+    for (const m of rsiAbove) {
+      const val = m.match(/(\d+)/)
+      if (val) {
+        strategy.entryConditions.push({
+          type: 'above',
+          indicator1: { name: 'rsi', period: 14 },
+          indicator2: parseInt(val[1]),
+          logic: 'and',
+        })
+      }
+    }
+  }
+  
+  // ---- MACD CONDITIONS ----
+  if (content.includes('crossover') && content.includes('macd') && content.includes('signal')) {
+    if (content.match(/crossover\s*\(\s*macd.*signal/)) {
+      strategy.entryConditions.push({
+        type: 'crossover',
+        indicator1: { name: 'macd' },
+        indicator2: { name: 'macd_signal' },
+        logic: 'and',
+      })
+    }
+  }
+  if (content.includes('crossunder') && content.includes('macd') && content.includes('signal')) {
+    if (content.match(/crossunder\s*\(\s*macd.*signal/)) {
+      strategy.entryConditions.push({
+        type: 'crossunder',
+        indicator1: { name: 'macd' },
+        indicator2: { name: 'macd_signal' },
+        logic: 'and',
+      })
+    }
+  }
+  
+  // ---- STOP LOSS ----
   const slMatch = scriptContent.match(/stop_?loss\s*[=:]\s*([\d.]+)\s*%?/i) || 
-                  scriptContent.match(/sl\s*[=:]\s*([\d.]+)\s*%?/i) ||
-                  scriptContent.match(/strategy\.exit.*stop\s*=\s*close\s*\*\s*\(1\s*-\s*([\d.]+)\)/i)
+                  scriptContent.match(/sl\s*[=:]\s*([\d.]+)\s*%?/i)
   if (slMatch) {
     const value = parseFloat(slMatch[1])
     strategy.stopLoss = {
       type: 'percent',
-      value: value > 1 ? value : value * 100, // Convert to percentage if decimal
+      value: value > 1 ? value : value * 100,
     }
   }
   
-  // ATR-based stop loss
   const atrSlMatch = scriptContent.match(/stop_?loss\s*=.*atr\s*\*\s*([\d.]+)/i)
   if (atrSlMatch) {
     strategy.stopLoss = {
@@ -485,10 +544,9 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
     }
   }
   
-  // Parse take profit
+  // ---- TAKE PROFIT ----
   const tpMatch = scriptContent.match(/take_?profit\s*[=:]\s*([\d.]+)\s*%?/i) ||
-                  scriptContent.match(/tp\s*[=:]\s*([\d.]+)\s*%?/i) ||
-                  scriptContent.match(/strategy\.exit.*limit\s*=\s*close\s*\*\s*\(1\s*\+\s*([\d.]+)\)/i)
+                  scriptContent.match(/tp\s*[=:]\s*([\d.]+)\s*%?/i)
   if (tpMatch) {
     const value = parseFloat(tpMatch[1])
     strategy.takeProfit = {
@@ -497,7 +555,6 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
     }
   }
   
-  // Risk-reward ratio
   const rrMatch = scriptContent.match(/risk_?reward\s*[=:]\s*([\d.]+)/i) ||
                   scriptContent.match(/rr\s*[=:]\s*([\d.]+)/i)
   if (rrMatch && strategy.stopLoss) {
@@ -507,9 +564,9 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
     }
   }
   
-  // If no conditions parsed, add default EMA crossover strategy
+  // DEFAULT FALLBACK: If no conditions were parsed at all
   if (strategy.entryConditions.length === 0) {
-    // Default: EMA 9 crosses above EMA 21
+    console.log('[PARSER] WARNING: No entry conditions parsed. Using default EMA 9/21 crossover.')
     strategy.entryConditions.push({
       type: 'crossover',
       indicator1: { name: 'ema', period: 9 },
@@ -517,16 +574,15 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
       logic: 'and',
     })
     
-    // Default stop loss: 2%
     if (!strategy.stopLoss) {
       strategy.stopLoss = { type: 'percent', value: 2 }
     }
-    
-    // Default take profit: 4%
     if (!strategy.takeProfit) {
       strategy.takeProfit = { type: 'percent', value: 4 }
     }
   }
+  
+  console.log(`[PARSER] Parsed strategy: ${strategy.entryConditions.length} entry conditions, ${strategy.exitConditions.length} exit conditions, direction=${strategy.direction}`)
   
   return strategy
 }
@@ -543,7 +599,10 @@ function getIndicatorValue(
 ): number | null {
   if (typeof ref === 'number') return ref
   
-  const adjustedIndex = (arr: number[]) => Math.min(index, arr.length - 1)
+  const adjustedIndex = (arr: number[]) => {
+    if (!arr || arr.length === 0) return -1
+    return Math.min(index, arr.length - 1)
+  }
   
   switch (ref.name) {
     case 'close':
@@ -554,42 +613,50 @@ function getIndicatorValue(
       return ohlcv[index]?.high ?? null
     case 'low':
       return ohlcv[index]?.low ?? null
-    case 'ema':
+    case 'ema': {
       const emaPeriod = ref.period || 21
       const emaArr = indicators.ema[emaPeriod]
       if (!emaArr || emaArr.length === 0) return null
-      return emaArr[adjustedIndex(emaArr)]
-    case 'sma':
+      const idx = adjustedIndex(emaArr)
+      return idx >= 0 ? emaArr[idx] : null
+    }
+    case 'sma': {
       const smaPeriod = ref.period || 20
       const smaArr = indicators.sma[smaPeriod]
       if (!smaArr || smaArr.length === 0) return null
-      return smaArr[adjustedIndex(smaArr)]
-    case 'rsi':
+      const idx = adjustedIndex(smaArr)
+      return idx >= 0 ? smaArr[idx] : null
+    }
+    case 'rsi': {
       const rsiArr = indicators.rsi[14]
       if (!rsiArr || rsiArr.length === 0) return null
-      return rsiArr[adjustedIndex(rsiArr)]
+      const idx = adjustedIndex(rsiArr)
+      return idx >= 0 ? rsiArr[idx] : null
+    }
     case 'macd':
-      if (indicators.macd.macd.length === 0) return null
+      if (!indicators.macd.macd || indicators.macd.macd.length === 0) return null
       return indicators.macd.macd[adjustedIndex(indicators.macd.macd)]
     case 'macd_signal':
-      if (indicators.macd.signal.length === 0) return null
+      if (!indicators.macd.signal || indicators.macd.signal.length === 0) return null
       return indicators.macd.signal[adjustedIndex(indicators.macd.signal)]
     case 'macd_histogram':
-      if (indicators.macd.histogram.length === 0) return null
+      if (!indicators.macd.histogram || indicators.macd.histogram.length === 0) return null
       return indicators.macd.histogram[adjustedIndex(indicators.macd.histogram)]
     case 'bb_upper':
-      if (indicators.bb.upper.length === 0) return null
+      if (!indicators.bb.upper || indicators.bb.upper.length === 0) return null
       return indicators.bb.upper[adjustedIndex(indicators.bb.upper)]
     case 'bb_lower':
-      if (indicators.bb.lower.length === 0) return null
+      if (!indicators.bb.lower || indicators.bb.lower.length === 0) return null
       return indicators.bb.lower[adjustedIndex(indicators.bb.lower)]
     case 'bb_middle':
-      if (indicators.bb.middle.length === 0) return null
+      if (!indicators.bb.middle || indicators.bb.middle.length === 0) return null
       return indicators.bb.middle[adjustedIndex(indicators.bb.middle)]
-    case 'atr':
+    case 'atr': {
       const atrArr = indicators.atr[14]
       if (!atrArr || atrArr.length === 0) return null
-      return atrArr[adjustedIndex(atrArr)]
+      const idx = adjustedIndex(atrArr)
+      return idx >= 0 ? atrArr[idx] : null
+    }
     default:
       return null
   }
@@ -604,20 +671,27 @@ function evaluateCondition(
   const val1Current = getIndicatorValue(condition.indicator1, indicators, ohlcv, currentIndex)
   const val2Current = getIndicatorValue(condition.indicator2, indicators, ohlcv, currentIndex)
   
-  if (val1Current === null || val2Current === null) return false
+  if (val1Current === null || val2Current === null) {
+    console.log(`[EVAL] Condition skipped - null values: ${JSON.stringify(condition.indicator1)} = ${val1Current}, ${JSON.stringify(condition.indicator2)} = ${val2Current}`)
+    return false
+  }
   
   switch (condition.type) {
     case 'crossover': {
       const val1Prev = getIndicatorValue(condition.indicator1, indicators, ohlcv, currentIndex - 1)
       const val2Prev = getIndicatorValue(condition.indicator2, indicators, ohlcv, currentIndex - 1)
       if (val1Prev === null || val2Prev === null) return false
-      return val1Prev <= val2Prev && val1Current > val2Current
+      const result = val1Prev <= val2Prev && val1Current > val2Current
+      console.log(`[EVAL] Crossover: prev(${val1Prev.toFixed(2)} <= ${val2Prev.toFixed(2)}) && curr(${val1Current.toFixed(2)} > ${val2Current.toFixed(2)}) = ${result}`)
+      return result
     }
     case 'crossunder': {
       const val1Prev = getIndicatorValue(condition.indicator1, indicators, ohlcv, currentIndex - 1)
       const val2Prev = getIndicatorValue(condition.indicator2, indicators, ohlcv, currentIndex - 1)
       if (val1Prev === null || val2Prev === null) return false
-      return val1Prev >= val2Prev && val1Current < val2Current
+      const result = val1Prev >= val2Prev && val1Current < val2Current
+      console.log(`[EVAL] Crossunder: prev(${val1Prev.toFixed(2)} >= ${val2Prev.toFixed(2)}) && curr(${val1Current.toFixed(2)} < ${val2Current.toFixed(2)}) = ${result}`)
+      return result
     }
     case 'above':
       return val1Current > val2Current
@@ -638,6 +712,8 @@ function evaluateStrategy(
 ): TradeSignal {
   const lastIndex = ohlcv.length - 1
   
+  console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}`)
+  
   // Check entry conditions
   let shouldEnter = strategy.entryConditions.length > 0
   
@@ -651,8 +727,11 @@ function evaluateStrategy(
   }
   
   if (!shouldEnter) {
+    console.log(`[EVAL] No entry signal - conditions not met`)
     return { action: 'NONE', price: currentPrice, reason: 'No entry conditions met' }
   }
+  
+  console.log(`[EVAL] ENTRY SIGNAL DETECTED!`)
   
   // Determine direction
   const action: 'BUY' | 'SELL' = strategy.direction === 'short' ? 'SELL' : 'BUY'
@@ -666,7 +745,7 @@ function evaluateStrategy(
           ? currentPrice * (1 - strategy.stopLoss.value / 100)
           : currentPrice * (1 + strategy.stopLoss.value / 100)
         break
-      case 'atr':
+      case 'atr': {
         const atr = getIndicatorValue({ name: 'atr', period: 14 }, indicators, ohlcv, lastIndex)
         if (atr) {
           stopLoss = action === 'BUY'
@@ -674,6 +753,7 @@ function evaluateStrategy(
             : currentPrice + (atr * strategy.stopLoss.value)
         }
         break
+      }
       case 'fixed':
         stopLoss = action === 'BUY'
           ? currentPrice - strategy.stopLoss.value
@@ -699,7 +779,7 @@ function evaluateStrategy(
             : currentPrice - (riskAmount * strategy.takeProfit.value)
         }
         break
-      case 'atr':
+      case 'atr': {
         const atr = getIndicatorValue({ name: 'atr', period: 14 }, indicators, ohlcv, lastIndex)
         if (atr) {
           takeProfit = action === 'BUY'
@@ -707,6 +787,7 @@ function evaluateStrategy(
             : currentPrice - (atr * strategy.takeProfit.value)
         }
         break
+      }
       case 'fixed':
         takeProfit = action === 'BUY'
           ? currentPrice + strategy.takeProfit.value
@@ -721,14 +802,25 @@ function evaluateStrategy(
     stopLoss,
     takeProfit,
     reason: `Entry conditions met: ${strategy.entryConditions.map(c => 
-      `${typeof c.indicator1 === 'object' ? c.indicator1.name : c.indicator1} ${c.type} ${typeof c.indicator2 === 'object' ? c.indicator2.name : c.indicator2}`
+      `${typeof c.indicator1 === 'object' ? c.indicator1.name + (c.indicator1.period ? `(${c.indicator1.period})` : '') : c.indicator1} ${c.type} ${typeof c.indicator2 === 'object' ? c.indicator2.name + (c.indicator2.period ? `(${c.indicator2.period})` : '') : c.indicator2}`
     ).join(', ')}`,
   }
 }
 
 // ============================================
-// TRADE EXECUTION
+// TRADE EXECUTION (with comprehensive safety)
 // ============================================
+
+// Get candle interval in milliseconds for duplicate detection
+function getIntervalMs(timeframe: string): number {
+  const map: Record<string, number> = {
+    '1m': 60_000, '3m': 180_000, '5m': 300_000, '15m': 900_000,
+    '30m': 1_800_000, '1h': 3_600_000, '2h': 7_200_000, '4h': 14_400_000,
+    '6h': 21_600_000, '8h': 28_800_000, '12h': 43_200_000, '1d': 86_400_000,
+    '3d': 259_200_000, '1w': 604_800_000,
+  }
+  return map[timeframe] || 3_600_000
+}
 
 async function executeTrade(
   supabase: any,
@@ -739,7 +831,9 @@ async function executeTrade(
   timeframe: string
 ): Promise<{ success: boolean; error?: string; tradeId?: string }> {
   try {
-    // Get user profile to check coins and free trades
+    console.log(`[TRADE] Starting execution: user=${userId}, script=${scriptId}, signal=${signal.action} ${symbol} @ ${signal.price}`)
+    
+    // Get user profile
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('coins, bot_enabled, free_trades_remaining')
@@ -747,24 +841,27 @@ async function executeTrade(
       .single()
     
     if (profileError || !profile) {
+      console.error(`[TRADE] Profile fetch failed:`, profileError)
       return { success: false, error: 'Failed to fetch user profile' }
     }
     
     if (!profile.bot_enabled) {
-      return { success: false, error: 'Bot is disabled' }
+      console.log(`[TRADE] Bot disabled for user ${userId}`)
+      return { success: false, error: 'Bot is disabled — enable Trading Bot in Library' }
     }
     
-    // Check if user has free trades OR coins available
-    const hasFreeTradesLeft = (profile.free_trades_remaining ?? 0) > 0
-    const hasCoins = profile.coins > 0
+    // Check credits
+    const freeTradesLeft = profile.free_trades_remaining ?? 0
+    const coins = profile.coins ?? 0
     
-    if (!hasFreeTradesLeft && !hasCoins) {
+    if (freeTradesLeft <= 0 && coins <= 0) {
+      console.log(`[TRADE] No credits: free=${freeTradesLeft}, coins=${coins}`)
       return { success: false, error: 'No free trades or coins remaining' }
     }
     
-    // Check for duplicate trade on same candle
-    const candleTimestamp = new Date()
-    candleTimestamp.setMinutes(0, 0, 0)
+    // Duplicate trade check using actual timeframe interval
+    const intervalMs = getIntervalMs(timeframe)
+    const candleStart = new Date(Math.floor(Date.now() / intervalMs) * intervalMs)
     
     const { data: existingTrade } = await supabase
       .from('trades')
@@ -772,14 +869,15 @@ async function executeTrade(
       .eq('user_id', userId)
       .eq('script_id', scriptId)
       .eq('symbol', symbol)
-      .gte('created_at', candleTimestamp.toISOString())
+      .gte('created_at', candleStart.toISOString())
       .maybeSingle()
     
     if (existingTrade) {
-      return { success: false, error: 'Duplicate trade on same candle' }
+      console.log(`[TRADE] Duplicate trade on same candle, skipping`)
+      return { success: false, error: 'Already traded on this candle' }
     }
     
-    // Get user's API keys
+    // Get API keys
     const { data: apiKeys, error: keysError } = await supabase
       .from('exchange_keys')
       .select('api_key_encrypted, api_secret_encrypted')
@@ -789,21 +887,78 @@ async function executeTrade(
       .maybeSingle()
     
     if (keysError || !apiKeys) {
-      return { success: false, error: 'No Binance API keys configured' }
+      console.log(`[TRADE] No API keys for user ${userId} — recording signal only`)
+      
+      // Still record the signal even if we can't execute
+      const { data: signalRecord } = await supabase
+        .from('signals')
+        .insert({
+          script_id: scriptId,
+          signal_type: signal.action === 'BUY' ? 'BUY' : 'SELL',
+          symbol,
+          timeframe,
+          price: signal.price,
+          stop_loss: signal.stopLoss,
+          take_profit: signal.takeProfit,
+          candle_timestamp: candleStart.toISOString(),
+          processed: false,
+        })
+        .select('id')
+        .maybeSingle()
+      
+      // Record trade as FAILED with clear error
+      await supabase
+        .from('trades')
+        .insert({
+          user_id: userId,
+          script_id: scriptId,
+          signal_id: signalRecord?.id || null,
+          symbol,
+          timeframe,
+          signal_type: signal.action === 'BUY' ? 'BUY' : 'SELL',
+          status: 'FAILED',
+          entry_price: signal.price,
+          stop_loss: signal.stopLoss,
+          take_profit: signal.takeProfit,
+          error_message: 'No Binance API keys configured. Please add your API keys in Settings.',
+          coin_locked: false,
+          coin_consumed: false,
+        })
+      
+      return { success: false, error: 'No Binance API keys configured. Signal was recorded.' }
     }
     
-    // Deduct free trade first, then coins
-    if (hasFreeTradesLeft) {
+    // Deduct credit
+    if (freeTradesLeft > 0) {
+      console.log(`[TRADE] Deducting free trade: ${freeTradesLeft} -> ${freeTradesLeft - 1}`)
       await supabase
         .from('profiles')
-        .update({ free_trades_remaining: (profile.free_trades_remaining ?? 0) - 1 })
+        .update({ free_trades_remaining: freeTradesLeft - 1 })
         .eq('user_id', userId)
     } else {
+      console.log(`[TRADE] Deducting coin: ${coins} -> ${coins - 1}`)
       await supabase
         .from('profiles')
-        .update({ coins: profile.coins - 1 })
+        .update({ coins: coins - 1 })
         .eq('user_id', userId)
     }
+    
+    // Record signal
+    const { data: signalRecord } = await supabase
+      .from('signals')
+      .insert({
+        script_id: scriptId,
+        signal_type: signal.action === 'BUY' ? 'BUY' : 'SELL',
+        symbol,
+        timeframe,
+        price: signal.price,
+        stop_loss: signal.stopLoss,
+        take_profit: signal.takeProfit,
+        candle_timestamp: candleStart.toISOString(),
+        processed: true,
+      })
+      .select('id')
+      .maybeSingle()
     
     // Create pending trade record
     const { data: trade, error: tradeError } = await supabase
@@ -811,9 +966,10 @@ async function executeTrade(
       .insert({
         user_id: userId,
         script_id: scriptId,
+        signal_id: signalRecord?.id || null,
         symbol,
         timeframe,
-        signal_type: signal.action,
+        signal_type: signal.action === 'BUY' ? 'BUY' : 'SELL',
         status: 'PENDING',
         entry_price: signal.price,
         stop_loss: signal.stopLoss,
@@ -825,57 +981,59 @@ async function executeTrade(
       .single()
     
     if (tradeError) {
-      // Refund: free trade or coin
-      if (hasFreeTradesLeft) {
-        await supabase
-          .from('profiles')
-          .update({ free_trades_remaining: (profile.free_trades_remaining ?? 0) })
-          .eq('user_id', userId)
+      console.error(`[TRADE] Failed to create trade record:`, tradeError)
+      // Refund credit
+      if (freeTradesLeft > 0) {
+        await supabase.from('profiles').update({ free_trades_remaining: freeTradesLeft }).eq('user_id', userId)
       } else {
-        await supabase
-          .from('profiles')
-          .update({ coins: profile.coins })
-          .eq('user_id', userId)
+        await supabase.from('profiles').update({ coins: coins }).eq('user_id', userId)
       }
       return { success: false, error: 'Failed to create trade record' }
     }
     
+    console.log(`[TRADE] Trade record created: ${trade.id}`)
+    
     try {
-      // Calculate quantity (using USDT balance)
+      // Get account info and calculate quantity
       const accountInfo = await binanceRequest('/api/v3/account', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted)
       const usdtBalance = accountInfo.balances.find((b: any) => b.asset === 'USDT')
       const availableUSDT = parseFloat(usdtBalance?.free || '0')
       
-      // Use 10% of available balance per trade
-      const tradeAmount = availableUSDT * 0.1
+      console.log(`[TRADE] Available USDT: ${availableUSDT}`)
+      
+      // Use 10% of available balance per trade (safety limit)
+      const tradeAmount = Math.min(availableUSDT * 0.1, 1000) // Cap at $1000 per trade
       const quantity = (tradeAmount / signal.price).toFixed(6)
       
       if (parseFloat(quantity) <= 0) {
-        throw new Error('Insufficient USDT balance')
+        throw new Error(`Insufficient USDT balance (${availableUSDT.toFixed(2)} USDT available)`)
       }
       
-      // Place the order
-      const orderParams: Record<string, string> = {
+      console.log(`[TRADE] Placing ${signal.action} order: ${quantity} ${symbol}`)
+      
+      // Place market order
+      const orderResult = await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
         symbol: symbol,
         side: signal.action,
         type: 'MARKET',
         quantity: quantity,
-      }
+      })
       
-      const orderResult = await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', orderParams)
+      console.log(`[TRADE] Order filled! OrderId: ${orderResult.orderId}`)
       
-      // Update trade with execution details
+      // Update trade as OPEN
+      const fillPrice = parseFloat(orderResult.fills?.[0]?.price || signal.price.toString())
       await supabase
         .from('trades')
         .update({
           status: 'OPEN',
-          entry_price: parseFloat(orderResult.fills?.[0]?.price || signal.price),
+          entry_price: fillPrice,
           opened_at: new Date().toISOString(),
           coin_consumed: true,
         })
         .eq('id', trade.id)
       
-      // Place stop loss order if specified
+      // Place stop loss if specified
       if (signal.stopLoss) {
         try {
           await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
@@ -884,15 +1042,16 @@ async function executeTrade(
             type: 'STOP_LOSS_LIMIT',
             quantity: quantity,
             stopPrice: signal.stopLoss.toFixed(2),
-            price: (signal.stopLoss * 0.995).toFixed(2),
+            price: (signal.stopLoss * (signal.action === 'BUY' ? 0.995 : 1.005)).toFixed(2),
             timeInForce: 'GTC',
           })
+          console.log(`[TRADE] Stop loss placed at ${signal.stopLoss.toFixed(2)}`)
         } catch (slError) {
-          console.log('Stop loss order failed:', slError)
+          console.log('[TRADE] Stop loss order failed (non-critical):', slError)
         }
       }
       
-      // Place take profit order if specified
+      // Place take profit if specified
       if (signal.takeProfit) {
         try {
           await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
@@ -901,43 +1060,41 @@ async function executeTrade(
             type: 'TAKE_PROFIT_LIMIT',
             quantity: quantity,
             stopPrice: signal.takeProfit.toFixed(2),
-            price: (signal.takeProfit * 1.005).toFixed(2),
+            price: (signal.takeProfit * (signal.action === 'BUY' ? 1.005 : 0.995)).toFixed(2),
             timeInForce: 'GTC',
           })
+          console.log(`[TRADE] Take profit placed at ${signal.takeProfit.toFixed(2)}`)
         } catch (tpError) {
-          console.log('Take profit order failed:', tpError)
+          console.log('[TRADE] Take profit order failed (non-critical):', tpError)
         }
       }
       
       return { success: true, tradeId: trade.id }
       
     } catch (execError) {
-      // Update trade as failed
+      console.error(`[TRADE] Execution failed:`, execError)
+      
+      // Update trade as FAILED
       await supabase
         .from('trades')
         .update({
           status: 'FAILED',
-          error_message: execError instanceof Error ? execError.message : 'Unknown error',
+          error_message: execError instanceof Error ? execError.message : 'Unknown execution error',
         })
         .eq('id', trade.id)
       
-      // Refund: free trade or coin
-      if (hasFreeTradesLeft) {
-        await supabase
-          .from('profiles')
-          .update({ free_trades_remaining: (profile.free_trades_remaining ?? 0) })
-          .eq('user_id', userId)
+      // Refund credit
+      if (freeTradesLeft > 0) {
+        await supabase.from('profiles').update({ free_trades_remaining: freeTradesLeft }).eq('user_id', userId)
       } else {
-        await supabase
-          .from('profiles')
-          .update({ coins: profile.coins })
-          .eq('user_id', userId)
+        await supabase.from('profiles').update({ coins: coins }).eq('user_id', userId)
       }
       
       return { success: false, error: execError instanceof Error ? execError.message : 'Trade execution failed' }
     }
     
   } catch (err) {
+    console.error(`[TRADE] Unexpected error:`, err)
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
   }
 }
@@ -959,9 +1116,9 @@ Deno.serve(async (req) => {
     const url = new URL(req.url)
     const action = url.searchParams.get('action') || 'evaluate'
     
-    // Handle different actions
+    console.log(`[ENGINE] Action: ${action}`)
+    
     switch (action) {
-      // Evaluate a single script (for testing)
       case 'evaluate': {
         const body = await req.json()
         const { scriptContent, symbol, timeframe = '1h' } = body
@@ -973,14 +1130,9 @@ Deno.serve(async (req) => {
           )
         }
         
-        // Fetch market data
         const ohlcv = await fetchOHLCV(symbol, timeframe, 200)
         const currentPrice = await getCurrentPrice(symbol)
-        
-        // Calculate indicators
         const indicators = calculateAllIndicators(ohlcv)
-        
-        // Parse and evaluate strategy
         const strategy = parsePineScript(scriptContent)
         const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice)
         
@@ -997,22 +1149,28 @@ Deno.serve(async (req) => {
                 macd: indicators.macd.macd.slice(-3),
                 signal: indicators.macd.signal.slice(-3),
               },
+              bb: {
+                upper: indicators.bb.upper.slice(-3),
+                middle: indicators.bb.middle.slice(-3),
+                lower: indicators.bb.lower.slice(-3),
+              },
             },
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
       
-      // Run engine for all active scripts (scheduled job)
       case 'run': {
+        console.log('[ENGINE] Starting run for all active scripts...')
         const results: any[] = []
         
-        // Get all active scripts with subscribed users
+        // Get all active user_scripts (users who clicked "Run")
         const { data: userScripts, error: scriptsError } = await supabase
           .from('user_scripts')
           .select(`
             script_id,
             user_id,
+            is_active,
             script:pine_scripts (
               id,
               name,
@@ -1025,10 +1183,13 @@ Deno.serve(async (req) => {
           .eq('is_active', true)
         
         if (scriptsError) {
+          console.error('[ENGINE] Failed to fetch user_scripts:', scriptsError)
           throw new Error(`Failed to fetch scripts: ${scriptsError.message}`)
         }
         
-        // Also get user-created scripts
+        console.log(`[ENGINE] Found ${userScripts?.length || 0} active user_scripts`)
+        
+        // Also get user-created scripts that are active
         const { data: createdScripts, error: createdError } = await supabase
           .from('pine_scripts')
           .select('*')
@@ -1036,14 +1197,18 @@ Deno.serve(async (req) => {
           .not('created_by', 'is', null)
         
         if (createdError) {
-          console.log('Error fetching created scripts:', createdError)
+          console.log('[ENGINE] Error fetching user-created scripts:', createdError)
         }
         
-        // Combine and process
-        // For user_scripts (admin/common library scripts): user opted in, don't require global is_active
-        // For user-created scripts: require their own is_active
+        console.log(`[ENGINE] Found ${createdScripts?.length || 0} active user-created scripts`)
+        
+        // Combine all scripts to process
         const allScripts: UserScript[] = [
-          ...(userScripts || []).filter((us: any) => us.script != null),
+          ...(userScripts || []).filter((us: any) => us.script != null).map((us: any) => ({
+            script_id: us.script_id,
+            user_id: us.user_id,
+            script: us.script,
+          })),
           ...(createdScripts || []).map((s: any) => ({
             script_id: s.id,
             user_id: s.created_by,
@@ -1051,12 +1216,26 @@ Deno.serve(async (req) => {
           })),
         ]
         
-        // Group by symbol+timeframe to reduce API calls
+        console.log(`[ENGINE] Total scripts to process: ${allScripts.length}`)
+        
+        if (allScripts.length === 0) {
+          return new Response(
+            JSON.stringify({ 
+              processed: 0,
+              results: [],
+              message: 'No active scripts found. Make sure you clicked "Run" on a script and the Trading Bot is enabled.',
+              timestamp: new Date().toISOString(),
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+        
+        // Group by symbol+timeframe
         const bySymbolTimeframe = new Map<string, UserScript[]>()
         for (const us of allScripts) {
-          const symbol = us.script.symbol
-          const timeframe = us.script.allowed_timeframes?.[0] || '1h'
-          const key = `${symbol}:${timeframe}`
+          const sym = us.script.symbol
+          const tf = us.script.allowed_timeframes?.[0] || '1h'
+          const key = `${sym}:${tf}`
           if (!bySymbolTimeframe.has(key)) {
             bySymbolTimeframe.set(key, [])
           }
@@ -1066,19 +1245,21 @@ Deno.serve(async (req) => {
         // Process each symbol+timeframe combination
         for (const [key, scripts] of bySymbolTimeframe) {
           const [symbol, timeframe] = key.split(':')
+          console.log(`[ENGINE] Processing ${key}: ${scripts.length} scripts`)
+          
           try {
-            // Fetch market data with the correct timeframe
             const ohlcv = await fetchOHLCV(symbol, timeframe, 200)
             const currentPrice = await getCurrentPrice(symbol)
             const indicators = calculateAllIndicators(ohlcv)
             
-            // Evaluate each script
             for (const us of scripts) {
               try {
+                console.log(`[ENGINE] Evaluating script "${us.script.name}" for user ${us.user_id}`)
                 const strategy = parsePineScript(us.script.script_content)
                 const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice)
                 
                 if (signal.action !== 'NONE') {
+                  console.log(`[ENGINE] Signal: ${signal.action} ${symbol} @ ${signal.price}`)
                   const execResult = await executeTrade(
                     supabase,
                     us.user_id,
@@ -1090,6 +1271,7 @@ Deno.serve(async (req) => {
                   
                   results.push({
                     scriptId: us.script_id,
+                    scriptName: us.script.name,
                     userId: us.user_id,
                     symbol,
                     timeframe,
@@ -1101,6 +1283,7 @@ Deno.serve(async (req) => {
                 } else {
                   results.push({
                     scriptId: us.script_id,
+                    scriptName: us.script.name,
                     userId: us.user_id,
                     symbol,
                     timeframe,
@@ -1110,8 +1293,10 @@ Deno.serve(async (req) => {
                   })
                 }
               } catch (scriptErr) {
+                console.error(`[ENGINE] Script error:`, scriptErr)
                 results.push({
                   scriptId: us.script_id,
+                  scriptName: us.script.name,
                   userId: us.user_id,
                   symbol,
                   error: scriptErr instanceof Error ? scriptErr.message : 'Script evaluation failed',
@@ -1119,13 +1304,15 @@ Deno.serve(async (req) => {
               }
             }
           } catch (symbolErr) {
-            console.log(`Error processing symbol ${symbol}:`, symbolErr)
+            console.error(`[ENGINE] Symbol error for ${symbol}:`, symbolErr)
             results.push({
               symbol,
               error: symbolErr instanceof Error ? symbolErr.message : 'Symbol processing failed',
             })
           }
         }
+        
+        console.log(`[ENGINE] Run complete. Processed ${results.length} results.`)
         
         return new Response(
           JSON.stringify({ 
@@ -1137,7 +1324,6 @@ Deno.serve(async (req) => {
         )
       }
       
-      // Parse a script (for debugging)
       case 'parse': {
         const body = await req.json()
         const { scriptContent } = body
@@ -1157,7 +1343,6 @@ Deno.serve(async (req) => {
         )
       }
       
-      // Get indicators for a symbol (for debugging)
       case 'indicators': {
         const symbol = url.searchParams.get('symbol') || 'BTCUSDT'
         const timeframe = url.searchParams.get('timeframe') || '1h'
@@ -1208,7 +1393,7 @@ Deno.serve(async (req) => {
     }
     
   } catch (err) {
-    console.error('Pine Script Engine error:', err)
+    console.error('[ENGINE] Fatal error:', err)
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

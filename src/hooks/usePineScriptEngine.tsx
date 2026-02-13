@@ -72,21 +72,29 @@ interface RunResult {
 async function callPineScriptEngine(action: string, method: string = 'GET', body?: any): Promise<any> {
   const { data: { session } } = await supabase.auth.getSession();
   
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pine-script-engine?action=${action}`,
-    {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token || ''}`,
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    }
-  );
+  const baseUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pine-script-engine`;
+  const url = new URL(baseUrl);
+  
+  // Parse action — might contain additional params like "indicators&symbol=X&timeframe=Y"
+  const parts = action.split('&');
+  url.searchParams.set('action', parts[0]);
+  for (let i = 1; i < parts.length; i++) {
+    const [key, value] = parts[i].split('=');
+    if (key && value) url.searchParams.set(key, value);
+  }
+  
+  const response = await fetch(url.toString(), {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session?.access_token || ''}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
   
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Engine request failed');
+    const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(error.error || `Engine request failed (${response.status})`);
   }
   
   return response.json();
