@@ -308,6 +308,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           email: string | null
+          free_trades_remaining: number
           id: string
           selected_timeframes: string[] | null
           updated_at: string
@@ -319,6 +320,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          free_trades_remaining?: number
           id?: string
           selected_timeframes?: string[] | null
           updated_at?: string
@@ -330,6 +332,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          free_trades_remaining?: number
           id?: string
           selected_timeframes?: string[] | null
           updated_at?: string
