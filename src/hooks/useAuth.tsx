@@ -11,6 +11,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signInWithMagicLink: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   isAdmin: boolean;
 }
@@ -105,18 +106,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string) => {
-    // Ensure verification links never point to the preview host.
-    // Preview-host links can route through a Lovable auth-bridge and show "Access Denied".
-    const getAuthRedirectBaseUrl = () => {
-      const origin = window.location.origin;
-      const hostname = window.location.hostname;
-
-      const isPreviewHost =
-        hostname.endsWith('lovableproject.com') || hostname.startsWith('id-preview--');
-
-      return isPreviewHost ? 'https://pine-scribe-flow.lovable.app' : origin;
-    };
-
     const baseUrl = getAuthRedirectBaseUrl();
     
     const { error } = await supabase.auth.signUp({
@@ -124,6 +113,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
       options: {
         emailRedirectTo: `${baseUrl}/auth?verified=true&email=${encodeURIComponent(email)}`,
+      },
+    });
+    return { error: error as Error | null };
+  };
+
+  const getAuthRedirectBaseUrl = () => {
+    const origin = window.location.origin;
+    const hostname = window.location.hostname;
+    const isPreviewHost =
+      hostname.endsWith('lovableproject.com') || hostname.startsWith('id-preview--');
+    return isPreviewHost ? 'https://pine-scribe-flow.lovable.app' : origin;
+  };
+
+  const signInWithMagicLink = async (email: string) => {
+    const baseUrl = getAuthRedirectBaseUrl();
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${baseUrl}/auth`,
       },
     });
     return { error: error as Error | null };
@@ -143,6 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     signIn,
     signUp,
+    signInWithMagicLink,
     signOut,
     isAdmin: role === 'admin',
   };
