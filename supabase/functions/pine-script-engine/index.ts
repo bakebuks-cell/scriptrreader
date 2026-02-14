@@ -1249,7 +1249,7 @@ async function executeTrade(
       .eq('script_id', scriptId)
       .eq('symbol', symbol)
       .gte('created_at', candleStart.toISOString())
-      .in('status', ['OPEN', 'PENDING', 'CLOSED'])
+      .in('status', ['OPEN', 'PENDING', 'CLOSED', 'FAILED'])
       .maybeSingle()
     
     if (existingTrade) {
