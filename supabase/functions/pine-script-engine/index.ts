@@ -26,6 +26,7 @@ interface IndicatorValues {
   macd: { macd: number[]; signal: number[]; histogram: number[] }
   bb: { upper: number[]; middle: number[]; lower: number[] }
   atr: Record<number, number[]>
+  supertrend: { upper: number[]; lower: number[]; direction: number[] } | null
 }
 
 interface ParsedStrategy {
@@ -38,7 +39,7 @@ interface ParsedStrategy {
 }
 
 interface EntryCondition {
-  type: 'crossover' | 'crossunder' | 'above' | 'below' | 'equals'
+  type: 'crossover' | 'crossunder' | 'above' | 'below' | 'equals' | 'direction_change_up' | 'direction_change_down'
   indicator1: IndicatorRef
   indicator2: IndicatorRef | number
   logic: 'and' | 'or'
@@ -52,7 +53,7 @@ interface ExitCondition {
 }
 
 interface IndicatorRef {
-  name: 'ema' | 'sma' | 'rsi' | 'macd' | 'macd_signal' | 'macd_histogram' | 'bb_upper' | 'bb_lower' | 'bb_middle' | 'close' | 'open' | 'high' | 'low' | 'atr'
+  name: 'ema' | 'sma' | 'rsi' | 'macd' | 'macd_signal' | 'macd_histogram' | 'bb_upper' | 'bb_lower' | 'bb_middle' | 'close' | 'open' | 'high' | 'low' | 'atr' | 'supertrend_direction'
   period?: number
 }
 
@@ -314,6 +315,56 @@ function calculateATR(ohlcv: OHLCV[], period: number = 14): number[] {
   return calculateSMA(trueRanges, period)
 }
 
+function calculateSuperTrend(ohlcv: OHLCV[], atrPeriod: number = 10, multiplier: number = 3.0): { upper: number[]; lower: number[]; direction: number[] } {
+  const atrValues = calculateATR(ohlcv, atrPeriod)
+  if (atrValues.length === 0) return { upper: [], lower: [], direction: [] }
+
+  // ATR array is offset: atrValues[i] corresponds to ohlcv[i + atrPeriod]
+  const atrOffset = atrPeriod
+
+  const upper: number[] = []
+  const lower: number[] = []
+  const direction: number[] = []
+
+  for (let i = 0; i < atrValues.length; i++) {
+    const oi = i + atrOffset // corresponding ohlcv index
+    const hl2 = (ohlcv[oi].high + ohlcv[oi].low) / 2
+    const atr = atrValues[i]
+
+    let basicUp = hl2 - multiplier * atr
+    let basicDn = hl2 + multiplier * atr
+
+    // Adjust bands based on previous values (SuperTrend band logic)
+    if (i > 0) {
+      const prevClose = ohlcv[oi - 1].close
+      const prevUp = upper[i - 1]
+      const prevDn = lower[i - 1]
+      basicUp = prevClose > prevUp ? Math.max(basicUp, prevUp) : basicUp
+      basicDn = prevClose < prevDn ? Math.min(basicDn, prevDn) : basicDn
+    }
+
+    upper.push(basicUp)
+    lower.push(basicDn)
+
+    // Determine trend direction: 1 = bullish, -1 = bearish
+    if (i === 0) {
+      direction.push(1)
+    } else {
+      const prevDir = direction[i - 1]
+      const close = ohlcv[oi].close
+      if (prevDir === -1 && close > lower[i - 1]) {
+        direction.push(1) // flip to bullish
+      } else if (prevDir === 1 && close < upper[i]) {
+        direction.push(-1) // flip to bearish
+      } else {
+        direction.push(prevDir)
+      }
+    }
+  }
+
+  return { upper, lower, direction }
+}
+
 function calculateAllIndicators(ohlcv: OHLCV[]): IndicatorValues {
   const closes = ohlcv.map(c => c.close)
   
@@ -342,6 +393,7 @@ function calculateAllIndicators(ohlcv: OHLCV[]): IndicatorValues {
     atr: {
       14: calculateATR(ohlcv, 14),
     },
+    supertrend: calculateSuperTrend(ohlcv),
   }
 }
 
@@ -450,6 +502,53 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
         indicator2: { name: 'bb_middle' },
         logic: 'and',
       })
+    }
+  }
+  
+  // ---- SUPERTREND DETECTION ----
+  const hasSuperTrend = content.includes('supertrend') || 
+    (content.includes('atr') && content.includes('hl2') && content.includes('trend')) ||
+    (content.includes('buysignal') && content.includes('sellsignal') && content.includes('trend'))
+  
+  if (hasSuperTrend) {
+    console.log('[PARSER] Detected SuperTrend strategy')
+    
+    // Parse ATR period and multiplier from inputs
+    let atrPeriod = 10
+    let multiplier = 3.0
+    const periodMatch = scriptContent.match(/(?:atr\s*period|periods)\s*.*?defval\s*=\s*(\d+)/i)
+    const multMatch = scriptContent.match(/(?:atr\s*multiplier|multiplier)\s*.*?defval\s*=\s*([\d.]+)/i)
+    if (periodMatch) atrPeriod = parseInt(periodMatch[1])
+    if (multMatch) multiplier = parseFloat(multMatch[1])
+    console.log(`[PARSER] SuperTrend params: ATR period=${atrPeriod}, multiplier=${multiplier}`)
+    
+    // Buy signal: trend changes from -1 to 1 (direction_change_up)
+    strategy.entryConditions.push({
+      type: 'direction_change_up',
+      indicator1: { name: 'supertrend_direction' },
+      indicator2: 1,
+      logic: 'and',
+    })
+    console.log('[PARSER] Added SuperTrend entry: direction change up (buy)')
+    
+    // Sell/exit signal: trend changes from 1 to -1 (direction_change_down)
+    strategy.exitConditions.push({
+      type: 'direction_change_down',
+      indicator1: { name: 'supertrend_direction' },
+      indicator2: -1,
+      logic: 'and',
+    })
+    console.log('[PARSER] Added SuperTrend exit: direction change down (sell)')
+    
+    // SuperTrend scripts typically trade both directions
+    strategy.direction = 'both'
+    
+    // Default SL/TP for SuperTrend if not specified
+    if (!strategy.stopLoss) {
+      strategy.stopLoss = { type: 'atr', value: 1.5 }
+    }
+    if (!strategy.takeProfit) {
+      strategy.takeProfit = { type: 'atr', value: 3.0 }
     }
   }
   
@@ -657,6 +756,11 @@ function getIndicatorValue(
       const idx = adjustedIndex(atrArr)
       return idx >= 0 ? atrArr[idx] : null
     }
+    case 'supertrend_direction': {
+      if (!indicators.supertrend || !indicators.supertrend.direction || indicators.supertrend.direction.length === 0) return null
+      const idx = adjustedIndex(indicators.supertrend.direction)
+      return idx >= 0 ? indicators.supertrend.direction[idx] : null
+    }
     default:
       return null
   }
@@ -699,6 +803,22 @@ function evaluateCondition(
       return val1Current < val2Current
     case 'equals':
       return Math.abs(val1Current - val2Current) < 0.0001
+    case 'direction_change_up': {
+      // SuperTrend: current direction is 1 (bullish) and previous was -1 (bearish)
+      const prevDir = getIndicatorValue(condition.indicator1, indicators, ohlcv, currentIndex - 1)
+      if (prevDir === null) return false
+      const result = val1Current === 1 && prevDir === -1
+      console.log(`[EVAL] SuperTrend direction_change_up: prev=${prevDir}, curr=${val1Current} = ${result}`)
+      return result
+    }
+    case 'direction_change_down': {
+      // SuperTrend: current direction is -1 (bearish) and previous was 1 (bullish)
+      const prevDir = getIndicatorValue(condition.indicator1, indicators, ohlcv, currentIndex - 1)
+      if (prevDir === null) return false
+      const result = val1Current === -1 && prevDir === 1
+      console.log(`[EVAL] SuperTrend direction_change_down: prev=${prevDir}, curr=${val1Current} = ${result}`)
+      return result
+    }
     default:
       return false
   }
