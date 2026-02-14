@@ -51,12 +51,22 @@ export function useTrades() {
   const closeAllTradesMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id) throw new Error('Not authenticated');
-      const { error } = await supabase
-        .from('trades')
-        .update({ status: 'CLOSED' as const, closed_at: new Date().toISOString() })
-        .eq('user_id', user.id)
-        .in('status', ['OPEN', 'PENDING']);
-      if (error) throw error;
+      // Call the engine's close-all action to close positions on Binance + update DB
+      const { data: { session } } = await supabase.auth.getSession();
+      const baseUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pine-script-engine?action=close-all`;
+      const response = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({}),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(err.error || 'Failed to close trades');
+      }
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trades', user?.id] });
@@ -97,6 +107,7 @@ export function useAllTrades() {
 
   const closeAllTradesMutation = useMutation({
     mutationFn: async () => {
+      // Admin close-all: just update DB (admin may not have personal API keys)
       const { error } = await supabase
         .from('trades')
         .update({ status: 'CLOSED' as const, closed_at: new Date().toISOString() })
