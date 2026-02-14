@@ -1355,7 +1355,8 @@ async function executeTrade(
       // Update trade as OPEN
       const fillPrice = isSpot 
         ? parseFloat(orderResult.fills?.[0]?.price || signal.price.toString())
-        : parseFloat(orderResult.avgPrice || signal.price.toString())
+        : parseFloat(orderResult.avgPrice || orderResult.price || signal.price.toString()) || signal.price
+      console.log(`[TRADE] Fill price: ${fillPrice} (avgPrice=${orderResult.avgPrice}, price=${orderResult.price})`)
       await supabase
         .from('trades')
         .update({
