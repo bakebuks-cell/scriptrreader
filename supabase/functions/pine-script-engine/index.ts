@@ -572,34 +572,59 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
   }
   
   // ---- RSI CONDITIONS ----
-  const rsiBelow = scriptContent.match(/rsi\s*<\s*(\d+)/gi)
-  if (rsiBelow) {
-    for (const m of rsiBelow) {
-      const val = m.match(/(\d+)/)
-      if (val) {
-        strategy.entryConditions.push({
-          type: 'below',
-          indicator1: { name: 'rsi', period: 14 },
-          indicator2: parseInt(val[1]),
-          logic: 'and',
-        })
-      }
+  // Match patterns like: rsi < 30, rsi > 70, rsiValue > 5, rsi(close, 14) > 70
+  const rsiPatterns = [
+    /rsi\s*\(\s*close\s*,\s*\d+\s*\)\s*[<>]/gi,
+    /rsi\w*\s*[<>]\s*\d+/gi,
+    /rsi\s*[<>]\s*\d+/gi,
+  ]
+  
+  // Check for RSI below condition
+  const rsiBelowPatterns = [
+    /rsi\w*\s*<\s*(\d+)/gi,
+    /rsi\s*\(\s*close\s*,\s*\d+\s*\)\s*<\s*(\d+)/gi,
+  ]
+  for (const pat of rsiBelowPatterns) {
+    let match
+    while ((match = pat.exec(scriptContent)) !== null) {
+      strategy.entryConditions.push({
+        type: 'below',
+        indicator1: { name: 'rsi', period: 14 },
+        indicator2: parseInt(match[1]),
+        logic: 'and',
+      })
+      console.log(`[PARSER] Added RSI below ${match[1]}`)
     }
   }
   
-  const rsiAbove = scriptContent.match(/rsi\s*>\s*(\d+)/gi)
-  if (rsiAbove) {
-    for (const m of rsiAbove) {
-      const val = m.match(/(\d+)/)
-      if (val) {
-        strategy.entryConditions.push({
-          type: 'above',
-          indicator1: { name: 'rsi', period: 14 },
-          indicator2: parseInt(val[1]),
-          logic: 'and',
-        })
-      }
+  // Check for RSI above condition
+  const rsiAbovePatterns = [
+    /rsi\w*\s*>\s*(\d+)/gi,
+    /rsi\s*\(\s*close\s*,\s*\d+\s*\)\s*>\s*(\d+)/gi,
+  ]
+  for (const pat of rsiAbovePatterns) {
+    let match
+    while ((match = pat.exec(scriptContent)) !== null) {
+      strategy.entryConditions.push({
+        type: 'above',
+        indicator1: { name: 'rsi', period: 14 },
+        indicator2: parseInt(match[1]),
+        logic: 'and',
+      })
+      console.log(`[PARSER] Added RSI above ${match[1]}`)
     }
+  }
+  
+  // ---- GENERIC CLOSE COMPARISON (close > N, close < N) ----
+  const closeAboveMatch = scriptContent.match(/close\s*>\s*([\d.]+)/i)
+  if (closeAboveMatch && strategy.entryConditions.length === 0) {
+    strategy.entryConditions.push({
+      type: 'above',
+      indicator1: { name: 'close' },
+      indicator2: parseFloat(closeAboveMatch[1]),
+      logic: 'and',
+    })
+    console.log(`[PARSER] Added close > ${closeAboveMatch[1]}`)
   }
   
   // ---- MACD CONDITIONS ----
