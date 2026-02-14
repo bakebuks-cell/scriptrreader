@@ -148,13 +148,7 @@ export function useRunEngine() {
     mutationFn: async (): Promise<RunResult> => {
       return callPineScriptEngine('run', 'POST');
     },
-    onSuccess: (data) => {
-      const executed = data.results.filter(r => r.executed).length;
-      toast({
-        title: 'Engine Run Complete',
-        description: `Processed ${data.processed} scripts, executed ${executed} trades`,
-      });
-    },
+    // No generic toast here — the calling component handles per-script result display
     onError: (error: Error) => {
       toast({
         title: 'Engine Run Failed',
