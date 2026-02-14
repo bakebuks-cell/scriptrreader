@@ -1187,15 +1187,60 @@ async function executeTrade(
       
       console.log(`[TRADE] Available USDT: ${availableUSDT}`)
       
-      // Use 10% of available balance per trade (safety limit)
-      const tradeAmount = Math.min(availableUSDT * 0.1, 1000) // Cap at $1000 per trade
-      const quantity = (tradeAmount / signal.price).toFixed(6)
-      
-      if (parseFloat(quantity) <= 0) {
-        throw new Error(`Insufficient USDT balance (${availableUSDT.toFixed(2)} USDT available)`)
+      // Fetch exchange info to get LOT_SIZE filter for this symbol
+      let stepSize = 0.001 // safe default
+      let minQty = 0.001
+      let minNotional = 10 // Binance default MIN_NOTIONAL
+      try {
+        const exchangeInfoUrl = `https://api.binance.com/api/v3/exchangeInfo?symbol=${symbol}`
+        const eiResp = await fetch(exchangeInfoUrl)
+        if (eiResp.ok) {
+          const ei = await eiResp.json()
+          const symbolInfo = ei.symbols?.[0]
+          if (symbolInfo) {
+            const lotFilter = symbolInfo.filters?.find((f: any) => f.filterType === 'LOT_SIZE')
+            if (lotFilter) {
+              stepSize = parseFloat(lotFilter.stepSize)
+              minQty = parseFloat(lotFilter.minQty)
+              console.log(`[TRADE] LOT_SIZE: stepSize=${stepSize}, minQty=${minQty}`)
+            }
+            const notionalFilter = symbolInfo.filters?.find((f: any) => f.filterType === 'NOTIONAL' || f.filterType === 'MIN_NOTIONAL')
+            if (notionalFilter) {
+              minNotional = parseFloat(notionalFilter.minNotional || notionalFilter.minNotional || '10')
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`[TRADE] Could not fetch exchange info, using defaults`)
       }
       
-      console.log(`[TRADE] Placing ${signal.action} order: ${quantity} ${symbol}`)
+      // Use 10% of available balance per trade, but at least minNotional + 5% buffer
+      const minRequired = minNotional * 1.05 // 5% buffer above min notional
+      const tradeAmount = Math.max(Math.min(availableUSDT * 0.1, 1000), minRequired)
+      
+      if (availableUSDT < minRequired) {
+        throw new Error(`Insufficient USDT balance (${availableUSDT.toFixed(2)} USDT available, minimum ~${minRequired.toFixed(2)} USDT required)`)
+      }
+      
+      // Calculate quantity and round to stepSize, ensuring notional is met
+      const rawQty = tradeAmount / signal.price
+      const precision = stepSize < 1 ? Math.round(-Math.log10(stepSize)) : 0
+      // Round UP to ensure we meet minNotional after rounding
+      let quantity = (Math.ceil(rawQty / stepSize) * stepSize).toFixed(precision)
+      
+      // Verify notional
+      const notionalValue = parseFloat(quantity) * signal.price
+      console.log(`[TRADE] Quantity=${quantity}, notional=$${notionalValue.toFixed(2)}, minNotional=${minNotional}`)
+      
+      if (parseFloat(quantity) < minQty) {
+        throw new Error(`Calculated quantity ${quantity} below minimum ${minQty} for ${symbol}`)
+      }
+      
+      if (notionalValue > availableUSDT) {
+        throw new Error(`Order value $${notionalValue.toFixed(2)} exceeds available balance $${availableUSDT.toFixed(2)}`)
+      }
+      
+      console.log(`[TRADE] Placing ${signal.action} order: ${quantity} ${symbol} (~$${tradeAmount.toFixed(2)})`)
       
       // Place market order
       const orderResult = await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
