@@ -1181,55 +1181,54 @@ async function executeTrade(
     console.log(`[TRADE] Trade record created: ${trade.id}`)
     
     try {
-      // Get account info and calculate quantity
-      const accountInfo = await binanceRequest('/api/v3/account', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted)
-      const usdtBalance = accountInfo.balances.find((b: any) => b.asset === 'USDT')
-      const availableUSDT = parseFloat(usdtBalance?.free || '0')
+      // ===== USDT-M FUTURES =====
+      // Get futures account balance
+      const futuresBalances = await binanceRequest('/fapi/v2/balance', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'GET', {}, true)
+      const usdtBalance = futuresBalances.find((b: any) => b.asset === 'USDT')
+      const availableUSDT = parseFloat(usdtBalance?.availableBalance || usdtBalance?.balance || '0')
       
-      console.log(`[TRADE] Available USDT: ${availableUSDT}`)
+      console.log(`[TRADE] Available Futures USDT: ${availableUSDT}`)
       
-      // Fetch exchange info to get LOT_SIZE filter for this symbol
-      let stepSize = 0.001 // safe default
+      // Fetch futures exchange info to get LOT_SIZE filter
+      let stepSize = 0.001
       let minQty = 0.001
-      let minNotional = 10 // Binance default MIN_NOTIONAL
+      let minNotional = 5 // Futures default MIN_NOTIONAL is typically 5
       try {
-        const exchangeInfoUrl = `https://api.binance.com/api/v3/exchangeInfo?symbol=${symbol}`
+        const exchangeInfoUrl = `https://fapi.binance.com/fapi/v1/exchangeInfo`
         const eiResp = await fetch(exchangeInfoUrl)
         if (eiResp.ok) {
           const ei = await eiResp.json()
-          const symbolInfo = ei.symbols?.[0]
+          const symbolInfo = ei.symbols?.find((s: any) => s.symbol === symbol)
           if (symbolInfo) {
             const lotFilter = symbolInfo.filters?.find((f: any) => f.filterType === 'LOT_SIZE')
             if (lotFilter) {
               stepSize = parseFloat(lotFilter.stepSize)
               minQty = parseFloat(lotFilter.minQty)
-              console.log(`[TRADE] LOT_SIZE: stepSize=${stepSize}, minQty=${minQty}`)
+              console.log(`[TRADE] Futures LOT_SIZE: stepSize=${stepSize}, minQty=${minQty}`)
             }
-            const notionalFilter = symbolInfo.filters?.find((f: any) => f.filterType === 'NOTIONAL' || f.filterType === 'MIN_NOTIONAL')
+            const notionalFilter = symbolInfo.filters?.find((f: any) => f.filterType === 'MIN_NOTIONAL')
             if (notionalFilter) {
-              minNotional = parseFloat(notionalFilter.minNotional || notionalFilter.minNotional || '10')
+              minNotional = parseFloat(notionalFilter.notional || '5')
             }
           }
         }
       } catch (e) {
-        console.log(`[TRADE] Could not fetch exchange info, using defaults`)
+        console.log(`[TRADE] Could not fetch futures exchange info, using defaults`)
       }
       
       // Use 10% of available balance per trade, but at least minNotional + 5% buffer
-      const minRequired = minNotional * 1.05 // 5% buffer above min notional
+      const minRequired = minNotional * 1.05
       const tradeAmount = Math.max(Math.min(availableUSDT * 0.1, 1000), minRequired)
       
       if (availableUSDT < minRequired) {
-        throw new Error(`Insufficient USDT balance (${availableUSDT.toFixed(2)} USDT available, minimum ~${minRequired.toFixed(2)} USDT required)`)
+        throw new Error(`Insufficient Futures USDT balance (${availableUSDT.toFixed(2)} USDT available, minimum ~${minRequired.toFixed(2)} USDT required)`)
       }
       
-      // Calculate quantity and round to stepSize, ensuring notional is met
+      // Calculate quantity and round to stepSize
       const rawQty = tradeAmount / signal.price
       const precision = stepSize < 1 ? Math.round(-Math.log10(stepSize)) : 0
-      // Round UP to ensure we meet minNotional after rounding
       let quantity = (Math.ceil(rawQty / stepSize) * stepSize).toFixed(precision)
       
-      // Verify notional
       const notionalValue = parseFloat(quantity) * signal.price
       console.log(`[TRADE] Quantity=${quantity}, notional=$${notionalValue.toFixed(2)}, minNotional=${minNotional}`)
       
@@ -1241,20 +1240,20 @@ async function executeTrade(
         throw new Error(`Order value $${notionalValue.toFixed(2)} exceeds available balance $${availableUSDT.toFixed(2)}`)
       }
       
-      console.log(`[TRADE] Placing ${signal.action} order: ${quantity} ${symbol} (~$${tradeAmount.toFixed(2)})`)
+      console.log(`[TRADE] Placing Futures ${signal.action} order: ${quantity} ${symbol} (~$${tradeAmount.toFixed(2)})`)
       
-      // Place market order
-      const orderResult = await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+      // Place futures market order
+      const orderResult = await binanceRequest('/fapi/v1/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
         symbol: symbol,
         side: signal.action,
         type: 'MARKET',
         quantity: quantity,
-      })
+      }, true)
       
-      console.log(`[TRADE] Order filled! OrderId: ${orderResult.orderId}`)
+      console.log(`[TRADE] Futures order filled! OrderId: ${orderResult.orderId}`)
       
       // Update trade as OPEN
-      const fillPrice = parseFloat(orderResult.fills?.[0]?.price || signal.price.toString())
+      const fillPrice = parseFloat(orderResult.avgPrice || signal.price.toString())
       await supabase
         .from('trades')
         .update({
@@ -1265,39 +1264,37 @@ async function executeTrade(
         })
         .eq('id', trade.id)
       
-      // Place stop loss if specified
+      // Place stop loss if specified (futures uses STOP_MARKET)
       if (signal.stopLoss) {
         try {
-          await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+          await binanceRequest('/fapi/v1/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
             symbol: symbol,
             side: signal.action === 'BUY' ? 'SELL' : 'BUY',
-            type: 'STOP_LOSS_LIMIT',
+            type: 'STOP_MARKET',
             quantity: quantity,
             stopPrice: signal.stopLoss.toFixed(2),
-            price: (signal.stopLoss * (signal.action === 'BUY' ? 0.995 : 1.005)).toFixed(2),
-            timeInForce: 'GTC',
-          })
-          console.log(`[TRADE] Stop loss placed at ${signal.stopLoss.toFixed(2)}`)
+            closePosition: 'false',
+          }, true)
+          console.log(`[TRADE] Futures stop loss placed at ${signal.stopLoss.toFixed(2)}`)
         } catch (slError) {
-          console.log('[TRADE] Stop loss order failed (non-critical):', slError)
+          console.log('[TRADE] Futures stop loss order failed (non-critical):', slError)
         }
       }
       
-      // Place take profit if specified
+      // Place take profit if specified (futures uses TAKE_PROFIT_MARKET)
       if (signal.takeProfit) {
         try {
-          await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+          await binanceRequest('/fapi/v1/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
             symbol: symbol,
             side: signal.action === 'BUY' ? 'SELL' : 'BUY',
-            type: 'TAKE_PROFIT_LIMIT',
+            type: 'TAKE_PROFIT_MARKET',
             quantity: quantity,
             stopPrice: signal.takeProfit.toFixed(2),
-            price: (signal.takeProfit * (signal.action === 'BUY' ? 1.005 : 0.995)).toFixed(2),
-            timeInForce: 'GTC',
-          })
-          console.log(`[TRADE] Take profit placed at ${signal.takeProfit.toFixed(2)}`)
+            closePosition: 'false',
+          }, true)
+          console.log(`[TRADE] Futures take profit placed at ${signal.takeProfit.toFixed(2)}`)
         } catch (tpError) {
-          console.log('[TRADE] Take profit order failed (non-critical):', tpError)
+          console.log('[TRADE] Futures take profit order failed (non-critical):', tpError)
         }
       }
       
