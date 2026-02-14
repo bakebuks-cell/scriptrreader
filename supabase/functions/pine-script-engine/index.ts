@@ -882,6 +882,46 @@ function evaluateCondition(
   }
 }
 
+function evaluateExitConditions(
+  strategy: ParsedStrategy,
+  indicators: IndicatorValues,
+  ohlcv: OHLCV[],
+  currentPrice: number
+): { shouldExit: boolean; reason: string } {
+  if (!strategy.exitConditions || strategy.exitConditions.length === 0) {
+    return { shouldExit: false, reason: 'No exit conditions defined' }
+  }
+
+  const lastIndex = ohlcv.length - 1
+  const scanDepth = Math.min(5, lastIndex)
+
+  for (let checkIdx = lastIndex; checkIdx > lastIndex - scanDepth; checkIdx--) {
+    if (checkIdx < 1) break
+    let conditionsMet = strategy.exitConditions.length > 0
+
+    for (const condition of strategy.exitConditions) {
+      const result = evaluateCondition(condition, indicators, ohlcv, checkIdx)
+      if (condition.logic === 'and') {
+        conditionsMet = conditionsMet && result
+      } else {
+        conditionsMet = conditionsMet || result
+      }
+    }
+
+    if (conditionsMet) {
+      console.log(`[EVAL] EXIT signal found at candle index ${checkIdx}`)
+      return {
+        shouldExit: true,
+        reason: `Exit conditions met: ${strategy.exitConditions.map(c =>
+          `${typeof c.indicator1 === 'object' ? c.indicator1.name + (c.indicator1.period ? `(${c.indicator1.period})` : '') : c.indicator1} ${c.type} ${typeof c.indicator2 === 'object' ? c.indicator2.name + (c.indicator2.period ? `(${c.indicator2.period})` : '') : c.indicator2}`
+        ).join(', ')}`,
+      }
+    }
+  }
+
+  return { shouldExit: false, reason: 'Exit conditions not met' }
+}
+
 function evaluateStrategy(
   strategy: ParsedStrategy,
   indicators: IndicatorValues,
@@ -1002,6 +1042,151 @@ function evaluateStrategy(
 // ============================================
 // TRADE EXECUTION (with comprehensive safety)
 // ============================================
+
+// ============================================
+// TRADE CLOSING (auto-close based on exit conditions)
+// ============================================
+
+async function closeOpenTrade(
+  supabase: any,
+  trade: { id: string; user_id: string; script_id: string; symbol: string; signal_type: string; entry_price: number },
+  currentPrice: number,
+  marketType: string,
+  reason: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log(`[CLOSE] Closing trade ${trade.id}: ${trade.symbol} entry=${trade.entry_price} exit=${currentPrice} reason=${reason}`)
+
+    // Get API keys
+    const { data: apiKeys } = await supabase
+      .from('wallets')
+      .select('api_key_encrypted, api_secret_encrypted')
+      .eq('user_id', trade.user_id)
+      .eq('is_active', true)
+      .not('api_key_encrypted', 'is', null)
+      .not('api_secret_encrypted', 'is', null)
+      .limit(1)
+      .maybeSingle()
+
+    if (!apiKeys) {
+      // Try legacy table
+      const { data: legacyKeys } = await supabase
+        .from('exchange_keys')
+        .select('api_key_encrypted, api_secret_encrypted')
+        .eq('user_id', trade.user_id)
+        .eq('exchange', 'binance')
+        .eq('is_active', true)
+        .maybeSingle()
+      
+      if (!legacyKeys) {
+        // No API keys — just mark as closed in DB
+        await supabase.from('trades').update({
+          status: 'CLOSED',
+          exit_price: currentPrice,
+          closed_at: new Date().toISOString(),
+          error_message: 'Closed by exit signal (no API keys to execute on exchange)',
+        }).eq('id', trade.id)
+        return { success: true }
+      }
+      Object.assign(apiKeys || {}, legacyKeys)
+    }
+
+    const keys = apiKeys!
+    const isSpot = marketType === 'spot'
+    const isCoinM = marketType === 'coin_margin'
+    const closeSide = trade.signal_type === 'BUY' ? 'SELL' : 'BUY'
+
+    // Get current position to determine quantity
+    let closeQty: string | undefined
+    try {
+      if (isSpot) {
+        // For spot, get the asset balance
+        const baseAsset = trade.symbol.replace('USDT', '').replace('BUSD', '')
+        const accountInfo = await binanceRequest('/api/v3/account', keys.api_key_encrypted, keys.api_secret_encrypted)
+        const assetBalance = accountInfo.balances?.find((b: any) => b.asset === baseAsset)
+        if (assetBalance && parseFloat(assetBalance.free) > 0) {
+          closeQty = assetBalance.free
+        }
+      } else if (isCoinM) {
+        const positions = await binanceCoinMRequest('/dapi/v1/positionRisk', keys.api_key_encrypted, keys.api_secret_encrypted)
+        const pos = positions.find((p: any) => p.symbol === trade.symbol && parseFloat(p.positionAmt) !== 0)
+        if (pos) {
+          closeQty = Math.abs(parseFloat(pos.positionAmt)).toString()
+        }
+      } else {
+        // USDT-M futures
+        const positions = await binanceRequest('/fapi/v2/positionRisk', keys.api_key_encrypted, keys.api_secret_encrypted, 'GET', {}, true)
+        const pos = positions.find((p: any) => p.symbol === trade.symbol && parseFloat(p.positionAmt) !== 0)
+        if (pos) {
+          closeQty = Math.abs(parseFloat(pos.positionAmt)).toString()
+        }
+      }
+    } catch (posErr) {
+      console.log(`[CLOSE] Could not fetch position:`, posErr)
+    }
+
+    if (!closeQty || parseFloat(closeQty) === 0) {
+      console.log(`[CLOSE] No open position found on exchange for ${trade.symbol}, marking closed in DB`)
+      await supabase.from('trades').update({
+        status: 'CLOSED',
+        exit_price: currentPrice,
+        closed_at: new Date().toISOString(),
+      }).eq('id', trade.id)
+      return { success: true }
+    }
+
+    // Place closing order
+    let orderEndpoint: string
+    if (isSpot) {
+      orderEndpoint = '/api/v3/order'
+    } else if (isCoinM) {
+      orderEndpoint = '/dapi/v1/order'
+    } else {
+      orderEndpoint = '/fapi/v1/order'
+    }
+
+    const orderParams: Record<string, string> = {
+      symbol: trade.symbol,
+      side: closeSide,
+      type: 'MARKET',
+      quantity: closeQty,
+    }
+
+    // For futures, add reduceOnly
+    if (!isSpot) {
+      orderParams.reduceOnly = 'true'
+    }
+
+    const useFuturesBase = !isSpot && !isCoinM
+    const orderResult = isCoinM
+      ? await binanceCoinMRequest(orderEndpoint, keys.api_key_encrypted, keys.api_secret_encrypted, 'POST', orderParams)
+      : await binanceRequest(orderEndpoint, keys.api_key_encrypted, keys.api_secret_encrypted, 'POST', orderParams, useFuturesBase)
+
+    const exitPrice = isSpot
+      ? parseFloat(orderResult.fills?.[0]?.price || currentPrice.toString())
+      : parseFloat(orderResult.avgPrice || orderResult.price || currentPrice.toString()) || currentPrice
+
+    console.log(`[CLOSE] Order filled! Exit price: ${exitPrice}`)
+
+    await supabase.from('trades').update({
+      status: 'CLOSED',
+      exit_price: exitPrice,
+      closed_at: new Date().toISOString(),
+    }).eq('id', trade.id)
+
+    return { success: true }
+  } catch (err) {
+    console.error(`[CLOSE] Failed to close trade ${trade.id}:`, err)
+    // Still mark as closed in DB to prevent stuck trades
+    await supabase.from('trades').update({
+      status: 'CLOSED',
+      exit_price: currentPrice,
+      closed_at: new Date().toISOString(),
+      error_message: `Auto-close failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+    }).eq('id', trade.id)
+    return { success: false, error: err instanceof Error ? err.message : 'Close failed' }
+  }
+}
 
 // Get candle interval in milliseconds for duplicate detection
 function getIntervalMs(timeframe: string): number {
@@ -1634,12 +1819,67 @@ Deno.serve(async (req) => {
               try {
                 console.log(`[ENGINE] Evaluating script "${us.script.name}" for user ${us.user_id}`)
                 const strategy = parsePineScript(us.script.script_content)
+                const scriptMarketType = us.script.market_type || 'futures'
+                const scriptLeverage = us.script.leverage || 1
+
+                // ===== CHECK FOR OPEN TRADES TO CLOSE =====
+                const { data: openTrades } = await supabase
+                  .from('trades')
+                  .select('id, user_id, script_id, symbol, signal_type, entry_price')
+                  .eq('user_id', us.user_id)
+                  .eq('script_id', us.script_id)
+                  .eq('symbol', symbol)
+                  .eq('status', 'OPEN')
+
+                if (openTrades && openTrades.length > 0) {
+                  console.log(`[ENGINE] Found ${openTrades.length} open trade(s) for user ${us.user_id}, checking exit conditions`)
+                  
+                  const exitResult = evaluateExitConditions(strategy, indicators, ohlcv, currentPrice)
+                  
+                  if (exitResult.shouldExit) {
+                    console.log(`[ENGINE] EXIT signal detected: ${exitResult.reason}`)
+                    for (const openTrade of openTrades) {
+                      const closeResult = await closeOpenTrade(
+                        supabase,
+                        openTrade,
+                        currentPrice,
+                        scriptMarketType,
+                        exitResult.reason
+                      )
+                      results.push({
+                        scriptId: us.script_id,
+                        scriptName: us.script.name,
+                        userId: us.user_id,
+                        symbol,
+                        timeframe,
+                        action: 'CLOSE',
+                        tradeId: openTrade.id,
+                        executed: closeResult.success,
+                        error: closeResult.error,
+                        reason: exitResult.reason,
+                      })
+                    }
+                    continue // Don't open new trade on same candle as close
+                  } else {
+                    console.log(`[ENGINE] Open trade exists, exit conditions not met — skipping entry`)
+                    results.push({
+                      scriptId: us.script_id,
+                      scriptName: us.script.name,
+                      userId: us.user_id,
+                      symbol,
+                      timeframe,
+                      executed: false,
+                      reason: 'Open trade exists, exit conditions not yet met',
+                    })
+                    continue // Don't open another trade while one is already open
+                  }
+                }
+
+                // ===== EVALUATE ENTRY =====
                 const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice)
                 
                 if (signal.action !== 'NONE') {
                   console.log(`[ENGINE] Signal: ${signal.action} ${symbol} @ ${signal.price}`)
-                  const scriptMarketType = us.script.market_type || 'futures'
-                  const scriptLeverage = us.script.leverage || 1
                   const execResult = await executeTrade(
                     supabase,
                     us.user_id,
