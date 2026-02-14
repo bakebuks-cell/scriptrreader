@@ -760,7 +760,10 @@ export default function PineScriptEditor({
                   // Step 1: Deactivate the script
                   await onToggleActivation(selectedScript.id, false);
 
-                  // Step 2: Close all OPEN/PENDING trades for this script in the database
+                  // Step 2: Optimistically update local state so Run button appears immediately
+                  setSelectedScript((prev: any) => prev ? { ...prev, is_active: false, user_is_active: false } : prev);
+                  setFormData(prev => ({ ...prev, is_active: false }));
+                  // Step 3: Close all OPEN/PENDING trades for this script in the database
                   const { data: openTrades, error: fetchErr } = await supabase
                     .from('trades')
                     .select('id')
