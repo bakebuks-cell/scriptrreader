@@ -1972,6 +1972,79 @@ Deno.serve(async (req) => {
         )
       }
       
+      case 'close-all': {
+        // Close all OPEN/PENDING trades for a user (optionally filtered by script_id)
+        // Also closes positions on Binance
+        const authHeader = req.headers.get('Authorization')
+        if (!authHeader) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+
+        // Get user from JWT
+        const token = authHeader.replace('Bearer ', '')
+        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token)
+        if (authError || !authUser) {
+          return new Response(JSON.stringify({ error: 'Invalid token' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+
+        const closeBody = req.method === 'POST' ? await req.json().catch(() => ({})) : {}
+        const scriptIdFilter = closeBody.script_id || null
+        const userId = authUser.id
+
+        console.log(`[CLOSE-ALL] User ${userId}, scriptFilter=${scriptIdFilter}`)
+
+        // Get open trades
+        let tradesQuery = supabase
+          .from('trades')
+          .select('id, user_id, script_id, symbol, signal_type, entry_price, timeframe')
+          .eq('user_id', userId)
+          .in('status', ['OPEN', 'PENDING'])
+
+        if (scriptIdFilter) {
+          tradesQuery = tradesQuery.eq('script_id', scriptIdFilter)
+        }
+
+        const { data: openTrades, error: tradesErr } = await tradesQuery
+
+        if (tradesErr) {
+          return new Response(JSON.stringify({ error: tradesErr.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+
+        if (!openTrades || openTrades.length === 0) {
+          return new Response(JSON.stringify({ closed: 0, message: 'No open trades to close' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+
+        console.log(`[CLOSE-ALL] Found ${openTrades.length} open trade(s) to close`)
+
+        // Get the script's market_type for each trade
+        const scriptIds = [...new Set(openTrades.map(t => t.script_id).filter(Boolean))]
+        const { data: scripts } = await supabase
+          .from('pine_scripts')
+          .select('id, market_type')
+          .in('id', scriptIds)
+
+        const scriptMap: Record<string, string> = {}
+        for (const s of (scripts || [])) {
+          scriptMap[s.id] = s.market_type || 'futures'
+        }
+
+        const closeResults: any[] = []
+        for (const trade of openTrades) {
+          const marketType = trade.script_id ? (scriptMap[trade.script_id] || 'futures') : 'futures'
+          const currentPrice = await getCurrentPrice(trade.symbol).catch(() => 0)
+          const result = await closeOpenTrade(supabase, trade as any, currentPrice, marketType, 'Manual close by user')
+          closeResults.push({ tradeId: trade.id, symbol: trade.symbol, ...result })
+        }
+
+        const successCount = closeResults.filter(r => r.success).length
+        console.log(`[CLOSE-ALL] Closed ${successCount}/${openTrades.length} trades`)
+
+        return new Response(
+          JSON.stringify({ closed: successCount, total: openTrades.length, results: closeResults }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
       case 'parse': {
         const body = await req.json()
         const { scriptContent } = body

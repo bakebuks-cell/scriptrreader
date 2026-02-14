@@ -112,7 +112,7 @@ export default function PineScriptEditor({
     description: '',
     symbols: ['BTCUSDT'] as string[],
     script_content: DEFAULT_PINE_SCRIPT,
-    allowed_timeframes: ['1h'],
+      allowed_timeframes: ['1m'],
     is_active: false,
   });
 
@@ -153,7 +153,7 @@ export default function PineScriptEditor({
       description: '',
       symbols: ['BTCUSDT'],
       script_content: DEFAULT_PINE_SCRIPT,
-      allowed_timeframes: ['1h'],
+      allowed_timeframes: ['1m'],
       is_active: false,
     });
     setBotConfig(DEFAULT_BOT_CONFIG);
@@ -763,31 +763,30 @@ export default function PineScriptEditor({
                   // Step 2: Optimistically update local state so Run button appears immediately
                   setSelectedScript((prev: any) => prev ? { ...prev, is_active: false, user_is_active: false } : prev);
                   setFormData(prev => ({ ...prev, is_active: false }));
-                  // Step 3: Close all OPEN/PENDING trades for this script in the database
-                  const { data: openTrades, error: fetchErr } = await supabase
-                    .from('trades')
-                    .select('id')
-                    .eq('user_id', user.id)
-                    .eq('script_id', selectedScript.id)
-                    .in('status', ['OPEN', 'PENDING']);
+                  // Step 3: Close all OPEN/PENDING trades for this script on Binance + DB
+                   const { data: { session } } = await supabase.auth.getSession();
+                   const closeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pine-script-engine?action=close-all`;
+                   const closeResponse = await fetch(closeUrl, {
+                     method: 'POST',
+                     headers: {
+                       'Content-Type': 'application/json',
+                       'Authorization': `Bearer ${session?.access_token || ''}`,
+                     },
+                     body: JSON.stringify({ script_id: selectedScript.id }),
+                   });
+                   const closeResult = await closeResponse.json().catch(() => ({}));
 
-                  if (!fetchErr && openTrades && openTrades.length > 0) {
-                    const tradeIds = openTrades.map(t => t.id);
-                    await supabase
-                      .from('trades')
-                      .update({ status: 'CLOSED' as const, closed_at: new Date().toISOString() })
-                      .in('id', tradeIds);
-
-                    toast({
-                      title: 'Bot Stopped',
-                      description: `"${selectedScript.name}" stopped and ${openTrades.length} trade(s) closed.`,
-                    });
-                  } else {
-                    toast({
-                      title: 'Bot Stopped',
-                      description: `"${selectedScript.name}" has been stopped. No active trades to close.`,
-                    });
-                  }
+                   if (closeResult.closed > 0) {
+                     toast({
+                       title: 'Bot Stopped',
+                       description: `"${selectedScript.name}" stopped and ${closeResult.closed} trade(s) closed on exchange.`,
+                     });
+                   } else {
+                     toast({
+                       title: 'Bot Stopped',
+                       description: `"${selectedScript.name}" has been stopped. No active trades to close.`,
+                     });
+                   }
                 } catch (err: any) {
                   toast({
                     title: 'Error',
