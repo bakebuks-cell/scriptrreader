@@ -616,9 +616,9 @@ export default function PineScriptEditor({
                             // Step 2: Actually run the engine to evaluate and execute trades
                             const result = await runEngine.mutateAsync();
                             
-                            // Step 3: Show detailed results
+                            // Step 3: Show detailed results (filter to current user + script only)
                             const scriptResults = result.results.filter(
-                              (r: any) => r.scriptId === selectedScript.id
+                              (r: any) => r.scriptId === selectedScript.id && r.userId === user?.id
                             );
                             
                             if (scriptResults.length === 0) {
