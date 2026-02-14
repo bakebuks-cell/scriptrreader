@@ -1202,7 +1202,9 @@ Deno.serve(async (req) => {
       }
       
       case 'run': {
-        console.log('[ENGINE] Starting run for all active scripts...')
+        // Optional timeframe filter from cron or manual call
+        const targetTimeframe = url.searchParams.get('timeframe') || null
+        console.log(`[ENGINE] Starting run${targetTimeframe ? ` for timeframe=${targetTimeframe}` : ' for all active scripts'}...`)
         const results: any[] = []
         
         // Get all active user_scripts (users who clicked "Run")
@@ -1259,15 +1261,26 @@ Deno.serve(async (req) => {
           })),
         ]
         
-        console.log(`[ENGINE] Total scripts to process: ${allScripts.length}`)
+        // Filter by target timeframe if specified (from cron job)
+        const filteredScripts = targetTimeframe
+          ? allScripts.filter((s: any) => {
+              const scriptTf = s.script.allowed_timeframes?.[0] || '1h'
+              return scriptTf === targetTimeframe
+            })
+          : allScripts
         
-        if (allScripts.length === 0) {
+        console.log(`[ENGINE] Total scripts: ${allScripts.length}, after timeframe filter: ${filteredScripts.length}`)
+        
+        if (filteredScripts.length === 0) {
           return new Response(
             JSON.stringify({ 
               processed: 0,
               results: [],
-              message: 'No active scripts found. Make sure you clicked "Run" on a script and the Trading Bot is enabled.',
+              message: targetTimeframe 
+                ? `No active scripts found for timeframe ${targetTimeframe}.`
+                : 'No active scripts found. Make sure you clicked "Run" on a script and the Trading Bot is enabled.',
               timestamp: new Date().toISOString(),
+              timeframeFilter: targetTimeframe,
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
@@ -1275,7 +1288,7 @@ Deno.serve(async (req) => {
         
         // Group by symbol+timeframe
         const bySymbolTimeframe: Record<string, any[]> = {}
-        for (const us of allScripts) {
+        for (const us of filteredScripts) {
           const sym = us.script.symbol
           const tf = us.script.allowed_timeframes?.[0] || '1h'
           const key = `${sym}:${tf}`
