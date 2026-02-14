@@ -1734,6 +1734,7 @@ Deno.serve(async (req) => {
             script_id,
             user_id,
             is_active,
+            settings_json,
             script:pine_scripts (
               id,
               name,
@@ -1771,11 +1772,20 @@ Deno.serve(async (req) => {
         
         // Combine all scripts to process
         const allScripts: any[] = [
-          ...(userScripts || []).filter((us: any) => us.script != null).map((us: any) => ({
-            script_id: us.script_id,
-            user_id: us.user_id,
-            script: us.script,
-          })),
+          ...(userScripts || []).filter((us: any) => us.script != null).map((us: any) => {
+            // Apply user-specific overrides from settings_json
+            const userSettings = us.settings_json || {}
+            const mergedScript = { ...us.script }
+            if (userSettings.leverage !== undefined) mergedScript.leverage = userSettings.leverage
+            if (userSettings.market_type !== undefined) mergedScript.market_type = userSettings.market_type
+            if (userSettings.allowed_timeframes !== undefined) mergedScript.allowed_timeframes = userSettings.allowed_timeframes
+            if (userSettings.trading_pairs !== undefined) mergedScript.symbol = userSettings.trading_pairs[0] || mergedScript.symbol
+            return {
+              script_id: us.script_id,
+              user_id: us.user_id,
+              script: mergedScript,
+            }
+          }),
           ...(createdScripts || []).map((s: any) => ({
             script_id: s.id,
             user_id: s.created_by,

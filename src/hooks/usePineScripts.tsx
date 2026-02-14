@@ -97,8 +97,18 @@ export function usePineScripts() {
     .filter(s => s.admin_tag !== null && s.created_by !== user?.id)
     .map(s => {
       const userRecord = userScriptRecords?.find(us => us.script_id === s.id);
+      // Apply user-specific overrides from settings_json
+      const userSettings = (userRecord as any)?.settings_json || {};
       return {
         ...s,
+        // Override with user settings if they exist
+        ...(userSettings.leverage !== undefined && { leverage: userSettings.leverage }),
+        ...(userSettings.trading_pairs !== undefined && { trading_pairs: userSettings.trading_pairs }),
+        ...(userSettings.allowed_timeframes !== undefined && { allowed_timeframes: userSettings.allowed_timeframes }),
+        ...(userSettings.market_type !== undefined && { market_type: userSettings.market_type }),
+        ...(userSettings.position_size_value !== undefined && { position_size_value: userSettings.position_size_value }),
+        ...(userSettings.max_capital !== undefined && { max_capital: userSettings.max_capital }),
+        ...(userSettings.max_trades_per_day !== undefined && { max_trades_per_day: userSettings.max_trades_per_day }),
         user_is_active: userRecord?.is_active ?? false,
         user_script_id: userRecord?.id ?? null,
       };
@@ -159,6 +169,41 @@ export function usePineScripts() {
 
   const updateScript = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<PineScript> & { id: string }) => {
+      if (!user?.id) throw new Error('Not authenticated');
+      
+      const script = scripts?.find(s => s.id === id);
+      
+      // For admin/common scripts, save user-customizable settings to user_scripts.settings_json
+      if (script && script.admin_tag !== null && script.created_by !== user.id) {
+        const userSettings: Record<string, any> = {};
+        if (updates.leverage !== undefined) userSettings.leverage = updates.leverage;
+        if (updates.trading_pairs !== undefined) userSettings.trading_pairs = updates.trading_pairs;
+        if (updates.allowed_timeframes !== undefined) userSettings.allowed_timeframes = updates.allowed_timeframes;
+        if (updates.market_type !== undefined) userSettings.market_type = updates.market_type;
+        if (updates.position_size_value !== undefined) userSettings.position_size_value = updates.position_size_value;
+        if (updates.max_capital !== undefined) userSettings.max_capital = updates.max_capital;
+        if (updates.max_trades_per_day !== undefined) userSettings.max_trades_per_day = updates.max_trades_per_day;
+
+        const existingRecord = userScriptRecords?.find(us => us.script_id === id);
+        if (existingRecord) {
+          // Merge with existing settings
+          const mergedSettings = { ...((existingRecord as any).settings_json || {}), ...userSettings };
+          const { error } = await supabase
+            .from('user_scripts')
+            .update({ settings_json: mergedSettings })
+            .eq('id', existingRecord.id);
+          if (error) throw new Error(error.message);
+        } else {
+          // Create user_scripts record with settings
+          const { error } = await supabase
+            .from('user_scripts')
+            .insert({ user_id: user.id, script_id: id, is_active: false, settings_json: userSettings });
+          if (error) throw new Error(error.message);
+        }
+        return { ...script, ...userSettings } as PineScript;
+      }
+
+      // For own scripts, update pine_scripts directly
       const cleanUpdates: Record<string, any> = {};
       if (updates.name !== undefined) cleanUpdates.name = updates.name;
       if (updates.description !== undefined) cleanUpdates.description = updates.description || null;
@@ -195,6 +240,7 @@ export function usePineScripts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['user-scripts', user?.id] });
     },
   });
 
