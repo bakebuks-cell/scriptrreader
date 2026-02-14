@@ -6,8 +6,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Shield, Power } from 'lucide-react';
 import { AVAILABLE_TIMEFRAMES, MAX_SYMBOLS_PER_SCRIPT } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
@@ -17,6 +18,7 @@ import BotConfigForm, { BotConfig } from '@/components/bot/BotConfigForm';
 import PineScriptActions from '@/components/PineScriptActions';
 import SymbolMultiSelect from '@/components/SymbolMultiSelect';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 
 interface PineScript {
   id: string;
@@ -103,7 +105,8 @@ export default function PineScriptEditor({
   const evaluateScript = useEvaluateScript();
   const runEngine = useRunEngine();
   const [isRunning, setIsRunning] = useState(false);
-  
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -590,19 +593,16 @@ export default function PineScriptEditor({
                     return currentActive ? (
                       <Button 
                         variant="outline"
-                        onClick={async () => {
-                          await onToggleActivation(selectedScript.id, false);
-                          toast({ title: 'Bot Stopped', description: `"${selectedScript.name}" has been stopped` });
-                        }}
-                        disabled={isToggling || isRunning}
+                        onClick={() => setShowStopConfirm(true)}
+                        disabled={isToggling || isRunning || isStopping}
                         className="gap-2 border-destructive/50 text-destructive hover:bg-destructive/10"
                       >
-                        {isToggling ? (
+                        {(isToggling || isStopping) ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           <Pause className="h-4 w-4" />
                         )}
-                        {isToggling ? 'Stopping...' : 'Stop'}
+                        {isStopping ? 'Closing Trades...' : isToggling ? 'Stopping...' : 'Stop'}
                       </Button>
                     ) : (
                       <Button 
@@ -729,6 +729,71 @@ export default function PineScriptEditor({
           </CardContent>
         </Card>
       </div>
+
+      {/* Stop Bot Confirmation Dialog */}
+      <AlertDialog open={showStopConfirm} onOpenChange={setShowStopConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop Bot & Close All Trades?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Stopping the bot will close all existing open trades for "{selectedScript?.name}". 
+              This action will place market orders to close any active positions on the exchange. 
+              Are you sure you want to proceed?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!selectedScript || !onToggleActivation || !user) return;
+                setIsStopping(true);
+                setShowStopConfirm(false);
+                try {
+                  // Step 1: Deactivate the script
+                  await onToggleActivation(selectedScript.id, false);
+
+                  // Step 2: Close all OPEN/PENDING trades for this script
+                  const { data: openTrades, error: fetchErr } = await supabase
+                    .from('trades')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .eq('script_id', selectedScript.id)
+                    .in('status', ['OPEN', 'PENDING']);
+
+                  if (!fetchErr && openTrades && openTrades.length > 0) {
+                    const tradeIds = openTrades.map(t => t.id);
+                    await supabase
+                      .from('trades')
+                      .update({ status: 'CLOSED' as const, closed_at: new Date().toISOString() })
+                      .in('id', tradeIds);
+
+                    toast({
+                      title: 'Bot Stopped',
+                      description: `"${selectedScript.name}" stopped and ${openTrades.length} trade(s) closed.`,
+                    });
+                  } else {
+                    toast({
+                      title: 'Bot Stopped',
+                      description: `"${selectedScript.name}" has been stopped. No active trades to close.`,
+                    });
+                  }
+                } catch (err: any) {
+                  toast({
+                    title: 'Error',
+                    description: err.message || 'Failed to stop bot',
+                    variant: 'destructive',
+                  });
+                } finally {
+                  setIsStopping(false);
+                }
+              }}
+            >
+              Stop & Close Trades
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
