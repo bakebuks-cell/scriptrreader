@@ -731,29 +731,36 @@ export default function PineScriptEditor({
       </div>
 
       {/* Stop Bot Confirmation Dialog */}
-      <AlertDialog open={showStopConfirm} onOpenChange={setShowStopConfirm}>
+      <AlertDialog open={showStopConfirm} onOpenChange={(open) => {
+        if (!isStopping) setShowStopConfirm(open);
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Stop Bot & Close All Trades?</AlertDialogTitle>
             <AlertDialogDescription>
-              Stopping the bot will close all existing open trades for "{selectedScript?.name}". 
-              This action will place market orders to close any active positions on the exchange. 
+              Stopping the bot will deactivate the script and close all existing open trades for &quot;{selectedScript?.name}&quot; in the database.
               Are you sure you want to proceed?
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowStopConfirm(false)}
+              disabled={isStopping}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={isStopping}
               onClick={async () => {
                 if (!selectedScript || !onToggleActivation || !user) return;
                 setIsStopping(true);
-                setShowStopConfirm(false);
                 try {
                   // Step 1: Deactivate the script
                   await onToggleActivation(selectedScript.id, false);
 
-                  // Step 2: Close all OPEN/PENDING trades for this script
+                  // Step 2: Close all OPEN/PENDING trades for this script in the database
                   const { data: openTrades, error: fetchErr } = await supabase
                     .from('trades')
                     .select('id')
@@ -786,12 +793,20 @@ export default function PineScriptEditor({
                   });
                 } finally {
                   setIsStopping(false);
+                  setShowStopConfirm(false);
                 }
               }}
             >
-              Stop & Close Trades
-            </AlertDialogAction>
-          </AlertDialogFooter>
+              {isStopping ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Closing...
+                </>
+              ) : (
+                'Stop & Close Trades'
+              )}
+            </Button>
+          </div>
         </AlertDialogContent>
       </AlertDialog>
     </div>
