@@ -13,6 +13,7 @@ export default function Auth() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showCheckEmail, setShowCheckEmail] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const { signInWithMagicLink, user, role, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -25,16 +26,30 @@ export default function Auth() {
     }
   }, [user, role, loading, navigate]);
 
+  // Cooldown timer
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
+
   const handleSendLink = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (cooldown > 0) return;
     setIsLoading(true);
     const { error } = await signInWithMagicLink(email);
     setIsLoading(false);
 
     if (error) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      if (error.message.toLowerCase().includes('rate limit') || error.message.includes('security purposes')) {
+        toast({ title: 'Please wait', description: 'You can request a new link in 60 seconds.', variant: 'destructive' });
+        setCooldown(60);
+      } else {
+        toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      }
     } else {
       setShowCheckEmail(true);
+      setCooldown(60);
     }
   };
 
@@ -114,8 +129,8 @@ export default function Auth() {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Sending link...' : 'Send Login Link'}
+              <Button type="submit" className="w-full" disabled={isLoading || cooldown > 0}>
+                {isLoading ? 'Sending link...' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Send Login Link'}
               </Button>
               <p className="text-xs text-center text-muted-foreground">
                 New users will be automatically registered
