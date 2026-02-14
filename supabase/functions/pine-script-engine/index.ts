@@ -141,6 +141,39 @@ async function binanceRequest(
   return response.json()
 }
 
+// Coin-M Futures uses dapi.binance.com
+async function binanceCoinMRequest(
+  endpoint: string,
+  apiKey: string,
+  apiSecret: string,
+  method: string = 'GET',
+  params: Record<string, string> = {}
+): Promise<any> {
+  const baseUrl = 'https://dapi.binance.com'
+  const timestamp = Date.now().toString()
+  const allParams = { ...params, timestamp }
+  const queryString = new URLSearchParams(allParams).toString()
+  const signature = await createSignature(queryString, apiSecret)
+  const signedQuery = `${queryString}&signature=${signature}`
+  
+  const url = `${baseUrl}${endpoint}?${signedQuery}`
+  
+  const response = await fetch(url, {
+    method,
+    headers: {
+      'X-MBX-APIKEY': apiKey,
+      'Content-Type': 'application/json',
+    },
+  })
+  
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.msg || `Binance Coin-M API error: ${response.status}`)
+  }
+  
+  return response.json()
+}
+
 async function fetchOHLCV(symbol: string, interval: string, limit: number = 100): Promise<OHLCV[]> {
   const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
   console.log(`[ENGINE] Fetching OHLCV: ${symbol} ${interval} limit=${limit}`)
@@ -987,7 +1020,9 @@ async function executeTrade(
   scriptId: string,
   signal: TradeSignal,
   symbol: string,
-  timeframe: string
+  timeframe: string,
+  marketType: string = 'futures',
+  leverage: number = 1
 ): Promise<{ success: boolean; error?: string; tradeId?: string }> {
   try {
     console.log(`[TRADE] Starting execution: user=${userId}, script=${scriptId}, signal=${signal.action} ${symbol} @ ${signal.price}`)
@@ -1181,50 +1216,94 @@ async function executeTrade(
     console.log(`[TRADE] Trade record created: ${trade.id}`)
     
     try {
-      // ===== USDT-M FUTURES =====
-      // Get futures account balance
-      const futuresBalances = await binanceRequest('/fapi/v2/balance', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'GET', {}, true)
-      const usdtBalance = futuresBalances.find((b: any) => b.asset === 'USDT')
-      const availableUSDT = parseFloat(usdtBalance?.availableBalance || usdtBalance?.balance || '0')
+      // Determine API routing based on market type
+      const isSpot = marketType === 'spot'
+      const isCoinM = marketType === 'coin_margin'
+      const isFutures = !isSpot // USDT-M or Coin-M are both futures
       
-      console.log(`[TRADE] Available Futures USDT: ${availableUSDT}`)
+      console.log(`[TRADE] Market type: ${marketType}, leverage: ${leverage}, isFutures: ${isFutures}`)
       
-      // Fetch futures exchange info to get LOT_SIZE filter
+      // ===== GET BALANCE =====
+      let availableUSDT = 0
+      if (isSpot) {
+        const accountInfo = await binanceRequest('/api/v3/account', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted)
+        const usdtBalance = accountInfo.balances.find((b: any) => b.asset === 'USDT')
+        availableUSDT = parseFloat(usdtBalance?.free || '0')
+      } else if (isCoinM) {
+        const coinMBalances = await binanceRequest('/dapi/v1/balance', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'GET', {}, false)
+        // For coin-M, use the base asset balance
+        const baseAsset = symbol.replace('USD_PERP', '').replace('USDT', '').replace('BUSD', '')
+        const bal = coinMBalances.find((b: any) => b.asset === baseAsset || b.asset === 'USDT')
+        availableUSDT = parseFloat(bal?.availableBalance || bal?.balance || '0')
+      } else {
+        // USDT-M Futures
+        const futuresBalances = await binanceRequest('/fapi/v2/balance', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'GET', {}, true)
+        const usdtBalance = futuresBalances.find((b: any) => b.asset === 'USDT')
+        availableUSDT = parseFloat(usdtBalance?.availableBalance || usdtBalance?.balance || '0')
+      }
+      
+      console.log(`[TRADE] Available balance: ${availableUSDT}`)
+      
+      // ===== SET LEVERAGE (futures only) =====
+      if (isFutures && leverage > 0) {
+        try {
+          const leverageEndpoint = isCoinM ? '/dapi/v1/leverage' : '/fapi/v1/leverage'
+          await binanceRequest(leverageEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+            symbol: symbol,
+            leverage: leverage.toString(),
+          }, !isCoinM)
+          console.log(`[TRADE] Leverage set to ${leverage}x for ${symbol}`)
+        } catch (levError) {
+          console.log(`[TRADE] Leverage set failed (may already be set):`, levError)
+        }
+      }
+      
+      // ===== FETCH EXCHANGE INFO =====
       let stepSize = 0.001
       let minQty = 0.001
-      let minNotional = 5 // Futures default MIN_NOTIONAL is typically 5
+      let minNotional = isSpot ? 10 : 5
       try {
-        const exchangeInfoUrl = `https://fapi.binance.com/fapi/v1/exchangeInfo`
+        let exchangeInfoUrl: string
+        if (isSpot) {
+          exchangeInfoUrl = `https://api.binance.com/api/v3/exchangeInfo?symbol=${symbol}`
+        } else if (isCoinM) {
+          exchangeInfoUrl = `https://dapi.binance.com/dapi/v1/exchangeInfo`
+        } else {
+          exchangeInfoUrl = `https://fapi.binance.com/fapi/v1/exchangeInfo`
+        }
         const eiResp = await fetch(exchangeInfoUrl)
         if (eiResp.ok) {
           const ei = await eiResp.json()
-          const symbolInfo = ei.symbols?.find((s: any) => s.symbol === symbol)
+          const symbolInfo = isSpot 
+            ? ei.symbols?.[0] 
+            : ei.symbols?.find((s: any) => s.symbol === symbol)
           if (symbolInfo) {
             const lotFilter = symbolInfo.filters?.find((f: any) => f.filterType === 'LOT_SIZE')
             if (lotFilter) {
               stepSize = parseFloat(lotFilter.stepSize)
               minQty = parseFloat(lotFilter.minQty)
-              console.log(`[TRADE] Futures LOT_SIZE: stepSize=${stepSize}, minQty=${minQty}`)
+              console.log(`[TRADE] LOT_SIZE: stepSize=${stepSize}, minQty=${minQty}`)
             }
-            const notionalFilter = symbolInfo.filters?.find((f: any) => f.filterType === 'MIN_NOTIONAL')
+            const notionalFilter = symbolInfo.filters?.find((f: any) => 
+              f.filterType === 'MIN_NOTIONAL' || f.filterType === 'NOTIONAL'
+            )
             if (notionalFilter) {
-              minNotional = parseFloat(notionalFilter.notional || '5')
+              minNotional = parseFloat(notionalFilter.minNotional || notionalFilter.notional || (isSpot ? '10' : '5'))
             }
           }
         }
       } catch (e) {
-        console.log(`[TRADE] Could not fetch futures exchange info, using defaults`)
+        console.log(`[TRADE] Could not fetch exchange info, using defaults`)
       }
       
-      // Use 10% of available balance per trade, but at least minNotional + 5% buffer
+      // ===== CALCULATE QUANTITY =====
       const minRequired = minNotional * 1.05
       const tradeAmount = Math.max(Math.min(availableUSDT * 0.1, 1000), minRequired)
       
       if (availableUSDT < minRequired) {
-        throw new Error(`Insufficient Futures USDT balance (${availableUSDT.toFixed(2)} USDT available, minimum ~${minRequired.toFixed(2)} USDT required)`)
+        throw new Error(`Insufficient balance (${availableUSDT.toFixed(2)} available, minimum ~${minRequired.toFixed(2)} required)`)
       }
       
-      // Calculate quantity and round to stepSize
       const rawQty = tradeAmount / signal.price
       const precision = stepSize < 1 ? Math.round(-Math.log10(stepSize)) : 0
       let quantity = (Math.ceil(rawQty / stepSize) * stepSize).toFixed(precision)
@@ -1240,20 +1319,43 @@ async function executeTrade(
         throw new Error(`Order value $${notionalValue.toFixed(2)} exceeds available balance $${availableUSDT.toFixed(2)}`)
       }
       
-      console.log(`[TRADE] Placing Futures ${signal.action} order: ${quantity} ${symbol} (~$${tradeAmount.toFixed(2)})`)
+      console.log(`[TRADE] Placing ${marketType} ${signal.action} order: ${quantity} ${symbol} (~$${tradeAmount.toFixed(2)}, leverage=${leverage}x)`)
       
-      // Place futures market order
-      const orderResult = await binanceRequest('/fapi/v1/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
-        symbol: symbol,
-        side: signal.action,
-        type: 'MARKET',
-        quantity: quantity,
-      }, true)
+      // ===== PLACE ORDER =====
+      let orderEndpoint: string
+      let useFuturesBase: boolean
+      if (isSpot) {
+        orderEndpoint = '/api/v3/order'
+        useFuturesBase = false
+      } else if (isCoinM) {
+        orderEndpoint = '/dapi/v1/order'
+        useFuturesBase = false // coin-M uses dapi base
+      } else {
+        orderEndpoint = '/fapi/v1/order'
+        useFuturesBase = true
+      }
       
-      console.log(`[TRADE] Futures order filled! OrderId: ${orderResult.orderId}`)
+      // For coin-M, we need special handling of the base URL
+      const orderResult = isCoinM
+        ? await binanceCoinMRequest(orderEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+            symbol: symbol,
+            side: signal.action,
+            type: 'MARKET',
+            quantity: quantity,
+          })
+        : await binanceRequest(orderEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+            symbol: symbol,
+            side: signal.action,
+            type: 'MARKET',
+            quantity: quantity,
+          }, useFuturesBase)
+      
+      console.log(`[TRADE] Order filled! OrderId: ${orderResult.orderId}`)
       
       // Update trade as OPEN
-      const fillPrice = parseFloat(orderResult.avgPrice || signal.price.toString())
+      const fillPrice = isSpot 
+        ? parseFloat(orderResult.fills?.[0]?.price || signal.price.toString())
+        : parseFloat(orderResult.avgPrice || signal.price.toString())
       await supabase
         .from('trades')
         .update({
@@ -1264,37 +1366,65 @@ async function executeTrade(
         })
         .eq('id', trade.id)
       
-      // Place stop loss if specified (futures uses STOP_MARKET)
+      // ===== STOP LOSS =====
       if (signal.stopLoss) {
         try {
-          await binanceRequest('/fapi/v1/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
-            symbol: symbol,
-            side: signal.action === 'BUY' ? 'SELL' : 'BUY',
-            type: 'STOP_MARKET',
-            quantity: quantity,
-            stopPrice: signal.stopLoss.toFixed(2),
-            closePosition: 'false',
-          }, true)
-          console.log(`[TRADE] Futures stop loss placed at ${signal.stopLoss.toFixed(2)}`)
+          if (isSpot) {
+            await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+              symbol: symbol,
+              side: signal.action === 'BUY' ? 'SELL' : 'BUY',
+              type: 'STOP_LOSS_LIMIT',
+              quantity: quantity,
+              stopPrice: signal.stopLoss.toFixed(2),
+              price: (signal.stopLoss * (signal.action === 'BUY' ? 0.995 : 1.005)).toFixed(2),
+              timeInForce: 'GTC',
+            })
+          } else {
+            const slEndpoint = isCoinM ? '/dapi/v1/order' : '/fapi/v1/order'
+            const slFn = isCoinM ? binanceCoinMRequest : (ep: string, ak: string, as2: string, m: string, p: any) => binanceRequest(ep, ak, as2, m, p, true)
+            await slFn(slEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+              symbol: symbol,
+              side: signal.action === 'BUY' ? 'SELL' : 'BUY',
+              type: 'STOP_MARKET',
+              quantity: quantity,
+              stopPrice: signal.stopLoss.toFixed(2),
+              closePosition: 'false',
+            })
+          }
+          console.log(`[TRADE] Stop loss placed at ${signal.stopLoss.toFixed(2)}`)
         } catch (slError) {
-          console.log('[TRADE] Futures stop loss order failed (non-critical):', slError)
+          console.log('[TRADE] Stop loss order failed (non-critical):', slError)
         }
       }
       
-      // Place take profit if specified (futures uses TAKE_PROFIT_MARKET)
+      // ===== TAKE PROFIT =====
       if (signal.takeProfit) {
         try {
-          await binanceRequest('/fapi/v1/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
-            symbol: symbol,
-            side: signal.action === 'BUY' ? 'SELL' : 'BUY',
-            type: 'TAKE_PROFIT_MARKET',
-            quantity: quantity,
-            stopPrice: signal.takeProfit.toFixed(2),
-            closePosition: 'false',
-          }, true)
-          console.log(`[TRADE] Futures take profit placed at ${signal.takeProfit.toFixed(2)}`)
+          if (isSpot) {
+            await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+              symbol: symbol,
+              side: signal.action === 'BUY' ? 'SELL' : 'BUY',
+              type: 'TAKE_PROFIT_LIMIT',
+              quantity: quantity,
+              stopPrice: signal.takeProfit.toFixed(2),
+              price: (signal.takeProfit * (signal.action === 'BUY' ? 1.005 : 0.995)).toFixed(2),
+              timeInForce: 'GTC',
+            })
+          } else {
+            const tpEndpoint = isCoinM ? '/dapi/v1/order' : '/fapi/v1/order'
+            const tpFn = isCoinM ? binanceCoinMRequest : (ep: string, ak: string, as2: string, m: string, p: any) => binanceRequest(ep, ak, as2, m, p, true)
+            await tpFn(tpEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+              symbol: symbol,
+              side: signal.action === 'BUY' ? 'SELL' : 'BUY',
+              type: 'TAKE_PROFIT_MARKET',
+              quantity: quantity,
+              stopPrice: signal.takeProfit.toFixed(2),
+              closePosition: 'false',
+            })
+          }
+          console.log(`[TRADE] Take profit placed at ${signal.takeProfit.toFixed(2)}`)
         } catch (tpError) {
-          console.log('[TRADE] Futures take profit order failed (non-critical):', tpError)
+          console.log('[TRADE] Take profit order failed (non-critical):', tpError)
         }
       }
       
@@ -1408,7 +1538,9 @@ Deno.serve(async (req) => {
               script_content,
               symbol,
               is_active,
-              allowed_timeframes
+              allowed_timeframes,
+              market_type,
+              leverage
             )
           `)
           .eq('is_active', true)
@@ -1505,13 +1637,17 @@ Deno.serve(async (req) => {
                 
                 if (signal.action !== 'NONE') {
                   console.log(`[ENGINE] Signal: ${signal.action} ${symbol} @ ${signal.price}`)
+                  const scriptMarketType = us.script.market_type || 'futures'
+                  const scriptLeverage = us.script.leverage || 1
                   const execResult = await executeTrade(
                     supabase,
                     us.user_id,
                     us.script_id,
                     signal,
                     symbol,
-                    timeframe
+                    timeframe,
+                    scriptMarketType,
+                    scriptLeverage
                   )
                   
                   results.push({
