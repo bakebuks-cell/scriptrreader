@@ -1242,19 +1242,35 @@ async function executeTrade(
     const intervalMs = getIntervalMs(timeframe)
     const candleStart = new Date(Math.floor(Date.now() / intervalMs) * intervalMs)
     
-    const { data: existingTrade } = await supabase
+    // Check for successful trades on this candle (OPEN/PENDING/CLOSED = already traded)
+    const { data: existingSuccessfulTrade } = await supabase
       .from('trades')
       .select('id')
       .eq('user_id', userId)
       .eq('script_id', scriptId)
       .eq('symbol', symbol)
       .gte('created_at', candleStart.toISOString())
-      .in('status', ['OPEN', 'PENDING', 'CLOSED', 'FAILED'])
+      .in('status', ['OPEN', 'PENDING', 'CLOSED'])
       .maybeSingle()
     
-    if (existingTrade) {
-      console.log(`[TRADE] Duplicate trade on same candle, skipping`)
+    if (existingSuccessfulTrade) {
+      console.log(`[TRADE] Already have a successful trade on this candle, skipping`)
       return { success: false, error: 'Already traded on this candle' }
+    }
+
+    // Check for repeated failures on same candle (max 2 retries to prevent credit drain)
+    const { count: failedCount } = await supabase
+      .from('trades')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('script_id', scriptId)
+      .eq('symbol', symbol)
+      .gte('created_at', candleStart.toISOString())
+      .eq('status', 'FAILED')
+    
+    if ((failedCount ?? 0) >= 2) {
+      console.log(`[TRADE] Too many failed attempts (${failedCount}) on this candle, skipping`)
+      return { success: false, error: 'Too many failed attempts on this candle — check your API keys' }
     }
     
     // Get API keys - check wallets table first (primary), then exchange_keys (legacy)
