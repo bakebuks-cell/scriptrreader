@@ -551,6 +551,7 @@ export type Database = {
           id: string
           is_active: boolean
           script_id: string
+          settings_json: Json
           user_id: string
         }
         Insert: {
@@ -558,6 +559,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           script_id: string
+          settings_json?: Json
           user_id: string
         }
         Update: {
@@ -565,6 +567,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           script_id?: string
+          settings_json?: Json
           user_id?: string
         }
         Relationships: [
