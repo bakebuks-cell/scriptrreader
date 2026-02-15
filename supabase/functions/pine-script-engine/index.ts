@@ -1956,7 +1956,7 @@ Deno.serve(async (req) => {
                     symbol,
                     timeframe,
                     executed: false,
-                    error: 'Trading paused: Binance API key lacks Futures trading permissions. Please enable "Enable Futures" in your Binance API settings and whitelist server IPs.',
+                    error: 'Trading paused: Binance API key has issues (invalid key, IP, or permissions). Please go to Binance → API Management → Edit and ensure: 1) Enable Futures, 2) Enable Spot & Margin Trading, 3) Enable Reading, 4) Set IP Access to "Unrestricted (Less Secure)".',
                   })
                   continue
                 }

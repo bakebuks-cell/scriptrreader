@@ -150,7 +150,7 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
               <p className="font-medium">Connection Error</p>
               <p className="text-sm mt-1">{errorMessage}</p>
               <p className="text-xs text-muted-foreground mt-2">
-                Required IPs: 188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35, 3.110.86.100, 13.201.119.50, 3.109.5.141, 15.207.101.2, 52.66.231.75, 65.0.17.27, 13.203.93.235, 15.206.206.144
+                Set IP Access to <strong>"Unrestricted (Less Secure)"</strong> in Binance API settings. Our servers use dynamic IPs.
               </p>
             </AlertDescription>
           </Alert>
