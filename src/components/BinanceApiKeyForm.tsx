@@ -309,16 +309,19 @@ export default function BinanceApiKeyForm() {
                     </Select>
                   </div>
 
-                  {/* Step 2: IP Whitelist Info */}
+                   {/* Step 2: IP Access Settings */}
                   <div className="p-3 rounded-lg bg-accent/50 border border-border">
                     <div className="flex items-start gap-2">
                       <Globe className="h-4 w-4 mt-0.5 text-muted-foreground" />
                       <div className="flex-1">
-                        <p className="text-sm font-medium">Step 2: IP Whitelist (Optional)</p>
+                        <p className="text-sm font-medium">Step 2: IP Access (Required)</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          For enhanced security, you can restrict API access to specific IPs. If you want to whitelist our servers, use:
+                          Select <strong>"Unrestricted (Less Secure)"</strong> in IP Access Restrictions. Our servers use dynamic cloud IPs that change frequently, so restricted IP mode will cause connection failures.
                         </p>
-                        <div className="flex items-center gap-2 mt-2">
+                        <p className="text-xs text-muted-foreground mt-1">
+                          ⚠️ For safety, do NOT enable Withdrawals or Universal Transfer.
+                        </p>
+                        <div className="flex items-center gap-2 mt-2 hidden">
                           <code className="text-xs bg-background px-2 py-1 rounded border flex-1">
                             {WHITELIST_IPS.join(', ')}
                           </code>

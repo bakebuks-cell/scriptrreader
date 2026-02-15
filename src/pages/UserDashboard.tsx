@@ -222,19 +222,20 @@ export default function UserDashboard() {
                 <CardContent className="flex items-start gap-4 py-4">
                   <AlertTriangle className="h-6 w-6 text-destructive shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <p className="font-semibold text-destructive">Binance API Permissions Missing</p>
+                    <p className="font-semibold text-destructive">Binance API Key Issue Detected</p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Your recent trades are failing because your Binance API key is missing required permissions. 
+                      Your recent trades are failing due to an API key, IP, or permissions issue. 
                       Trading has been paused automatically to protect your account.
                     </p>
-                    <ul className="text-sm text-muted-foreground mt-2 list-disc list-inside space-y-1">
+                    <p className="text-sm font-medium mt-3">Please verify these settings in Binance → API Management → Edit:</p>
+                    <ul className="text-sm text-muted-foreground mt-1 list-disc list-inside space-y-1">
                       <li><strong>Enable Futures</strong> — required for USDT-M and Coin-M futures trading</li>
                       <li><strong>Enable Spot &amp; Margin Trading</strong> — required for spot trades</li>
                       <li><strong>Enable Reading</strong> — required for balance checks</li>
+                      <li><strong>IP Access: Unrestricted (Less Secure)</strong> — our servers use dynamic IPs, so restricted mode will not work</li>
                     </ul>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Go to <strong>Binance → API Management → Edit</strong>, enable the checkboxes above, and whitelist IPs: 
-                      <code className="text-xs bg-muted px-1 py-0.5 rounded ml-1">188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35, 3.110.86.100, 13.201.119.50, 3.109.5.141, 15.207.101.2, 52.66.231.75, 65.0.17.27, 13.203.93.235, 15.206.206.144</code>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      ⚠️ Do NOT enable Withdrawals or Universal Transfer for safety. Once fixed, trading will resume automatically.
                     </p>
                     <p className="text-xs text-muted-foreground mt-2">
                       Once fixed, trading will resume automatically on the next cycle.
