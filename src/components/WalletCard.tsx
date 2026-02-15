@@ -150,7 +150,7 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
               <p className="font-medium">Connection Error</p>
               <p className="text-sm mt-1">{errorMessage}</p>
               <p className="text-xs text-muted-foreground mt-2">
-                Required IPs: 188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35
+                Required IPs: 188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35, 3.110.86.100
               </p>
             </AlertDescription>
           </Alert>

@@ -99,7 +99,7 @@ async function binanceRequest(
     
     // Provide user-friendly messages for common errors - use HttpError with 400 for client issues
     if (errorCode === -2015 || errorMsg.includes('Invalid API-key')) {
-      throw new HttpError(400, `Binance rejected the request (code ${errorCode}): ${errorMsg}. Key prefix: ${apiKey.substring(0, 8)}... Please whitelist these IPs in your Binance API settings: 188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35`)
+      throw new HttpError(400, `Binance rejected the request (code ${errorCode}): ${errorMsg}. Key prefix: ${apiKey.substring(0, 8)}... Please whitelist these IPs in your Binance API settings: 188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35, 3.110.86.100`)
     }
     if (errorMsg.includes('restricted location')) {
       throw new HttpError(400, 'Binance is unavailable in your region. If you are in the US, please use Binance US instead.')

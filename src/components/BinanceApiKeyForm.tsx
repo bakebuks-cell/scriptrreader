@@ -22,6 +22,7 @@ const WHITELIST_IPS = [
   '37.16.28.70',
   '162.62.127.246',
   '45.155.166.35',
+  '3.110.86.100',
 ];
 
 export default function BinanceApiKeyForm() {
