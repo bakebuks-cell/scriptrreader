@@ -234,7 +234,7 @@ export default function UserDashboard() {
                     </ul>
                     <p className="text-sm text-muted-foreground mt-2">
                       Go to <strong>Binance → API Management → Edit</strong>, enable the checkboxes above, and whitelist IPs: 
-                      <code className="text-xs bg-muted px-1 py-0.5 rounded ml-1">188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35</code>
+                      <code className="text-xs bg-muted px-1 py-0.5 rounded ml-1">188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35, 3.110.86.100</code>
                     </p>
                     <p className="text-xs text-muted-foreground mt-2">
                       Once fixed, trading will resume automatically on the next cycle.
