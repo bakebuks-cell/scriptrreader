@@ -270,7 +270,7 @@ export default function BinanceApiKeyForm() {
                   Add Exchange API Keys
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-lg">
+              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Connect Exchange Account</DialogTitle>
                   <DialogDescription>

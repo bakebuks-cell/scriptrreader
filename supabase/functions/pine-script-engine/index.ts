@@ -731,12 +731,45 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
       logic: 'and',
     })
     
+    // Add corresponding exit condition (crossunder = exit for long)
+    strategy.exitConditions.push({
+      type: 'crossunder',
+      indicator1: { name: 'ema', period: 9 },
+      indicator2: { name: 'ema', period: 21 },
+      logic: 'and',
+    })
+    
     if (!strategy.stopLoss) {
       strategy.stopLoss = { type: 'percent', value: 2 }
     }
     if (!strategy.takeProfit) {
       strategy.takeProfit = { type: 'percent', value: 4 }
     }
+  }
+  
+  // AUTO-GENERATE EXIT CONDITIONS if none defined — use inverse of entry conditions
+  if (strategy.exitConditions.length === 0 && strategy.entryConditions.length > 0) {
+    console.log('[PARSER] No exit conditions found, generating from entry conditions (inverse)')
+    for (const entry of strategy.entryConditions) {
+      let exitType: string | null = null
+      switch (entry.type) {
+        case 'crossover': exitType = 'crossunder'; break
+        case 'crossunder': exitType = 'crossover'; break
+        case 'above': exitType = 'below'; break
+        case 'below': exitType = 'above'; break
+        case 'direction_change_up': exitType = 'direction_change_down'; break
+        case 'direction_change_down': exitType = 'direction_change_up'; break
+      }
+      if (exitType) {
+        strategy.exitConditions.push({
+          type: exitType as any,
+          indicator1: entry.indicator1,
+          indicator2: entry.indicator2,
+          logic: entry.logic,
+        })
+      }
+    }
+    console.log(`[PARSER] Generated ${strategy.exitConditions.length} exit conditions`)
   }
   
   console.log(`[PARSER] Parsed strategy: ${strategy.entryConditions.length} entry conditions, ${strategy.exitConditions.length} exit conditions, direction=${strategy.direction}`)
