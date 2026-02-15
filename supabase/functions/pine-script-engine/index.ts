@@ -1934,12 +1934,12 @@ Deno.serve(async (req) => {
                   }
                 }
 
-                // ===== CHECK FOR REPEATED FAILURES (circuit breaker) =====
+                // ===== CHECK FOR REPEATED FAILURES (circuit breaker - per user) =====
                 // Only check failures from the last 2 hours to avoid stale errors from old API keys
                 const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
                 const { data: recentFails } = await supabase
                   .from('trades')
-                  .select('id, error_message')
+                  .select('id, error_message, created_at')
                   .eq('user_id', us.user_id)
                   .eq('status', 'FAILED')
                   .gte('created_at', twoHoursAgo)
@@ -1951,17 +1951,36 @@ Deno.serve(async (req) => {
                 )
                 
                 if (apiPermissionErrors.length >= 3) {
-                  console.log(`[ENGINE] Skipping ${us.script.name} for user ${us.user_id}: 3+ consecutive API permission failures in last 2h. User must fix Binance API key.`)
-                  results.push({
-                    scriptId: us.script_id,
-                    scriptName: us.script.name,
-                    userId: us.user_id,
-                    symbol,
-                    timeframe,
-                    executed: false,
-                    error: 'Trading paused: Binance API key has issues (invalid key, IP, or permissions). Please go to Binance → API Management → Edit and ensure: 1) Enable Futures, 2) Enable Spot & Margin Trading, 3) Enable Reading, 4) Set IP Access to "Unrestricted (Less Secure)".',
-                  })
-                  continue
+                  // Check if the user updated their wallet AFTER the most recent failure
+                  // If so, they've likely fixed the issue — skip the circuit breaker
+                  const lastFailTime = apiPermissionErrors[0]?.created_at
+                  const { data: userWallet } = await supabase
+                    .from('wallets')
+                    .select('updated_at, created_at')
+                    .eq('user_id', us.user_id)
+                    .eq('is_active', true)
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle()
+                  
+                  const walletUpdatedAt = userWallet?.updated_at || userWallet?.created_at
+                  const walletUpdatedAfterFail = walletUpdatedAt && lastFailTime && new Date(walletUpdatedAt) > new Date(lastFailTime)
+                  
+                  if (!walletUpdatedAfterFail) {
+                    console.log(`[ENGINE] Circuit breaker for user ${us.user_id}: 3+ API failures in last 2h, wallet not updated since. Skipping.`)
+                    results.push({
+                      scriptId: us.script_id,
+                      scriptName: us.script.name,
+                      userId: us.user_id,
+                      symbol,
+                      timeframe,
+                      executed: false,
+                      error: 'Trading paused: Binance API key has issues (invalid key, IP, or permissions). Please go to Binance → API Management → Edit and ensure: 1) Enable Futures, 2) Enable Spot & Margin Trading, 3) Enable Reading, 4) Set IP Access to "Unrestricted (Less Secure)".',
+                    })
+                    continue
+                  } else {
+                    console.log(`[ENGINE] Circuit breaker reset for user ${us.user_id}: wallet updated after last failure. Allowing retry.`)
+                  }
                 }
 
                 // ===== EVALUATE ENTRY =====
