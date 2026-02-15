@@ -21,11 +21,13 @@ export function useApiKeyStatus(): ApiKeyStatus & { isLoading: boolean } {
     queryFn: async (): Promise<ApiKeyStatus> => {
       if (!user?.id) return { hasPermissionError: false, errorType: null, errorMessage: null };
 
-      // Get last 5 trades to check pattern
+      // Get last 5 trades from the last 2 hours only (avoid stale errors from old API keys)
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       const { data: recentTrades } = await supabase
         .from('trades')
         .select('status, error_message')
         .eq('user_id', user.id)
+        .gte('created_at', twoHoursAgo)
         .order('created_at', { ascending: false })
         .limit(5);
 

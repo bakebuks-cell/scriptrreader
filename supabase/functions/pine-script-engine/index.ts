@@ -1935,11 +1935,14 @@ Deno.serve(async (req) => {
                 }
 
                 // ===== CHECK FOR REPEATED FAILURES (circuit breaker) =====
+                // Only check failures from the last 2 hours to avoid stale errors from old API keys
+                const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
                 const { data: recentFails } = await supabase
                   .from('trades')
                   .select('id, error_message')
                   .eq('user_id', us.user_id)
                   .eq('status', 'FAILED')
+                  .gte('created_at', twoHoursAgo)
                   .order('created_at', { ascending: false })
                   .limit(3)
                 
@@ -1948,7 +1951,7 @@ Deno.serve(async (req) => {
                 )
                 
                 if (apiPermissionErrors.length >= 3) {
-                  console.log(`[ENGINE] Skipping ${us.script.name} for user ${us.user_id}: 3+ consecutive API permission failures. User must fix Binance API key permissions.`)
+                  console.log(`[ENGINE] Skipping ${us.script.name} for user ${us.user_id}: 3+ consecutive API permission failures in last 2h. User must fix Binance API key.`)
                   results.push({
                     scriptId: us.script_id,
                     scriptName: us.script.name,
