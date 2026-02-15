@@ -16,9 +16,12 @@ const EXCHANGES = [
   { value: 'binance_us', label: 'Binance US', logo: '🔶' },
 ] as const;
 
-// IP addresses to whitelist for Binance API
+// Server IP addresses to whitelist for Binance API (for restricted keys)
 const WHITELIST_IPS = [
-  '0.0.0.0/0', // Allow all (recommended for testing)
+  '188.116.26.207',
+  '37.16.28.70',
+  '162.62.127.246',
+  '45.155.166.35',
 ];
 
 export default function BinanceApiKeyForm() {
