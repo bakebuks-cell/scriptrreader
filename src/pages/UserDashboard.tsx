@@ -36,6 +36,7 @@ import PreciousMetalsRates from '@/components/PreciousMetalsRates';
 import UserOnboarding from '@/components/onboarding/UserOnboarding';
 import LibraryView from '@/components/library/LibraryView';
 import ManualCloseTradesButton from '@/components/ManualCloseTradesButton';
+import { useApiKeyStatus } from '@/hooks/useApiKeyStatus';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
@@ -62,6 +63,7 @@ export default function UserDashboard() {
     isAdminScript
   } = usePineScripts();
   const { isPaidModeEnabled } = useFeatureFlags();
+  const { hasPermissionError, errorType } = useApiKeyStatus();
   
   // Check if user has API keys configured
   // TODO: Temporarily bypassed for testing — restore with: const hasApiKeys = hasWallets && activeWallet?.api_key_encrypted;
@@ -214,8 +216,36 @@ export default function UserDashboard() {
               </Card>
             </div>
 
+            {/* Warning: API permission error detected from recent failed trades */}
+            {hasPermissionError && (
+              <Card className="border-destructive/50 bg-destructive/5">
+                <CardContent className="flex items-start gap-4 py-4">
+                  <AlertTriangle className="h-6 w-6 text-destructive shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-semibold text-destructive">Binance API Permissions Missing</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Your recent trades are failing because your Binance API key is missing required permissions. 
+                      Trading has been paused automatically to protect your account.
+                    </p>
+                    <ul className="text-sm text-muted-foreground mt-2 list-disc list-inside space-y-1">
+                      <li><strong>Enable Futures</strong> — required for USDT-M and Coin-M futures trading</li>
+                      <li><strong>Enable Spot &amp; Margin Trading</strong> — required for spot trades</li>
+                      <li><strong>Enable Reading</strong> — required for balance checks</li>
+                    </ul>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Go to <strong>Binance → API Management → Edit</strong>, enable the checkboxes above, and whitelist IPs: 
+                      <code className="text-xs bg-muted px-1 py-0.5 rounded ml-1">188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35</code>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Once fixed, trading will resume automatically on the next cycle.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Warning if no API keys */}
-            {!hasApiKeys && (
+            {!hasApiKeys && !hasPermissionError && (
               <Card className="border-amber-500/50 bg-amber-500/5">
                 <CardContent className="flex items-center gap-4 py-4">
                   <Key className="h-6 w-6 text-amber-600 dark:text-amber-400" />
