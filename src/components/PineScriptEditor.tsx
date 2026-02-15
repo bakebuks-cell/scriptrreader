@@ -474,7 +474,6 @@ export default function PineScriptEditor({
                             name="timeframe"
                             checked={formData.allowed_timeframes.includes(value)}
                             onChange={() => handleTimeframeChange(value)}
-                            disabled={readOnly && !companyMode}
                             className="accent-primary"
                           />
                           <span className="text-sm">{label}</span>
@@ -536,16 +535,10 @@ export default function PineScriptEditor({
                 </TabsContent>
 
                 <TabsContent value="config" className="mt-4">
-                  <BotConfigForm
+                    <BotConfigForm
                     config={botConfig}
                     onChange={setBotConfig}
                     disabled={readOnly && !companyMode}
-                    adminLimits={companyMode && selectedScript ? {
-                      max_capital: selectedScript.max_capital || 1000,
-                      max_position_size: selectedScript.position_size_value || 100,
-                      max_trades_per_day: selectedScript.max_trades_per_day || 10,
-                      max_leverage: selectedScript.leverage || 1,
-                    } : undefined}
                   />
                 </TabsContent>
               </Tabs>
@@ -560,11 +553,11 @@ export default function PineScriptEditor({
             {(isCreating || selectedScript) && (
               <div className="flex items-center justify-between pt-4 border-t">
                 <div className="flex items-center gap-2">
-                  {!readOnly && !companyMode && (
+                  {(!readOnly || companyMode) && (
                     <>
                       <Button onClick={handleSave} disabled={isSaving}>
                         <Save className="h-4 w-4 mr-2" />
-                        {isSaving ? 'Saving...' : 'Save'}
+                        {isSaving ? 'Saving...' : companyMode ? 'Save Settings' : 'Save'}
                       </Button>
                     </>
                   )}
@@ -628,7 +621,7 @@ export default function PineScriptEditor({
                               });
                             } else {
                               const executed = scriptResults.filter((r: any) => r.executed);
-                              const signals = scriptResults.filter((r: any) => r.signal?.action !== 'NONE');
+                              const signals = scriptResults.filter((r: any) => r.signal && r.signal.action && r.signal.action !== 'NONE');
                               const errors = scriptResults.filter((r: any) => r.error);
                               
                               if (executed.length > 0) {
@@ -645,7 +638,7 @@ export default function PineScriptEditor({
                               } else if (signals.length > 0) {
                                 toast({ 
                                   title: 'Signal Detected', 
-                                  description: signals.map((r: any) => `${r.signal?.action} ${r.symbol} — ${r.reason || 'conditions met'}`).join('; '),
+                                  description: signals.map((r: any) => `${r.scriptName || r.symbol} — ${r.signal?.action || ''} ${r.symbol} — ${r.reason || r.signal?.reason || 'conditions met'}`).join('; '),
                                 });
                               } else {
                                 toast({ 
