@@ -23,6 +23,7 @@ interface ExchangeSettings {
   loadApiKeysFromBot: string;
   apiKey: string;
   apiSecret: string;
+  ipWhitelist: string;
 }
 
 const defaultSettings: ExchangeSettings = {
@@ -31,9 +32,8 @@ const defaultSettings: ExchangeSettings = {
   loadApiKeysFromBot: '',
   apiKey: '',
   apiSecret: '',
+  ipWhitelist: '0.0.0.0/0',
 };
-
-const IP_ADDRESSES = '188.116.26.207, 37.16.28.70, 162.62.127.246, 45.155.166.35';
 
 export function ExchangeSettingsPanel({ botId, onSave, onCancel }: ExchangeSettingsPanelProps) {
   const { toast } = useToast();
@@ -57,7 +57,7 @@ export function ExchangeSettingsPanel({ botId, onSave, onCancel }: ExchangeSetti
   };
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(IP_ADDRESSES);
+    navigator.clipboard.writeText(settings.ipWhitelist);
     toast({ title: 'Copied', description: 'IP addresses copied to clipboard' });
   };
 
@@ -154,13 +154,16 @@ export function ExchangeSettingsPanel({ botId, onSave, onCancel }: ExchangeSetti
             <Label className="sm:w-40 sm:pt-2">
               <span>IP Addresses</span>
               <p className="text-xs text-muted-foreground font-normal mt-1">
-                Whitelist these IP addresses at the exchange.
+                Use <code className="text-primary">0.0.0.0/0</code> for unrestricted access, or enter specific IPs separated by commas.
               </p>
             </Label>
             <div className="flex-1 flex items-center gap-2">
-              <div className="flex-1 px-3 py-2 rounded-md bg-muted/50 border border-primary text-xs sm:text-sm text-primary font-mono break-all">
-                {IP_ADDRESSES}
-              </div>
+              <Input
+                value={settings.ipWhitelist}
+                onChange={(e) => setSettings({ ...settings, ipWhitelist: e.target.value })}
+                className="flex-1 bg-muted/50 font-mono text-xs sm:text-sm"
+                placeholder="0.0.0.0/0 or 188.116.26.207, 37.16.28.70"
+              />
               <Button variant="outline" size="icon" onClick={copyToClipboard} className="shrink-0">
                 <Copy className="h-4 w-4" />
               </Button>
