@@ -175,8 +175,8 @@ export function usePineScripts() {
       
       const script = scripts?.find(s => s.id === id);
       
-      // For admin/common scripts, save user-customizable settings to user_scripts.settings_json
-      if (script && script.admin_tag !== null && script.created_by !== user.id) {
+      // For admin/common scripts (any script with admin_tag), save user settings to user_scripts.settings_json
+      if (script && script.admin_tag !== null) {
         const userSettings: Record<string, any> = {};
         if (updates.leverage !== undefined) userSettings.leverage = updates.leverage;
         if (updates.trading_pairs !== undefined) userSettings.trading_pairs = updates.trading_pairs;
@@ -251,7 +251,7 @@ export function usePineScripts() {
       const script = scripts?.find(s => s.id === id);
       
       // For admin scripts, remove the user_scripts record (not the global script)
-      if (script?.admin_tag !== null && script?.created_by !== user?.id) {
+      if (script?.admin_tag !== null) {
         const { error } = await supabase
           .from('user_scripts')
           .delete()
@@ -302,7 +302,7 @@ export function usePineScripts() {
       if (!user?.id) throw new Error('Not authenticated');
 
       // For admin/company scripts - use user_scripts table for per-user state
-      if (script.admin_tag !== null && script.created_by !== user.id) {
+      if (script.admin_tag !== null) {
         const existingRecord = userScriptRecords?.find(us => us.script_id === id);
         
         if (existingRecord) {
