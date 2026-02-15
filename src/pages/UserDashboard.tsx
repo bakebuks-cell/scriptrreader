@@ -287,8 +287,14 @@ export default function UserDashboard() {
                             <div>
                               <p className="font-medium text-sm">{trade.symbol}</p>
                               <p className="text-xs text-muted-foreground">
-                                {new Date(trade.created_at).toLocaleDateString()}
+                                {new Date(trade.created_at).toLocaleDateString()}{' '}
+                                {new Date(trade.created_at).toLocaleTimeString()}
                               </p>
+                              {trade.status === 'FAILED' && trade.error_message && (
+                                <p className="text-xs text-destructive mt-0.5 truncate max-w-[200px]" title={trade.error_message}>
+                                  {trade.error_message}
+                                </p>
+                              )}
                             </div>
                           </div>
                           <Badge variant={
@@ -381,7 +387,8 @@ export default function UserDashboard() {
                         <th className="pb-3 font-medium">SL</th>
                         <th className="pb-3 font-medium">TP</th>
                         <th className="pb-3 font-medium">Status</th>
-                        <th className="pb-3 font-medium">Date</th>
+                        <th className="pb-3 font-medium">Date & Time</th>
+                        <th className="pb-3 font-medium">Reason</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -409,8 +416,12 @@ export default function UserDashboard() {
                               {trade.status}
                             </Badge>
                           </td>
-                          <td className="py-3 text-sm text-muted-foreground">
-                            {new Date(trade.created_at).toLocaleDateString()}
+                          <td className="py-3 text-sm text-muted-foreground whitespace-nowrap">
+                            {new Date(trade.created_at).toLocaleDateString()}{' '}
+                            <span className="text-xs">{new Date(trade.created_at).toLocaleTimeString()}</span>
+                          </td>
+                          <td className="py-3 text-xs text-destructive max-w-[200px] truncate" title={trade.error_message || ''}>
+                            {trade.status === 'FAILED' && trade.error_message ? trade.error_message : '-'}
                           </td>
                         </tr>
                       ))}

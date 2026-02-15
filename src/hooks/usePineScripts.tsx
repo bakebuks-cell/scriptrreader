@@ -93,8 +93,9 @@ export function usePineScripts() {
   const isLoading = scriptsLoading || userScriptsLoading;
 
   // Build admin scripts with per-user activation state
+  // Admin/Common Library scripts: any script with admin_tag, regardless of who created it
   const adminScripts: PineScriptWithUserState[] = (scripts ?? [])
-    .filter(s => s.admin_tag !== null && s.created_by !== user?.id)
+    .filter(s => s.admin_tag !== null)
     .map(s => {
       const userRecord = userScriptRecords?.find(us => us.script_id === s.id);
       // Apply user-specific overrides from settings_json
@@ -115,8 +116,9 @@ export function usePineScripts() {
     });
 
   // Own scripts use their native is_active (exclude soft-deleted)
+  // Own scripts: user-created, no admin_tag, not soft-deleted
   const ownScripts: PineScriptWithUserState[] = (scripts ?? [])
-    .filter(s => s.created_by === user?.id && !s.deleted_at)
+    .filter(s => s.created_by === user?.id && !s.deleted_at && s.admin_tag === null)
     .map(s => ({
       ...s,
       user_is_active: s.is_active,
