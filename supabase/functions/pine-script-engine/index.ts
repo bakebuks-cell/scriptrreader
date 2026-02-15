@@ -1934,6 +1934,33 @@ Deno.serve(async (req) => {
                   }
                 }
 
+                // ===== CHECK FOR REPEATED FAILURES (circuit breaker) =====
+                const { data: recentFails } = await supabase
+                  .from('trades')
+                  .select('id, error_message')
+                  .eq('user_id', us.user_id)
+                  .eq('status', 'FAILED')
+                  .order('created_at', { ascending: false })
+                  .limit(3)
+                
+                const apiPermissionErrors = (recentFails || []).filter(
+                  (t: any) => t.error_message?.includes('Invalid API-key') || t.error_message?.includes('permissions for action')
+                )
+                
+                if (apiPermissionErrors.length >= 3) {
+                  console.log(`[ENGINE] Skipping ${us.script.name} for user ${us.user_id}: 3+ consecutive API permission failures. User must fix Binance API key permissions.`)
+                  results.push({
+                    scriptId: us.script_id,
+                    scriptName: us.script.name,
+                    userId: us.user_id,
+                    symbol,
+                    timeframe,
+                    executed: false,
+                    error: 'Trading paused: Binance API key lacks Futures trading permissions. Please enable "Enable Futures" in your Binance API settings and whitelist server IPs.',
+                  })
+                  continue
+                }
+
                 // ===== EVALUATE ENTRY =====
                 const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice)
                 
