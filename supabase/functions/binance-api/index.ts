@@ -132,8 +132,8 @@ async function getUserApiKeys(supabase: any, userId: string, exchange: Exchange)
 
   if (walletData) {
     return {
-      apiKey: walletData.api_key_encrypted,
-      apiSecret: walletData.api_secret_encrypted,
+      apiKey: walletData.api_key_encrypted.trim(),
+      apiSecret: walletData.api_secret_encrypted.trim(),
     }
   }
 
@@ -154,8 +154,8 @@ async function getUserApiKeys(supabase: any, userId: string, exchange: Exchange)
   }
 
   return {
-    apiKey: legacyData.api_key_encrypted,
-    apiSecret: legacyData.api_secret_encrypted,
+    apiKey: legacyData.api_key_encrypted.trim(),
+    apiSecret: legacyData.api_secret_encrypted.trim(),
   }
 }
 
