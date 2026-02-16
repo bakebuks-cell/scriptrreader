@@ -124,8 +124,8 @@ export function useUserWallets() {
           role: 'USER' as WalletRole,
           name,
           exchange,
-          api_key_encrypted: apiKey,
-          api_secret_encrypted: apiSecret,
+          api_key_encrypted: apiKey.trim(),
+          api_secret_encrypted: apiSecret.trim(),
         })
         .select()
         .single();
