@@ -174,9 +174,18 @@ async function binanceCoinMRequest(
   return response.json()
 }
 
+// Futures-only symbols that don't exist on spot market
+const FUTURES_ONLY_SYMBOLS = ['XAUUSDT', 'XAGUSDT']
+
+function isFuturesOnlySymbol(symbol: string): boolean {
+  return FUTURES_ONLY_SYMBOLS.includes(symbol.toUpperCase())
+}
+
 async function fetchOHLCV(symbol: string, interval: string, limit: number = 100): Promise<OHLCV[]> {
-  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
-  console.log(`[ENGINE] Fetching OHLCV: ${symbol} ${interval} limit=${limit}`)
+  const isFutures = isFuturesOnlySymbol(symbol)
+  const baseUrl = isFutures ? 'https://fapi.binance.com/fapi/v1' : 'https://api.binance.com/api/v3'
+  const url = `${baseUrl}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
+  console.log(`[ENGINE] Fetching OHLCV: ${symbol} ${interval} limit=${limit} (${isFutures ? 'futures' : 'spot'})`)
   
   const response = await fetch(url)
   if (!response.ok) {
@@ -200,7 +209,9 @@ async function fetchOHLCV(symbol: string, interval: string, limit: number = 100)
 }
 
 async function getCurrentPrice(symbol: string): Promise<number> {
-  const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`
+  const isFutures = isFuturesOnlySymbol(symbol)
+  const baseUrl = isFutures ? 'https://fapi.binance.com/fapi/v1' : 'https://api.binance.com/api/v3'
+  const url = `${baseUrl}/ticker/price?symbol=${symbol}`
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(`Failed to fetch price: ${response.status}`)

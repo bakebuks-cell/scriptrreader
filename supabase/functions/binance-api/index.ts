@@ -271,16 +271,25 @@ async function placeOrder(
   return result
 }
 
+// Futures-only symbols that don't exist on spot market
+const FUTURES_ONLY_SYMBOLS = ['XAUUSDT', 'XAGUSDT']
+
+function isFuturesOnlySymbol(symbol: string): boolean {
+  return FUTURES_ONLY_SYMBOLS.includes(symbol.toUpperCase())
+}
+
 // Public endpoints that don't require authentication
 async function getPublicTicker(symbols: string[]): Promise<any[]> {
   const results = await Promise.all(
     symbols.map(async (symbol) => {
       try {
+        const isFutures = isFuturesOnlySymbol(symbol)
+        const baseUrl = isFutures ? 'https://fapi.binance.com/fapi/v1' : 'https://api.binance.com/api/v3'
         const response = await fetch(
-          `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`
+          `${baseUrl}/ticker/24hr?symbol=${symbol}`
         );
         if (!response.ok) {
-          console.log(`Ticker not found for ${symbol}`);
+          console.log(`Ticker not found for ${symbol} (${isFutures ? 'futures' : 'spot'})`);
           return null;
         }
         return response.json();
@@ -296,7 +305,9 @@ async function getPublicTicker(symbols: string[]): Promise<any[]> {
 // Fetch klines/candlestick data
 async function getKlines(symbol: string, interval: string, limit: number = 300): Promise<any[]> {
   try {
-    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    const isFutures = isFuturesOnlySymbol(symbol)
+    const baseUrl = isFutures ? 'https://fapi.binance.com/fapi/v1' : 'https://api.binance.com/api/v3'
+    const url = `${baseUrl}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
     console.log(`Fetching klines from: ${url}`);
     
     const response = await fetch(url);

@@ -20,6 +20,8 @@ interface MetalPrice {
 
 const PRECIOUS_METALS = [
   { symbol: 'PAXGUSDT', name: 'PAX Gold', shortName: 'PAXG', icon: '🥇' },
+  { symbol: 'XAUUSDT', name: 'Gold Futures', shortName: 'XAU', icon: '🏆' },
+  { symbol: 'XAGUSDT', name: 'Silver Futures', shortName: 'XAG', icon: '🥈' },
 ];
 
 export default function PreciousMetalsRates({ className }: { className?: string }) {
@@ -232,7 +234,7 @@ export default function PreciousMetalsRates({ className }: { className?: string 
         </div>
 
         <p className="text-xs text-muted-foreground mt-4 text-center">
-          Gold-backed tokens on Binance. 1 PAXG/XAUT ≈ 1 troy ounce of gold.
+          Gold &amp; Silver on Binance Futures. PAXG = gold-backed token (Spot). XAU/XAG = perpetual futures contracts.
         </p>
       </CardContent>
     </Card>
