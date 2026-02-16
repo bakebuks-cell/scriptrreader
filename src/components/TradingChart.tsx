@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { AVAILABLE_TIMEFRAMES } from '@/lib/constants';
 import {
   Popover,
   PopoverContent,
@@ -45,14 +46,24 @@ const SYMBOLS = [
 ];
 
 const INTERVALS = [
-  { value: '1m', label: '1m', binanceValue: '1m' },
-  { value: '5m', label: '5m', binanceValue: '5m' },
-  { value: '15m', label: '15m', binanceValue: '15m' },
-  { value: '30m', label: '30m', binanceValue: '30m' },
-  { value: '1h', label: '1H', binanceValue: '1h' },
-  { value: '4h', label: '4H', binanceValue: '4h' },
-  { value: '1d', label: '1D', binanceValue: '1d' },
-  { value: '1w', label: '1W', binanceValue: '1w' },
+  // Minutes
+  { value: '1m', label: '1m', binanceValue: '1m', group: 'Minutes' },
+  { value: '2m', label: '2m', binanceValue: '1m', group: 'Minutes' },  // Binance doesn't support 2m natively
+  { value: '3m', label: '3m', binanceValue: '3m', group: 'Minutes' },
+  { value: '5m', label: '5m', binanceValue: '5m', group: 'Minutes' },
+  { value: '10m', label: '10m', binanceValue: '5m', group: 'Minutes' }, // Binance doesn't support 10m natively
+  { value: '15m', label: '15m', binanceValue: '15m', group: 'Minutes' },
+  { value: '30m', label: '30m', binanceValue: '30m', group: 'Minutes' },
+  { value: '45m', label: '45m', binanceValue: '30m', group: 'Minutes' }, // Binance doesn't support 45m natively
+  // Hours
+  { value: '1h', label: '1H', binanceValue: '1h', group: 'Hours' },
+  { value: '2h', label: '2H', binanceValue: '2h', group: 'Hours' },
+  { value: '3h', label: '3H', binanceValue: '4h', group: 'Hours' },  // Binance doesn't support 3h natively
+  { value: '4h', label: '4H', binanceValue: '4h', group: 'Hours' },
+  // Days+
+  { value: '1d', label: '1D', binanceValue: '1d', group: 'Days' },
+  { value: '1w', label: '1W', binanceValue: '1w', group: 'Days' },
+  { value: '1M', label: '1M', binanceValue: '1M', group: 'Days' },
 ];
 
 export default function TradingChart({ 
@@ -760,7 +771,7 @@ export default function TradingChart({
             </Select>
 
             <div className="flex border rounded-md overflow-hidden">
-              {INTERVALS.slice(0, 5).map(i => (
+              {INTERVALS.filter(i => ['1m','5m','15m','1h','4h','1d'].includes(i.value)).map(i => (
                 <button
                   key={i.value}
                   onClick={() => setSelectedInterval(i.value)}
@@ -778,9 +789,14 @@ export default function TradingChart({
                 <SelectTrigger className="w-[60px] border-0 rounded-none">
                   <SelectValue placeholder="..." />
                 </SelectTrigger>
-                <SelectContent>
-                  {INTERVALS.map(i => (
-                    <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>
+                <SelectContent className="bg-popover z-50">
+                  {['Minutes', 'Hours', 'Days'].map(group => (
+                    <div key={group}>
+                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase">{group}</div>
+                      {INTERVALS.filter(i => i.group === group).map(i => (
+                        <SelectItem key={i.value} value={i.value}>{i.label} - {AVAILABLE_TIMEFRAMES.find(t => t.value === i.value)?.label || i.label}</SelectItem>
+                      ))}
+                    </div>
                   ))}
                 </SelectContent>
               </Select>

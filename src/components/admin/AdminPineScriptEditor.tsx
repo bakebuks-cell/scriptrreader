@@ -429,18 +429,23 @@ export default function AdminPineScriptEditor() {
 
                 <div className="space-y-2">
                   <Label>Allowed Timeframes</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {AVAILABLE_TIMEFRAMES.map((tf) => (
-                      <Badge
-                        key={tf.value}
-                        variant={newScript.allowed_timeframes?.includes(tf.value) ? 'default' : 'outline'}
-                        className="cursor-pointer"
-                        onClick={() => toggleTimeframe(tf.value, true)}
-                      >
-                        {tf.label}
-                      </Badge>
-                    ))}
-                  </div>
+                  {['Minutes', 'Hours', 'Days'].map(group => (
+                    <div key={group} className="mt-1">
+                      <span className="text-[10px] uppercase text-muted-foreground font-semibold">{group}</span>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {AVAILABLE_TIMEFRAMES.filter(tf => tf.group === group).map((tf) => (
+                          <Badge
+                            key={tf.value}
+                            variant={newScript.allowed_timeframes?.includes(tf.value) ? 'default' : 'outline'}
+                            className="cursor-pointer"
+                            onClick={() => toggleTimeframe(tf.value, true)}
+                          >
+                            {tf.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="space-y-2">
@@ -799,18 +804,23 @@ export default function AdminPineScriptEditor() {
 
                 <div className="space-y-2">
                   <Label>Allowed Timeframes</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {AVAILABLE_TIMEFRAMES.map((tf) => (
-                      <Badge
-                        key={tf.value}
-                        variant={editingScript.allowed_timeframes.includes(tf.value) ? 'default' : 'outline'}
-                        className="cursor-pointer"
-                        onClick={() => toggleTimeframe(tf.value, false)}
-                      >
-                        {tf.label}
-                      </Badge>
-                    ))}
-                  </div>
+                  {['Minutes', 'Hours', 'Days'].map(group => (
+                    <div key={group} className="mt-1">
+                      <span className="text-[10px] uppercase text-muted-foreground font-semibold">{group}</span>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {AVAILABLE_TIMEFRAMES.filter(tf => tf.group === group).map((tf) => (
+                          <Badge
+                            key={tf.value}
+                            variant={editingScript.allowed_timeframes.includes(tf.value) ? 'default' : 'outline'}
+                            className="cursor-pointer"
+                            onClick={() => toggleTimeframe(tf.value, false)}
+                          >
+                            {tf.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="space-y-2">
