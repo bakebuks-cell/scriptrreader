@@ -21,11 +21,23 @@ export function useApiKeyStatus(): ApiKeyStatus & { isLoading: boolean } {
     queryFn: async (): Promise<ApiKeyStatus> => {
       if (!user?.id) return { hasPermissionError: false, errorType: null, errorMessage: null };
 
+      // Check if wallet was recently updated (user re-saved keys)
+      const { data: wallet } = await supabase
+        .from('wallets')
+        .select('updated_at')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const walletUpdatedAt = wallet?.updated_at ? new Date(wallet.updated_at).getTime() : 0;
+
       // Get last 5 trades from the last 2 hours only (avoid stale errors from old API keys)
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       const { data: recentTrades } = await supabase
         .from('trades')
-        .select('status, error_message')
+        .select('status, error_message, created_at')
         .eq('user_id', user.id)
         .gte('created_at', twoHoursAgo)
         .order('created_at', { ascending: false })
@@ -49,6 +61,15 @@ export function useApiKeyStatus(): ApiKeyStatus & { isLoading: boolean } {
           t.error_message?.includes('API-key format invalid')
         )
       );
+
+      // If wallet was updated AFTER all the failures, dismiss the warning
+      // (user re-saved their API keys, so we should give them a clean slate)
+      if (permissionFails.length >= 2) {
+        const latestFailTime = new Date(permissionFails[0]?.created_at || 0).getTime();
+        if (walletUpdatedAt > latestFailTime) {
+          return { hasPermissionError: false, errorType: null, errorMessage: null };
+        }
+      }
 
       if (permissionFails.length >= 2) {
         const msg = permissionFails[0]?.error_message || '';
