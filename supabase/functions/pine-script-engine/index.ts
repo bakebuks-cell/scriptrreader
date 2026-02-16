@@ -963,10 +963,65 @@ function evaluateStrategy(
 ): TradeSignal {
   const lastIndex = ohlcv.length - 1
   
-  console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}`)
+  console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}, direction=${strategy.direction}`)
   
-  // Scan last 5 candles to catch signals (critical for 1m timeframe)
   const scanDepth = Math.min(5, lastIndex)
+
+  // For bidirectional strategies, evaluate BOTH long entry AND short entry separately
+  if (strategy.direction === 'both') {
+    // Split conditions into long-entry and short-entry
+    const longConditions = strategy.entryConditions.filter(c => 
+      c.type === 'crossover' || c.type === 'above' || c.type === 'direction_change_up'
+    )
+    const shortConditions = strategy.exitConditions.filter(c =>
+      c.type === 'crossunder' || c.type === 'below' || c.type === 'direction_change_down'
+    )
+
+    console.log(`[EVAL] Bidirectional: ${longConditions.length} long conditions, ${shortConditions.length} short conditions`)
+
+    // Check LONG entry
+    let longSignal = false
+    for (let checkIdx = lastIndex; checkIdx > lastIndex - scanDepth; checkIdx--) {
+      if (checkIdx < 1) break
+      let met = longConditions.length > 0
+      for (const cond of longConditions) {
+        met = met && evaluateCondition(cond, indicators, ohlcv, checkIdx)
+      }
+      if (met) {
+        console.log(`[EVAL] LONG entry signal at candle ${checkIdx}`)
+        longSignal = true
+        break
+      }
+    }
+
+    // Check SHORT entry (using exit conditions as short entry for bidirectional)
+    let shortSignal = false
+    for (let checkIdx = lastIndex; checkIdx > lastIndex - scanDepth; checkIdx--) {
+      if (checkIdx < 1) break
+      let met = shortConditions.length > 0
+      for (const cond of shortConditions) {
+        met = met && evaluateCondition(cond, indicators, ohlcv, checkIdx)
+      }
+      if (met) {
+        console.log(`[EVAL] SHORT entry signal at candle ${checkIdx}`)
+        shortSignal = true
+        break
+      }
+    }
+
+    if (!longSignal && !shortSignal) {
+      console.log(`[EVAL] No entry signal (long or short) in last ${scanDepth} candles`)
+      return { action: 'NONE', price: currentPrice, reason: 'No entry conditions met in recent candles' }
+    }
+
+    // Prefer short if both trigger (trend reversal = exit long + enter short)
+    const action: 'BUY' | 'SELL' = shortSignal && !longSignal ? 'SELL' : 'BUY'
+    console.log(`[EVAL] Bidirectional signal: ${action} (longSignal=${longSignal}, shortSignal=${shortSignal})`)
+
+    return buildTradeSignal(action, currentPrice, strategy, indicators, ohlcv, lastIndex)
+  }
+
+  // Non-bidirectional: original logic
   let shouldEnter = false
   let signalIndex = lastIndex
   
@@ -997,11 +1052,19 @@ function evaluateStrategy(
   }
   
   console.log(`[EVAL] ENTRY SIGNAL DETECTED at candle ${signalIndex}!`)
-  
-  // Determine direction
   const action: 'BUY' | 'SELL' = strategy.direction === 'short' ? 'SELL' : 'BUY'
   
-  // Calculate stop loss
+  return buildTradeSignal(action, currentPrice, strategy, indicators, ohlcv, lastIndex)
+}
+
+function buildTradeSignal(
+  action: 'BUY' | 'SELL',
+  currentPrice: number,
+  strategy: ParsedStrategy,
+  indicators: IndicatorValues,
+  ohlcv: OHLCV[],
+  lastIndex: number
+): TradeSignal {
   let stopLoss: number | undefined
   if (strategy.stopLoss) {
     switch (strategy.stopLoss.type) {
@@ -1027,7 +1090,6 @@ function evaluateStrategy(
     }
   }
   
-  // Calculate take profit
   let takeProfit: number | undefined
   if (strategy.takeProfit) {
     switch (strategy.takeProfit.type) {
@@ -1066,9 +1128,7 @@ function evaluateStrategy(
     price: currentPrice,
     stopLoss,
     takeProfit,
-    reason: `Entry conditions met: ${strategy.entryConditions.map(c => 
-      `${typeof c.indicator1 === 'object' ? c.indicator1.name + (c.indicator1.period ? `(${c.indicator1.period})` : '') : c.indicator1} ${c.type} ${typeof c.indicator2 === 'object' ? c.indicator2.name + (c.indicator2.period ? `(${c.indicator2.period})` : '') : c.indicator2}`
-    ).join(', ')}`,
+    reason: `${action} signal: strategy conditions met`,
   }
 }
 
