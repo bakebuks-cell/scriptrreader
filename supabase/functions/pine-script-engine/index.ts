@@ -1225,8 +1225,9 @@ async function syncOpenTradeWithExchange(
       return { stillOpen: true } // assume still open if can't check
     }
 
-    const isSpot = marketType === 'spot'
-    const isCoinM = marketType === 'coin_margin'
+    const effectiveType = isFuturesOnlySymbol(trade.symbol) ? 'usdt_futures' : marketType
+    const isSpot = effectiveType === 'spot'
+    const isCoinM = effectiveType === 'coin_margin'
     let hasPosition = false
 
     if (isSpot) {
@@ -1320,8 +1321,9 @@ async function closeOpenTrade(
     }
 
     const keys = apiKeys!
-    const isSpot = marketType === 'spot'
-    const isCoinM = marketType === 'coin_margin'
+    const effectiveType = isFuturesOnlySymbol(trade.symbol) ? 'usdt_futures' : marketType
+    const isSpot = effectiveType === 'spot'
+    const isCoinM = effectiveType === 'coin_margin'
     const closeSide = trade.signal_type === 'BUY' ? 'SELL' : 'BUY'
 
     // Get current position to determine quantity
@@ -1646,11 +1648,13 @@ async function executeTrade(
     
     try {
       // Determine API routing based on market type
-      const isSpot = marketType === 'spot'
-      const isCoinM = marketType === 'coin_margin'
+      // Force USDT-M futures for futures-only symbols regardless of user config
+      const effectiveMarketType = isFuturesOnlySymbol(symbol) ? 'usdt_futures' : marketType
+      const isSpot = effectiveMarketType === 'spot'
+      const isCoinM = effectiveMarketType === 'coin_margin'
       const isFutures = !isSpot // USDT-M or Coin-M are both futures
       
-      console.log(`[TRADE] Market type: ${marketType}, leverage: ${leverage}, isFutures: ${isFutures}`)
+      console.log(`[TRADE] Market type: ${marketType} -> effective: ${effectiveMarketType}, leverage: ${leverage}, isFutures: ${isFutures}`)
       
       // ===== GET BALANCE =====
       let availableUSDT = 0
@@ -2073,7 +2077,9 @@ Deno.serve(async (req) => {
               try {
                 console.log(`[ENGINE] Evaluating script "${us.script.name}" for user ${us.user_id}`)
                 const strategy = parsePineScript(us.script.script_content)
-                const scriptMarketType = us.script.market_type || 'futures'
+                // Force USDT-M futures for futures-only symbols (XAU, XAG)
+                const rawMarketType = us.script.market_type || 'futures'
+                const scriptMarketType = isFuturesOnlySymbol(symbol) ? 'usdt_futures' : rawMarketType
                 const scriptLeverage = us.script.leverage || 1
 
                 // ===== CHECK FOR OPEN TRADES TO CLOSE =====

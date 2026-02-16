@@ -284,15 +284,23 @@ async function getPublicTicker(symbols: string[]): Promise<any[]> {
     symbols.map(async (symbol) => {
       try {
         const isFutures = isFuturesOnlySymbol(symbol)
-        const baseUrl = isFutures ? 'https://fapi.binance.com/fapi/v1' : 'https://api.binance.com/api/v3'
-        const response = await fetch(
-          `${baseUrl}/ticker/24hr?symbol=${symbol}`
-        );
-        if (!response.ok) {
-          console.log(`Ticker not found for ${symbol} (${isFutures ? 'futures' : 'spot'})`);
-          return null;
+        const baseUrls = isFutures 
+          ? ['https://fapi.binance.com/fapi/v1', 'https://fapi1.binance.com/fapi/v1', 'https://fapi2.binance.com/fapi/v1']
+          : ['https://api.binance.com/api/v3', 'https://api1.binance.com/api/v3', 'https://data-api.binance.vision/api/v3']
+        
+        for (const baseUrl of baseUrls) {
+          const response = await fetch(`${baseUrl}/ticker/24hr?symbol=${symbol}`);
+          if (response.status === 451) {
+            console.log(`Ticker geo-blocked on ${baseUrl}, trying next...`)
+            continue
+          }
+          if (!response.ok) {
+            console.log(`Ticker not found for ${symbol} (${isFutures ? 'futures' : 'spot'})`);
+            return null;
+          }
+          return response.json();
         }
-        return response.json();
+        return null;
       } catch (err) {
         console.error(`Error fetching ${symbol}:`, err);
         return null;
@@ -304,24 +312,63 @@ async function getPublicTicker(symbols: string[]): Promise<any[]> {
 
 // Fetch klines/candlestick data
 async function getKlines(symbol: string, interval: string, limit: number = 300): Promise<any[]> {
-  try {
-    const isFutures = isFuturesOnlySymbol(symbol)
-    const baseUrl = isFutures ? 'https://fapi.binance.com/fapi/v1' : 'https://api.binance.com/api/v3'
-    const url = `${baseUrl}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
-    console.log(`Fetching klines from: ${url}`);
-    
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Binance klines error (${response.status}): ${errorText}`);
-      throw new Error(`Failed to fetch klines for ${symbol}: ${response.status} ${errorText}`);
+  const isFutures = isFuturesOnlySymbol(symbol)
+  
+  // Try multiple endpoints for geo-blocked regions
+  const spotUrls = [
+    'https://api.binance.com/api/v3',
+    'https://api1.binance.com/api/v3',
+    'https://api2.binance.com/api/v3',
+    'https://api3.binance.com/api/v3',
+  ]
+  const futuresUrls = [
+    'https://fapi.binance.com/fapi/v1',
+    'https://fapi1.binance.com/fapi/v1',
+    'https://fapi2.binance.com/fapi/v1',
+    'https://fapi3.binance.com/fapi/v1',
+    'https://fapi4.binance.com/fapi/v1',
+  ]
+  
+  const baseUrls = isFutures ? futuresUrls : spotUrls
+  
+  let lastError: Error | null = null
+  for (const baseUrl of baseUrls) {
+    try {
+      const url = `${baseUrl}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+      console.log(`Fetching klines from: ${url}`);
+      
+      const response = await fetch(url);
+      
+      if (response.status === 451) {
+        console.log(`Geo-blocked on ${baseUrl}, trying next...`)
+        lastError = new Error(`Geo-blocked: ${response.status}`)
+        continue
+      }
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Binance klines error (${response.status}): ${errorText}`);
+        throw new Error(`Failed to fetch klines for ${symbol}: ${response.status} ${errorText}`);
+      }
+      return response.json();
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+      if (!lastError.message.includes('Geo-blocked')) {
+        throw err
+      }
     }
-    return response.json();
-  } catch (err) {
-    console.error(`Error fetching klines:`, err);
-    throw err;
   }
+  
+  // If all endpoints geo-blocked, try data.binance.com as last resort
+  try {
+    const fallbackBase = isFutures ? 'https://fapi4.binance.com/fapi/v1' : 'https://data-api.binance.vision/api/v3'
+    const url = `${fallbackBase}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    console.log(`Trying fallback: ${url}`);
+    const response = await fetch(url);
+    if (response.ok) return response.json();
+  } catch (_) {}
+  
+  throw lastError || new Error(`Failed to fetch klines for ${symbol}`)
 }
 
 Deno.serve(async (req) => {
@@ -425,7 +472,9 @@ Deno.serve(async (req) => {
         }
         
         const body = await req.json()
-        const { symbol, side, type = 'MARKET', quantity, price, stopLoss, takeProfit, isFutures = false } = body
+        const { symbol, side, type = 'MARKET', quantity, price, stopLoss, takeProfit, isFutures: isFuturesParam = false } = body
+        // Force futures for futures-only symbols (XAU, XAG)
+        const isFuturesEffective = isFuturesParam || isFuturesOnlySymbol(symbol)
         
         if (!symbol || !side || !quantity) {
           return new Response(
@@ -463,7 +512,7 @@ Deno.serve(async (req) => {
             price,
             stopLoss,
             takeProfit,
-          }, isFutures)
+          }, isFuturesEffective)
           
           // Record the trade
           await supabase.from('trades').insert({
