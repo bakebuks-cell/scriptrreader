@@ -89,6 +89,8 @@ export const POPULAR_TRADING_PAIRS = [
   'AAVEUSDT',
   // Precious metals
   'PAXGUSDT',   // PAX Gold (Gold-backed token)
+  'XAUUSDT',    // Gold Futures (perpetual)
+  'XAGUSDT',    // Silver Futures (perpetual)
 ] as const;
 
 // Maximum symbols per script
