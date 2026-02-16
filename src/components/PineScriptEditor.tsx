@@ -466,20 +466,28 @@ export default function PineScriptEditor({
 
                   <div>
                     <Label>Allowed Timeframes</Label>
-                    <div className="grid grid-cols-4 gap-2 mt-2">
-                      {AVAILABLE_TIMEFRAMES.map(({ value, label }) => (
-                        <label key={value} className={`flex items-center gap-2 p-2 rounded border cursor-pointer ${formData.allowed_timeframes.includes(value) ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}`}>
-                          <input
-                            type="radio"
-                            name="timeframe"
-                            checked={formData.allowed_timeframes.includes(value)}
-                            onChange={() => handleTimeframeChange(value)}
-                            className="accent-primary"
-                          />
-                          <span className="text-sm">{label}</span>
-                        </label>
-                      ))}
-                    </div>
+                    {['Minutes', 'Hours', 'Days'].map(group => {
+                      const groupItems = AVAILABLE_TIMEFRAMES.filter(t => t.group === group);
+                      return (
+                        <div key={group} className="mt-2">
+                          <span className="text-[10px] uppercase text-muted-foreground font-semibold">{group}</span>
+                          <div className="grid grid-cols-4 gap-1.5 mt-1">
+                            {groupItems.map(({ value, label }) => (
+                              <label key={value} className={`flex items-center gap-1.5 p-1.5 rounded border cursor-pointer text-xs ${formData.allowed_timeframes.includes(value) ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}`}>
+                                <input
+                                  type="radio"
+                                  name="timeframe"
+                                  checked={formData.allowed_timeframes.includes(value)}
+                                  onChange={() => handleTimeframeChange(value)}
+                                  className="accent-primary"
+                                />
+                                <span>{label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <div>

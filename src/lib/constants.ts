@@ -9,15 +9,26 @@ export const FEATURE_FLAGS = {
 export const DEFAULT_USER_COINS = 5;
 export const MAX_SELECTED_TIMEFRAMES = 3;
 
-// Available timeframes
+// Available timeframes (matching TradingView)
 export const AVAILABLE_TIMEFRAMES = [
-  { value: '1m', label: '1 Minute' },
-  { value: '5m', label: '5 Minutes' },
-  { value: '15m', label: '15 Minutes' },
-  { value: '30m', label: '30 Minutes' },
-  { value: '1h', label: '1 Hour' },
-  { value: '4h', label: '4 Hours' },
-  { value: '1d', label: '1 Day' },
+  // Minutes
+  { value: '1m', label: '1 Minute', group: 'Minutes' },
+  { value: '2m', label: '2 Minutes', group: 'Minutes' },
+  { value: '3m', label: '3 Minutes', group: 'Minutes' },
+  { value: '5m', label: '5 Minutes', group: 'Minutes' },
+  { value: '10m', label: '10 Minutes', group: 'Minutes' },
+  { value: '15m', label: '15 Minutes', group: 'Minutes' },
+  { value: '30m', label: '30 Minutes', group: 'Minutes' },
+  { value: '45m', label: '45 Minutes', group: 'Minutes' },
+  // Hours
+  { value: '1h', label: '1 Hour', group: 'Hours' },
+  { value: '2h', label: '2 Hours', group: 'Hours' },
+  { value: '3h', label: '3 Hours', group: 'Hours' },
+  { value: '4h', label: '4 Hours', group: 'Hours' },
+  // Days+
+  { value: '1d', label: '1 Day', group: 'Days' },
+  { value: '1w', label: '1 Week', group: 'Days' },
+  { value: '1M', label: '1 Month', group: 'Days' },
 ] as const;
 
 // Candle types
