@@ -387,7 +387,7 @@ function calculateSuperTrend(ohlcv: OHLCV[], atrPeriod: number = 10, multiplier:
       const close = ohlcv[oi].close
       if (prevDir === -1 && close > lower[i - 1]) {
         direction.push(1) // flip to bullish
-      } else if (prevDir === 1 && close < upper[i]) {
+      } else if (prevDir === 1 && close < upper[i - 1]) {
         direction.push(-1) // flip to bearish
       } else {
         direction.push(prevDir)
@@ -401,7 +401,7 @@ function calculateSuperTrend(ohlcv: OHLCV[], atrPeriod: number = 10, multiplier:
 function calculateAllIndicators(ohlcv: OHLCV[]): IndicatorValues {
   const closes = ohlcv.map(c => c.close)
   
-  return {
+  const result: IndicatorValues = {
     ema: {
       9: calculateEMA(closes, 9),
       12: calculateEMA(closes, 12),
@@ -428,6 +428,19 @@ function calculateAllIndicators(ohlcv: OHLCV[]): IndicatorValues {
     },
     supertrend: calculateSuperTrend(ohlcv),
   }
+
+  // Debug: log last few SuperTrend direction values
+  if (result.supertrend && result.supertrend.direction.length > 0) {
+    const dir = result.supertrend.direction
+    const last5 = dir.slice(-5)
+    const changes: Array<{idx: number, from: number, to: number}> = []
+    for (let i = 1; i < dir.length; i++) {
+      if (dir[i] !== dir[i - 1]) changes.push({ idx: i, from: dir[i - 1], to: dir[i] })
+    }
+    console.log(`[INDICATORS] SuperTrend: ${dir.length} values, last5=[${last5}], direction_changes=${changes.length}${changes.length > 0 ? ` last_change=idx${changes[changes.length-1].idx} (${changes[changes.length-1].from}->${changes[changes.length-1].to})` : ''}`)
+  }
+
+  return result
 }
 
 // ============================================
@@ -791,7 +804,12 @@ function getIndicatorValue(
   
   const adjustedIndex = (arr: number[]) => {
     if (!arr || arr.length === 0) return -1
-    return Math.min(index, arr.length - 1)
+    // Properly map OHLCV index to indicator array index
+    // Indicator arrays are shorter than OHLCV by their period offset
+    const offset = ohlcv.length - arr.length
+    const mapped = index - offset
+    if (mapped < 0 || mapped >= arr.length) return -1
+    return mapped
   }
   
   switch (ref.name) {
