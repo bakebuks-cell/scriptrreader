@@ -1077,6 +1077,90 @@ function evaluateStrategy(
 // ============================================
 
 // ============================================
+// EXCHANGE POSITION SYNC (detect externally closed trades)
+// ============================================
+
+async function syncOpenTradeWithExchange(
+  supabase: any,
+  trade: { id: string; user_id: string; symbol: string; signal_type: string; entry_price: number },
+  marketType: string
+): Promise<{ stillOpen: boolean }> {
+  try {
+    // Get API keys
+    const { data: walletKeys } = await supabase
+      .from('wallets')
+      .select('api_key_encrypted, api_secret_encrypted')
+      .eq('user_id', trade.user_id)
+      .eq('is_active', true)
+      .not('api_key_encrypted', 'is', null)
+      .not('api_secret_encrypted', 'is', null)
+      .limit(1)
+      .maybeSingle()
+
+    let apiKeys = walletKeys
+    if (!apiKeys) {
+      const { data: legacyKeys } = await supabase
+        .from('exchange_keys')
+        .select('api_key_encrypted, api_secret_encrypted')
+        .eq('user_id', trade.user_id)
+        .eq('exchange', 'binance')
+        .eq('is_active', true)
+        .maybeSingle()
+      apiKeys = legacyKeys
+    }
+
+    if (!apiKeys) {
+      console.log(`[SYNC] No API keys for user ${trade.user_id}, cannot verify position`)
+      return { stillOpen: true } // assume still open if can't check
+    }
+
+    const isSpot = marketType === 'spot'
+    const isCoinM = marketType === 'coin_margin'
+    let hasPosition = false
+
+    if (isSpot) {
+      const baseAsset = trade.symbol.replace('USDT', '').replace('BUSD', '')
+      const accountInfo = await binanceRequest('/api/v3/account', apiKeys.api_key_encrypted.trim(), apiKeys.api_secret_encrypted.trim())
+      const balance = accountInfo.balances?.find((b: any) => b.asset === baseAsset)
+      hasPosition = balance && parseFloat(balance.free) + parseFloat(balance.locked) > 0.0001
+    } else if (isCoinM) {
+      const positions = await binanceCoinMRequest('/dapi/v1/positionRisk', apiKeys.api_key_encrypted.trim(), apiKeys.api_secret_encrypted.trim())
+      const pos = positions.find((p: any) => p.symbol === trade.symbol && Math.abs(parseFloat(p.positionAmt)) > 0)
+      hasPosition = !!pos
+    } else {
+      // USDT-M Futures
+      const positions = await binanceRequest('/fapi/v2/positionRisk', apiKeys.api_key_encrypted.trim(), apiKeys.api_secret_encrypted.trim(), 'GET', { recvWindow: '10000' }, true)
+      const pos = positions.find((p: any) => p.symbol === trade.symbol && Math.abs(parseFloat(p.positionAmt)) > 0)
+      hasPosition = !!pos
+    }
+
+    if (!hasPosition) {
+      console.log(`[SYNC] Position for ${trade.symbol} no longer exists on exchange! Marking trade ${trade.id} as CLOSED.`)
+      
+      // Get current price to record as exit price
+      let exitPrice = trade.entry_price
+      try {
+        exitPrice = await getCurrentPrice(trade.symbol)
+      } catch (_) {}
+
+      await supabase.from('trades').update({
+        status: 'CLOSED',
+        exit_price: exitPrice,
+        closed_at: new Date().toISOString(),
+        error_message: 'Position closed externally (SL/TP hit or manual close on exchange)',
+      }).eq('id', trade.id)
+
+      return { stillOpen: false }
+    }
+
+    return { stillOpen: true }
+  } catch (err) {
+    console.log(`[SYNC] Error checking position for trade ${trade.id}:`, err)
+    return { stillOpen: true } // assume still open on error
+  }
+}
+
+// ============================================
 // TRADE CLOSING (auto-close based on exit conditions)
 // ============================================
 
@@ -1891,47 +1975,108 @@ Deno.serve(async (req) => {
                   .eq('status', 'OPEN')
 
                 if (openTrades && openTrades.length > 0) {
-                  console.log(`[ENGINE] Found ${openTrades.length} open trade(s) for user ${us.user_id}, checking exit conditions`)
+                  console.log(`[ENGINE] Found ${openTrades.length} open trade(s) for user ${us.user_id}, syncing with exchange...`)
                   
-                  const exitResult = evaluateExitConditions(strategy, indicators, ohlcv, currentPrice)
-                  
-                  if (exitResult.shouldExit) {
-                    console.log(`[ENGINE] EXIT signal detected: ${exitResult.reason}`)
-                    for (const openTrade of openTrades) {
-                      const closeResult = await closeOpenTrade(
-                        supabase,
-                        openTrade,
-                        currentPrice,
-                        scriptMarketType,
-                        exitResult.reason
-                      )
+                  // STEP 1: Verify positions still exist on exchange (detect SL/TP hits, manual closes)
+                  let allSynced = true
+                  let anyClosedExternally = false
+                  for (const openTrade of openTrades) {
+                    const syncResult = await syncOpenTradeWithExchange(supabase, openTrade, scriptMarketType)
+                    if (!syncResult.stillOpen) {
+                      anyClosedExternally = true
                       results.push({
                         scriptId: us.script_id,
                         scriptName: us.script.name,
                         userId: us.user_id,
                         symbol,
                         timeframe,
-                        action: 'CLOSE',
+                        action: 'SYNC_CLOSE',
                         tradeId: openTrade.id,
-                        executed: closeResult.success,
-                        error: closeResult.error,
-                        reason: exitResult.reason,
+                        executed: true,
+                        reason: 'Position closed externally on exchange (SL/TP or manual)',
                       })
                     }
-                    continue // Don't open new trade on same candle as close
-                  } else {
-                    console.log(`[ENGINE] Open trade exists, exit conditions not met — skipping entry`)
-                    results.push({
-                      scriptId: us.script_id,
-                      scriptName: us.script.name,
-                      userId: us.user_id,
-                      symbol,
-                      timeframe,
-                      executed: false,
-                      reason: 'Open trade exists, exit conditions not yet met',
-                    })
-                    continue // Don't open another trade while one is already open
                   }
+
+                  // If all trades were closed externally, allow new entry evaluation below
+                  if (anyClosedExternally) {
+                    // Re-check if any trades are still actually open after sync
+                    const { data: stillOpenTrades } = await supabase
+                      .from('trades')
+                      .select('id')
+                      .eq('user_id', us.user_id)
+                      .eq('script_id', us.script_id)
+                      .eq('symbol', symbol)
+                      .eq('status', 'OPEN')
+                    
+                    if (!stillOpenTrades || stillOpenTrades.length === 0) {
+                      console.log(`[ENGINE] All positions synced/closed. Proceeding to evaluate new entry.`)
+                      // Fall through to entry evaluation below
+                    } else {
+                      console.log(`[ENGINE] Some positions still open after sync, checking exit conditions`)
+                      // Continue with exit condition check on remaining open trades
+                    }
+                  }
+
+                  // Re-fetch open trades after sync
+                  const { data: remainingOpenTrades } = await supabase
+                    .from('trades')
+                    .select('id, user_id, script_id, symbol, signal_type, entry_price')
+                    .eq('user_id', us.user_id)
+                    .eq('script_id', us.script_id)
+                    .eq('symbol', symbol)
+                    .eq('status', 'OPEN')
+
+                  if (remainingOpenTrades && remainingOpenTrades.length > 0) {
+                    console.log(`[ENGINE] ${remainingOpenTrades.length} trade(s) still open, checking exit conditions`)
+                    
+                    const exitResult = evaluateExitConditions(strategy, indicators, ohlcv, currentPrice)
+                    
+                    if (exitResult.shouldExit) {
+                      console.log(`[ENGINE] EXIT signal detected: ${exitResult.reason}`)
+                      for (const openTrade of remainingOpenTrades) {
+                        const closeResult = await closeOpenTrade(
+                          supabase,
+                          openTrade,
+                          currentPrice,
+                          scriptMarketType,
+                          exitResult.reason
+                        )
+                        results.push({
+                          scriptId: us.script_id,
+                          scriptName: us.script.name,
+                          userId: us.user_id,
+                          symbol,
+                          timeframe,
+                          action: 'CLOSE',
+                          tradeId: openTrade.id,
+                          executed: closeResult.success,
+                          error: closeResult.error,
+                          reason: exitResult.reason,
+                        })
+                      }
+                      // After closing, allow new entry evaluation for bidirectional strategies
+                      if (strategy.direction === 'both') {
+                        console.log(`[ENGINE] Bidirectional strategy: evaluating new entry after close`)
+                        // Fall through to entry evaluation below
+                      } else {
+                        continue
+                      }
+                    } else {
+                      console.log(`[ENGINE] Open trade exists, exit conditions not met — skipping entry`)
+                      results.push({
+                        scriptId: us.script_id,
+                        scriptName: us.script.name,
+                        userId: us.user_id,
+                        symbol,
+                        timeframe,
+                        executed: false,
+                        reason: 'Open trade exists, exit conditions not yet met',
+                      })
+                      continue // Don't open another trade while one is already open
+                    }
+                  }
+                  // If no remaining open trades, fall through to entry evaluation
                 }
 
                 // ===== CHECK FOR REPEATED FAILURES (circuit breaker - per user) =====
