@@ -43,6 +43,7 @@ export function useTrades() {
       return data as Trade[];
     },
     enabled: !!user?.id,
+    refetchInterval: 10000, // Auto-refresh every 10 seconds
   });
 
   const activeTrades = trades?.filter(t => t.status === 'OPEN' || t.status === 'PENDING') ?? [];
