@@ -1,5 +1,4 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
-import { createHmac } from 'https://deno.land/std@0.177.0/node/crypto.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -47,11 +46,20 @@ function normalizeExchange(value: string | null): Exchange {
   return 'binance'
 }
 
-// Create Binance signature for authenticated requests
-function createSignature(queryString: string, apiSecret: string): string {
-  const hmac = createHmac('sha256', apiSecret)
-  hmac.update(queryString)
-  return hmac.digest('hex')
+// Create Binance signature using Web Crypto API (native Deno support)
+async function createSignature(queryString: string, apiSecret: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(apiSecret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(queryString))
+  return Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 // Make authenticated Binance API request
@@ -75,10 +83,12 @@ async function binanceRequest(
       : 'https://api.binance.com'
   
   const timestamp = Date.now().toString()
-  const allParams = { ...params, timestamp }
+  const allParams = { ...params, timestamp, recvWindow: '10000' }
   const queryString = new URLSearchParams(allParams).toString()
-  const signature = createSignature(queryString, apiSecret)
+  const signature = await createSignature(queryString, apiSecret)
   const signedQuery = `${queryString}&signature=${signature}`
+  
+  console.log(`[BINANCE] Request: ${endpoint} | keyPrefix=${apiKey.substring(0, 8)}... | secretLen=${apiSecret.length} | secretPrefix=${apiSecret.substring(0, 4)}... | exchange=${exchange}`)
   
   const url = `${baseUrl}${endpoint}?${signedQuery}`
   
