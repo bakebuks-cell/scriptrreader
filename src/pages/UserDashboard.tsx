@@ -140,6 +140,20 @@ export default function UserDashboard() {
   const coinsRemaining = profile?.coins ?? 0;
   const recentTrades = trades.slice(0, 5);
 
+  // Calculate P&L for a single trade
+  const calcPnL = (trade: typeof trades[0]): number | null => {
+    if (!trade.entry_price || !trade.exit_price) return null;
+    return trade.signal_type === 'BUY'
+      ? trade.exit_price - trade.entry_price
+      : trade.entry_price - trade.exit_price;
+  };
+
+  // Total P&L from closed trades
+  const closedTrades = trades.filter(t => t.status === 'CLOSED' && t.entry_price && t.exit_price);
+  const totalPnL = closedTrades.reduce((sum, t) => sum + (calcPnL(t) ?? 0), 0);
+  const winCount = closedTrades.filter(t => (calcPnL(t) ?? 0) > 0).length;
+  const winRate = closedTrades.length > 0 ? ((winCount / closedTrades.length) * 100).toFixed(1) : '0';
+
   const renderContent = () => {
     switch (activeTab) {
       case 'overview':
@@ -211,6 +225,53 @@ export default function UserDashboard() {
                   <div className="text-3xl font-bold">{activeTrades.length}</div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {trades.length} total executed
+                  </p>
+                </CardContent>
+              </Card>
+              {/* Total P&L Card */}
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total P&L</CardTitle>
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-3xl font-bold ${totalPnL >= 0 ? 'text-buy' : 'text-sell'}`}>
+                    {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {closedTrades.length} closed · {winRate}% win rate
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Stats row 2 - smaller cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <Card className="stat-card">
+                <CardContent className="pt-4 pb-3">
+                  <p className="text-xs text-muted-foreground">Wins</p>
+                  <p className="text-lg font-bold text-buy">{winCount}</p>
+                </CardContent>
+              </Card>
+              <Card className="stat-card">
+                <CardContent className="pt-4 pb-3">
+                  <p className="text-xs text-muted-foreground">Losses</p>
+                  <p className="text-lg font-bold text-sell">{closedTrades.length - winCount}</p>
+                </CardContent>
+              </Card>
+              <Card className="stat-card">
+                <CardContent className="pt-4 pb-3">
+                  <p className="text-xs text-muted-foreground">Best Trade</p>
+                  <p className="text-lg font-bold text-buy">
+                    {closedTrades.length > 0 ? `+${Math.max(...closedTrades.map(t => calcPnL(t) ?? 0)).toFixed(2)}` : '-'}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="stat-card">
+                <CardContent className="pt-4 pb-3">
+                  <p className="text-xs text-muted-foreground">Worst Trade</p>
+                  <p className="text-lg font-bold text-sell">
+                    {closedTrades.length > 0 ? `${Math.min(...closedTrades.map(t => calcPnL(t) ?? 0)).toFixed(2)}` : '-'}
                   </p>
                 </CardContent>
               </Card>
@@ -328,13 +389,20 @@ export default function UserDashboard() {
                               )}
                             </div>
                           </div>
-                          <Badge variant={
-                            trade.status === 'OPEN' ? 'default' :
-                            trade.status === 'CLOSED' ? 'secondary' :
-                            trade.status === 'FAILED' ? 'destructive' : 'outline'
-                          }>
-                            {trade.status}
-                          </Badge>
+                          <div className="flex items-center gap-3">
+                            {trade.status === 'CLOSED' && calcPnL(trade) !== null && (
+                              <span className={`text-sm font-semibold font-mono ${(calcPnL(trade) ?? 0) >= 0 ? 'text-buy' : 'text-sell'}`}>
+                                {(calcPnL(trade) ?? 0) >= 0 ? '+' : ''}{calcPnL(trade)?.toFixed(2)}
+                              </span>
+                            )}
+                            <Badge variant={
+                              trade.status === 'OPEN' ? 'default' :
+                              trade.status === 'CLOSED' ? 'secondary' :
+                              trade.status === 'FAILED' ? 'destructive' : 'outline'
+                            }>
+                              {trade.status}
+                            </Badge>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -415,15 +483,17 @@ export default function UserDashboard() {
                         <th className="pb-3 font-medium">Side</th>
                         <th className="pb-3 font-medium">Symbol</th>
                         <th className="pb-3 font-medium">Entry</th>
-                        <th className="pb-3 font-medium">SL</th>
-                        <th className="pb-3 font-medium">TP</th>
+                        <th className="pb-3 font-medium">Exit</th>
+                        <th className="pb-3 font-medium">P&L</th>
                         <th className="pb-3 font-medium">Status</th>
                         <th className="pb-3 font-medium">Date & Time</th>
                         <th className="pb-3 font-medium">Reason</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {trades.map((trade) => (
+                      {trades.map((trade) => {
+                        const pnl = calcPnL(trade);
+                        return (
                         <tr key={trade.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
                           <td className="py-3">
                             <Badge variant={trade.signal_type === 'BUY' ? 'default' : 'destructive'} className="gap-1">
@@ -433,8 +503,14 @@ export default function UserDashboard() {
                           </td>
                           <td className="py-3 font-medium">{trade.symbol}</td>
                           <td className="py-3 font-mono text-sm">{trade.entry_price?.toFixed(2) || '-'}</td>
-                          <td className="py-3 font-mono text-sm text-sell">{trade.stop_loss?.toFixed(2) || '-'}</td>
-                          <td className="py-3 font-mono text-sm text-buy">{trade.take_profit?.toFixed(2) || '-'}</td>
+                          <td className="py-3 font-mono text-sm">{trade.exit_price?.toFixed(2) || '-'}</td>
+                          <td className="py-3 font-mono text-sm font-semibold">
+                            {pnl !== null ? (
+                              <span className={pnl >= 0 ? 'text-buy' : 'text-sell'}>
+                                {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}
+                              </span>
+                            ) : '-'}
+                          </td>
                           <td className="py-3">
                             <Badge variant={
                               trade.status === 'OPEN' ? 'default' :
@@ -455,7 +531,8 @@ export default function UserDashboard() {
                             {trade.status === 'FAILED' && trade.error_message ? trade.error_message : '-'}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
