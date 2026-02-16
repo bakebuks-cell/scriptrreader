@@ -1407,12 +1407,10 @@ async function closeOpenTrade(
     return { success: true }
   } catch (err) {
     console.error(`[CLOSE] Failed to close trade ${trade.id}:`, err)
-    // Still mark as closed in DB to prevent stuck trades
+    // DO NOT mark as CLOSED — the exchange position is still open!
+    // Keep the trade as OPEN so the next cycle retries the close.
     await supabase.from('trades').update({
-      status: 'CLOSED',
-      exit_price: currentPrice,
-      closed_at: new Date().toISOString(),
-      error_message: `Auto-close failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      error_message: `Auto-close attempt failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
     }).eq('id', trade.id)
     return { success: false, error: err instanceof Error ? err.message : 'Close failed' }
   }
@@ -1486,6 +1484,22 @@ async function executeTrade(
     if (existingSuccessfulTrade) {
       console.log(`[TRADE] Already have a successful trade on this candle, skipping`)
       return { success: false, error: 'Already traded on this candle' }
+    }
+
+    // CRITICAL: Also check if there's ANY open/pending trade on the same symbol
+    // This prevents stacking multiple positions when signals repeat across candles
+    const { data: existingOpenTrade } = await supabase
+      .from('trades')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('script_id', scriptId)
+      .eq('symbol', symbol)
+      .in('status', ['OPEN', 'PENDING'])
+      .maybeSingle()
+    
+    if (existingOpenTrade) {
+      console.log(`[TRADE] Already have an open/pending trade for ${symbol}, skipping new entry`)
+      return { success: false, error: 'Already have an open position on this symbol' }
     }
 
     // Check for repeated failures on same candle (max 2 retries to prevent credit drain)
