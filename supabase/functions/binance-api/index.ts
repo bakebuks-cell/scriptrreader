@@ -352,19 +352,30 @@ Deno.serve(async (req) => {
 
     // Create Supabase client with user's JWT
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
-
-    // Verify and get user from JWT
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     
-    if (authError || !user) {
+    // Use anon key client with user's auth header for token verification
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    })
+
+    // Verify token using getClaims (works with signing-keys system)
+    const token = authHeader.replace('Bearer ', '')
+    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token)
+    
+    if (claimsError || !claimsData?.claims) {
+      console.error('[BINANCE-API] Auth failed:', claimsError?.message || 'No claims')
       return new Response(
         JSON.stringify({ error: 'Invalid or expired token' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    const user = { id: claimsData.claims.sub as string }
+    
+    // Use service role client for database operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Get user's API keys
     const { apiKey, apiSecret } = await getUserApiKeys(supabase, user.id, exchange)
