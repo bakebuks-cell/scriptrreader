@@ -329,6 +329,27 @@ function calculateBollingerBands(prices: number[], period: number = 20, stdDev: 
   return { upper, middle, lower }
 }
 
+// RMA (Wilder's Moving Average) - matches TradingView's ta.rma()
+function calculateRMA(values: number[], period: number): number[] {
+  if (values.length < period) return []
+  const rma: number[] = []
+  
+  // First value is SMA
+  let sum = 0
+  for (let i = 0; i < period; i++) {
+    sum += values[i]
+  }
+  rma.push(sum / period)
+  
+  // Subsequent values use Wilder's smoothing: rma = (prev * (period-1) + current) / period
+  for (let i = period; i < values.length; i++) {
+    const value = (rma[rma.length - 1] * (period - 1) + values[i]) / period
+    rma.push(value)
+  }
+  
+  return rma
+}
+
 function calculateATR(ohlcv: OHLCV[], period: number = 14): number[] {
   const trueRanges: number[] = []
   
@@ -345,7 +366,8 @@ function calculateATR(ohlcv: OHLCV[], period: number = 14): number[] {
     trueRanges.push(tr)
   }
   
-  return calculateSMA(trueRanges, period)
+  // Use RMA (Wilder's smoothing) to match TradingView's ta.atr()
+  return calculateRMA(trueRanges, period)
 }
 
 function calculateSuperTrend(ohlcv: OHLCV[], atrPeriod: number = 10, multiplier: number = 3.0): { upper: number[]; lower: number[]; direction: number[] } {
