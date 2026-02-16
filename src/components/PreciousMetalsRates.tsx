@@ -20,7 +20,6 @@ interface MetalPrice {
 
 const PRECIOUS_METALS = [
   { symbol: 'PAXGUSDT', name: 'PAX Gold', shortName: 'PAXG', icon: '🥇' },
-  { symbol: 'XAUTUSDT', name: 'Tether Gold', shortName: 'XAUT', icon: '🏆' },
 ];
 
 export default function PreciousMetalsRates({ className }: { className?: string }) {

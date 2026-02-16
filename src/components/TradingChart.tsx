@@ -42,7 +42,6 @@ const SYMBOLS = [
   { value: 'ADAUSDT', label: 'ADA/USDT' },
   { value: 'DOGEUSDT', label: 'DOGE/USDT' },
   { value: 'PAXGUSDT', label: 'PAXG/USDT (Gold)' },
-  { value: 'XAUTUSDT', label: 'XAUT/USDT (Gold)' },
 ];
 
 const INTERVALS = [
