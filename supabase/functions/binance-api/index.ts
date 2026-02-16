@@ -355,27 +355,22 @@ Deno.serve(async (req) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     
-    // Use anon key client with user's auth header for token verification
+    // Verify user by passing their token to getUser via service role client
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    
     const authClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     })
 
-    // Verify token using getClaims (works with signing-keys system)
-    const token = authHeader.replace('Bearer ', '')
-    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token)
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
     
-    if (claimsError || !claimsData?.claims) {
-      console.error('[BINANCE-API] Auth failed:', claimsError?.message || 'No claims')
+    if (authError || !user) {
+      console.error('[BINANCE-API] Auth failed:', authError?.message || 'No user')
       return new Response(
         JSON.stringify({ error: 'Invalid or expired token' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
-
-    const user = { id: claimsData.claims.sub as string }
-    
-    // Use service role client for database operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Get user's API keys
     const { apiKey, apiSecret } = await getUserApiKeys(supabase, user.id, exchange)
