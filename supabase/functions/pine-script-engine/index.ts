@@ -1443,7 +1443,7 @@ async function executeTrade(
     // Get user profile
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('coins, bot_enabled, free_trades_remaining')
+      .select('coins, bot_enabled, free_trades_remaining, subscription_active')
       .eq('user_id', userId)
       .single()
     
@@ -1457,13 +1457,18 @@ async function executeTrade(
       return { success: false, error: 'Bot is disabled — enable Trading Bot in Library' }
     }
     
-    // Check credits
+    // Check credits (bypass if subscription is active)
     const freeTradesLeft = profile.free_trades_remaining ?? 0
     const coins = profile.coins ?? 0
+    const hasSubscription = profile.subscription_active ?? false
     
-    if (freeTradesLeft <= 0 && coins <= 0) {
-      console.log(`[TRADE] No credits: free=${freeTradesLeft}, coins=${coins}`)
+    if (!hasSubscription && freeTradesLeft <= 0 && coins <= 0) {
+      console.log(`[TRADE] No credits: free=${freeTradesLeft}, coins=${coins}, subscription=${hasSubscription}`)
       return { success: false, error: 'No free trades or coins remaining' }
+    }
+    
+    if (hasSubscription) {
+      console.log(`[TRADE] Subscription active — unlimited trades for user ${userId}`)
     }
     
     // Duplicate trade check using actual timeframe interval
@@ -1595,19 +1600,21 @@ async function executeTrade(
       return { success: false, error: 'No Binance API keys configured. Signal was recorded.' }
     }
     
-    // Deduct credit
-    if (freeTradesLeft > 0) {
-      console.log(`[TRADE] Deducting free trade: ${freeTradesLeft} -> ${freeTradesLeft - 1}`)
-      await supabase
-        .from('profiles')
-        .update({ free_trades_remaining: freeTradesLeft - 1 })
-        .eq('user_id', userId)
-    } else {
-      console.log(`[TRADE] Deducting coin: ${coins} -> ${coins - 1}`)
-      await supabase
-        .from('profiles')
-        .update({ coins: coins - 1 })
-        .eq('user_id', userId)
+    // Deduct credit (skip if subscription active)
+    if (!hasSubscription) {
+      if (freeTradesLeft > 0) {
+        console.log(`[TRADE] Deducting free trade: ${freeTradesLeft} -> ${freeTradesLeft - 1}`)
+        await supabase
+          .from('profiles')
+          .update({ free_trades_remaining: freeTradesLeft - 1 })
+          .eq('user_id', userId)
+      } else {
+        console.log(`[TRADE] Deducting coin: ${coins} -> ${coins - 1}`)
+        await supabase
+          .from('profiles')
+          .update({ coins: coins - 1 })
+          .eq('user_id', userId)
+      }
     }
     
     // Record signal
@@ -1649,11 +1656,13 @@ async function executeTrade(
     
     if (tradeError) {
       console.error(`[TRADE] Failed to create trade record:`, tradeError)
-      // Refund credit
-      if (freeTradesLeft > 0) {
-        await supabase.from('profiles').update({ free_trades_remaining: freeTradesLeft }).eq('user_id', userId)
-      } else {
-        await supabase.from('profiles').update({ coins: coins }).eq('user_id', userId)
+      // Refund credit (only if subscription not active)
+      if (!hasSubscription) {
+        if (freeTradesLeft > 0) {
+          await supabase.from('profiles').update({ free_trades_remaining: freeTradesLeft }).eq('user_id', userId)
+        } else {
+          await supabase.from('profiles').update({ coins: coins }).eq('user_id', userId)
+        }
       }
       return { success: false, error: 'Failed to create trade record' }
     }
@@ -1890,11 +1899,13 @@ async function executeTrade(
         })
         .eq('id', trade.id)
       
-      // Refund credit
-      if (freeTradesLeft > 0) {
-        await supabase.from('profiles').update({ free_trades_remaining: freeTradesLeft }).eq('user_id', userId)
-      } else {
-        await supabase.from('profiles').update({ coins: coins }).eq('user_id', userId)
+      // Refund credit (only if subscription not active)
+      if (!hasSubscription) {
+        if (freeTradesLeft > 0) {
+          await supabase.from('profiles').update({ free_trades_remaining: freeTradesLeft }).eq('user_id', userId)
+        } else {
+          await supabase.from('profiles').update({ coins: coins }).eq('user_id', userId)
+        }
       }
       
       return { success: false, error: execError instanceof Error ? execError.message : 'Trade execution failed' }
