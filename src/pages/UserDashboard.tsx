@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
+import { Crown } from 'lucide-react';
 import { useTrades } from '@/hooks/useTrades';
 import { usePineScripts } from '@/hooks/usePineScripts';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
@@ -44,7 +45,7 @@ export default function UserDashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [dismissedOnboarding, setDismissedOnboarding] = useState(false);
   const { user, role, loading: authLoading } = useAuth();
-  const { profile, isLoading: profileLoading, toggleBot, isUpdating } = useProfile();
+  const { profile, isLoading: profileLoading, toggleBot, toggleSubscription, isUpdating } = useProfile();
   const { trades, activeTrades, isLoading: tradesLoading } = useTrades();
   const { hasWallets, activeWallet } = useUserWallets();
   const { 
@@ -180,7 +181,7 @@ export default function UserDashboard() {
                             <Switch
                               checked={profile?.bot_enabled ?? false}
                               onCheckedChange={toggleBot}
-                              disabled={isUpdating || (!profile?.bot_enabled && coinsRemaining === 0) || !hasApiKeys}
+                            disabled={isUpdating || (!profile?.bot_enabled && !profile?.subscription_active && coinsRemaining === 0) || !hasApiKeys}
                             />
                           </span>
                         </TooltipTrigger>
@@ -198,6 +199,30 @@ export default function UserDashboard() {
                       API keys required
                     </p>
                   )}
+                </CardContent>
+              </Card>
+
+              {/* Subscription Status Card */}
+              <Card className="stat-card">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Subscription</CardTitle>
+                  <Crown className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`status-dot ${profile?.subscription_active ? 'status-dot-active' : 'status-dot-inactive'}`} />
+                      <span className="text-lg font-semibold">{profile?.subscription_active ? 'Active' : 'Inactive'}</span>
+                    </div>
+                    <Switch
+                      checked={profile?.subscription_active ?? false}
+                      onCheckedChange={toggleSubscription}
+                      disabled={isUpdating}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {profile?.subscription_active ? 'Unlimited trades enabled' : 'Enable for unlimited trades'}
+                  </p>
                 </CardContent>
               </Card>
 

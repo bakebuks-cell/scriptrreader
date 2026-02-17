@@ -11,6 +11,7 @@ export interface Profile {
   coins: number;
   bot_enabled: boolean;
   selected_timeframes: string[];
+  subscription_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -37,7 +38,7 @@ export function useProfile() {
   });
 
   const updateProfile = useMutation({
-    mutationFn: async (updates: Partial<Pick<Profile, 'display_name' | 'bot_enabled' | 'selected_timeframes'>>) => {
+    mutationFn: async (updates: Partial<Pick<Profile, 'display_name' | 'bot_enabled' | 'selected_timeframes' | 'subscription_active'>>) => {
       if (!user?.id) throw new Error('Not authenticated');
 
       // Validate timeframes limit
@@ -65,6 +66,11 @@ export function useProfile() {
     await updateProfile.mutateAsync({ bot_enabled: !profile.bot_enabled });
   };
 
+  const toggleSubscription = async () => {
+    if (!profile) return;
+    await updateProfile.mutateAsync({ subscription_active: !profile.subscription_active });
+  };
+
   const updateTimeframes = async (timeframes: string[]) => {
     await updateProfile.mutateAsync({ selected_timeframes: timeframes });
   };
@@ -75,6 +81,7 @@ export function useProfile() {
     error,
     updateProfile: updateProfile.mutateAsync,
     toggleBot,
+    toggleSubscription,
     updateTimeframes,
     isUpdating: updateProfile.isPending,
   };
