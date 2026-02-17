@@ -177,6 +177,29 @@ async function binanceCoinMRequest(
 // Futures-only symbols that don't exist on spot market
 const FUTURES_ONLY_SYMBOLS = ['XAUUSDT', 'XAGUSDT']
 
+// Cache for hedge mode detection per API key (avoid repeated calls)
+const hedgeModeCache = new Map<string, boolean>()
+
+async function isHedgeMode(apiKey: string, apiSecret: string, isCoinM: boolean = false): Promise<boolean> {
+  const cacheKey = apiKey.substring(0, 8) + (isCoinM ? '_coinm' : '_usdtm')
+  if (hedgeModeCache.has(cacheKey)) return hedgeModeCache.get(cacheKey)!
+  
+  try {
+    const endpoint = isCoinM ? '/dapi/v1/positionSide/dual' : '/fapi/v1/positionSide/dual'
+    const result = isCoinM
+      ? await binanceCoinMRequest(endpoint, apiKey, apiSecret)
+      : await binanceRequest(endpoint, apiKey, apiSecret, 'GET', {}, !isCoinM)
+    const isHedge = result.dualSidePosition === true
+    hedgeModeCache.set(cacheKey, isHedge)
+    console.log(`[HEDGE] Account position mode: ${isHedge ? 'Hedge Mode' : 'One-Way Mode'}`)
+    return isHedge
+  } catch (err) {
+    console.log(`[HEDGE] Could not detect position mode, assuming one-way:`, err)
+    hedgeModeCache.set(cacheKey, false)
+    return false
+  }
+}
+
 function isFuturesOnlySymbol(symbol: string): boolean {
   return FUTURES_ONLY_SYMBOLS.includes(symbol.toUpperCase())
 }
@@ -1382,9 +1405,18 @@ async function closeOpenTrade(
       quantity: closeQty,
     }
 
-    // For futures, add reduceOnly
+    // For futures, handle hedge mode vs one-way mode
     if (!isSpot) {
-      orderParams.reduceOnly = 'true'
+      const hedgeMode = await isHedgeMode(keys.api_key_encrypted.trim(), keys.api_secret_encrypted.trim(), isCoinM)
+      if (hedgeMode) {
+        // Hedge mode: use positionSide instead of reduceOnly
+        // Closing a BUY/LONG position: positionSide=LONG, side=SELL
+        // Closing a SELL/SHORT position: positionSide=SHORT, side=BUY
+        orderParams.positionSide = trade.signal_type === 'BUY' ? 'LONG' : 'SHORT'
+        console.log(`[CLOSE] Hedge mode: positionSide=${orderParams.positionSide}, side=${closeSide}`)
+      } else {
+        orderParams.reduceOnly = 'true'
+      }
     }
 
     const useFuturesBase = !isSpot && !isCoinM
@@ -1784,20 +1816,25 @@ async function executeTrade(
         useFuturesBase = true
       }
       
-      // For coin-M, we need special handling of the base URL
+      // Detect hedge mode for futures
+      const hedgeMode = isFutures ? await isHedgeMode(apiKeys.api_key_encrypted.trim(), apiKeys.api_secret_encrypted.trim(), isCoinM) : false
+      const positionSide = hedgeMode ? (signal.action === 'BUY' ? 'LONG' : 'SHORT') : undefined
+
+      // Build order params
+      const entryOrderParams: Record<string, string> = {
+        symbol: symbol,
+        side: signal.action,
+        type: 'MARKET',
+        quantity: quantity,
+      }
+      if (positionSide) {
+        entryOrderParams.positionSide = positionSide
+        console.log(`[TRADE] Hedge mode: positionSide=${positionSide}`)
+      }
+
       const orderResult = isCoinM
-        ? await binanceCoinMRequest(orderEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
-            symbol: symbol,
-            side: signal.action,
-            type: 'MARKET',
-            quantity: quantity,
-          })
-        : await binanceRequest(orderEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
-            symbol: symbol,
-            side: signal.action,
-            type: 'MARKET',
-            quantity: quantity,
-          }, useFuturesBase)
+        ? await binanceCoinMRequest(orderEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', entryOrderParams)
+        : await binanceRequest(orderEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', entryOrderParams, useFuturesBase)
       
       console.log(`[TRADE] Order filled! OrderId: ${orderResult.orderId}`)
       
@@ -1819,10 +1856,11 @@ async function executeTrade(
       // ===== STOP LOSS =====
       if (signal.stopLoss) {
         try {
+          const slSide = signal.action === 'BUY' ? 'SELL' : 'BUY'
           if (isSpot) {
             await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
               symbol: symbol,
-              side: signal.action === 'BUY' ? 'SELL' : 'BUY',
+              side: slSide,
               type: 'STOP_LOSS_LIMIT',
               quantity: quantity,
               stopPrice: signal.stopLoss.toFixed(2),
@@ -1831,15 +1869,17 @@ async function executeTrade(
             })
           } else {
             const slEndpoint = isCoinM ? '/dapi/v1/order' : '/fapi/v1/order'
-            const slFn = isCoinM ? binanceCoinMRequest : (ep: string, ak: string, as2: string, m: string, p: any) => binanceRequest(ep, ak, as2, m, p, true)
-            await slFn(slEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+            const slParams: Record<string, string> = {
               symbol: symbol,
-              side: signal.action === 'BUY' ? 'SELL' : 'BUY',
+              side: slSide,
               type: 'STOP_MARKET',
               quantity: quantity,
               stopPrice: signal.stopLoss.toFixed(2),
               closePosition: 'false',
-            })
+            }
+            if (positionSide) slParams.positionSide = positionSide
+            const slFn = isCoinM ? binanceCoinMRequest : (ep: string, ak: string, as2: string, m: string, p: any) => binanceRequest(ep, ak, as2, m, p, true)
+            await slFn(slEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', slParams)
           }
           console.log(`[TRADE] Stop loss placed at ${signal.stopLoss.toFixed(2)}`)
         } catch (slError) {
@@ -1850,10 +1890,11 @@ async function executeTrade(
       // ===== TAKE PROFIT =====
       if (signal.takeProfit) {
         try {
+          const tpSide = signal.action === 'BUY' ? 'SELL' : 'BUY'
           if (isSpot) {
             await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
               symbol: symbol,
-              side: signal.action === 'BUY' ? 'SELL' : 'BUY',
+              side: tpSide,
               type: 'TAKE_PROFIT_LIMIT',
               quantity: quantity,
               stopPrice: signal.takeProfit.toFixed(2),
@@ -1862,15 +1903,17 @@ async function executeTrade(
             })
           } else {
             const tpEndpoint = isCoinM ? '/dapi/v1/order' : '/fapi/v1/order'
-            const tpFn = isCoinM ? binanceCoinMRequest : (ep: string, ak: string, as2: string, m: string, p: any) => binanceRequest(ep, ak, as2, m, p, true)
-            await tpFn(tpEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
+            const tpParams: Record<string, string> = {
               symbol: symbol,
-              side: signal.action === 'BUY' ? 'SELL' : 'BUY',
+              side: tpSide,
               type: 'TAKE_PROFIT_MARKET',
               quantity: quantity,
               stopPrice: signal.takeProfit.toFixed(2),
               closePosition: 'false',
-            })
+            }
+            if (positionSide) tpParams.positionSide = positionSide
+            const tpFn = isCoinM ? binanceCoinMRequest : (ep: string, ak: string, as2: string, m: string, p: any) => binanceRequest(ep, ak, as2, m, p, true)
+            await tpFn(tpEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', tpParams)
           }
           console.log(`[TRADE] Take profit placed at ${signal.takeProfit.toFixed(2)}`)
         } catch (tpError) {
