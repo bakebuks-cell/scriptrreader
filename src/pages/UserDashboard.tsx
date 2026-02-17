@@ -180,7 +180,7 @@ export default function UserDashboard() {
                             <Switch
                               checked={profile?.bot_enabled ?? false}
                               onCheckedChange={toggleBot}
-                              disabled={isUpdating || coinsRemaining === 0 || !hasApiKeys}
+                              disabled={isUpdating || (!profile?.bot_enabled && coinsRemaining === 0) || !hasApiKeys}
                             />
                           </span>
                         </TooltipTrigger>
@@ -580,7 +580,7 @@ export default function UserDashboard() {
                           <Switch
                             checked={profile?.bot_enabled ?? false}
                             onCheckedChange={toggleBot}
-                            disabled={isUpdating || coinsRemaining === 0 || !hasApiKeys}
+                            disabled={isUpdating || (!profile?.bot_enabled && coinsRemaining === 0) || !hasApiKeys}
                           />
                         </span>
                       </TooltipTrigger>
