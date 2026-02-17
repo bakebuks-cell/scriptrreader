@@ -1457,19 +1457,12 @@ async function executeTrade(
       return { success: false, error: 'Bot is disabled — enable Trading Bot in Library' }
     }
     
-    // Check credits (bypass if subscription is active)
+    // Check credits — currently bypassed: all users get unlimited trades
+    // TODO: Re-enable credit/subscription checks once subscription model is finalized
     const freeTradesLeft = profile.free_trades_remaining ?? 0
     const coins = profile.coins ?? 0
     const hasSubscription = profile.subscription_active ?? false
-    
-    if (!hasSubscription && freeTradesLeft <= 0 && coins <= 0) {
-      console.log(`[TRADE] No credits: free=${freeTradesLeft}, coins=${coins}, subscription=${hasSubscription}`)
-      return { success: false, error: 'No free trades or coins remaining' }
-    }
-    
-    if (hasSubscription) {
-      console.log(`[TRADE] Subscription active — unlimited trades for user ${userId}`)
-    }
+    console.log(`[TRADE] Credits: free=${freeTradesLeft}, coins=${coins}, subscription=${hasSubscription} — unlimited mode active`)
     
     // Duplicate trade check using actual timeframe interval
     const intervalMs = getIntervalMs(timeframe)
