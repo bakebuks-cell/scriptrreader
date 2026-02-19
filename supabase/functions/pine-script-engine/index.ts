@@ -2194,6 +2194,77 @@ Deno.serve(async (req) => {
                 const scriptMarketType = isFuturesOnlySymbol(symbol) ? 'usdt_futures' : rawMarketType
                 const scriptLeverage = us.script.leverage || 1
 
+                // ===== ORPHANED POSITION DETECTOR =====
+                // If there's a live Binance position but NO open DB trade, auto-close it
+                if (scriptMarketType !== 'spot') {
+                  try {
+                    const { data: anyOpenTrade } = await supabase
+                      .from('trades')
+                      .select('id')
+                      .eq('user_id', us.user_id)
+                      .eq('symbol', symbol)
+                      .in('status', ['OPEN', 'PENDING'])
+                      .maybeSingle()
+
+                    if (!anyOpenTrade) {
+                      // No open trade in DB — check if there's a live position on exchange
+                      const { data: walletKeys } = await supabase
+                        .from('wallets')
+                        .select('api_key_encrypted, api_secret_encrypted')
+                        .eq('user_id', us.user_id)
+                        .eq('is_active', true)
+                        .not('api_key_encrypted', 'is', null)
+                        .limit(1)
+                        .maybeSingle()
+
+                      if (walletKeys) {
+                        const isCoinM = scriptMarketType === 'coin_margin'
+                        const positions = isCoinM
+                          ? await binanceCoinMRequest('/dapi/v1/positionRisk', walletKeys.api_key_encrypted.trim(), walletKeys.api_secret_encrypted.trim())
+                          : await binanceRequest('/fapi/v2/positionRisk', walletKeys.api_key_encrypted.trim(), walletKeys.api_secret_encrypted.trim(), 'GET', { recvWindow: '10000' }, true)
+
+                        const orphaned = positions.find((p: any) => p.symbol === symbol && Math.abs(parseFloat(p.positionAmt)) > 0.001)
+                        if (orphaned) {
+                          console.log(`[ORPHAN] Found orphaned position for ${symbol}: amt=${orphaned.positionAmt}. Auto-closing...`)
+                          const orphanedSide = parseFloat(orphaned.positionAmt) > 0 ? 'BUY' : 'SELL'
+                          const closeSide = orphanedSide === 'BUY' ? 'SELL' : 'BUY'
+                          const closeQty = Math.abs(parseFloat(orphaned.positionAmt)).toString()
+                          const closeEndpoint = isCoinM ? '/dapi/v1/order' : '/fapi/v1/order'
+                          const closeParams: Record<string, string> = {
+                            symbol,
+                            side: closeSide,
+                            type: 'MARKET',
+                            quantity: closeQty,
+                            reduceOnly: 'true',
+                          }
+                          try {
+                            if (isCoinM) {
+                              await binanceCoinMRequest(closeEndpoint, walletKeys.api_key_encrypted.trim(), walletKeys.api_secret_encrypted.trim(), 'POST', closeParams)
+                            } else {
+                              await binanceRequest(closeEndpoint, walletKeys.api_key_encrypted.trim(), walletKeys.api_secret_encrypted.trim(), 'POST', closeParams, true)
+                            }
+                            console.log(`[ORPHAN] Successfully closed orphaned ${symbol} position (${orphaned.positionAmt})`)
+                            results.push({
+                              scriptId: us.script_id,
+                              scriptName: us.script.name,
+                              userId: us.user_id,
+                              symbol,
+                              timeframe,
+                              action: 'ORPHAN_CLOSE',
+                              executed: true,
+                              reason: `Closed orphaned position: ${orphaned.positionAmt} ${symbol}`,
+                            })
+                          } catch (orphanCloseErr) {
+                            console.log(`[ORPHAN] Failed to close orphaned position:`, orphanCloseErr)
+                          }
+                        }
+                      }
+                    }
+                  } catch (orphanErr) {
+                    console.log(`[ORPHAN] Error in orphan detector:`, orphanErr)
+                  }
+                }
+
                 // ===== CHECK FOR OPEN TRADES TO CLOSE =====
                 const { data: openTrades } = await supabase
                   .from('trades')
