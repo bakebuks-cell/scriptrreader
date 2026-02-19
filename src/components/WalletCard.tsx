@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Wallet, RefreshCw, TrendingUp, TrendingDown, Link2Off, ShieldCheck, User, AlertTriangle } from 'lucide-react';
 import { useWalletBalance, useOpenPositions, Wallet as WalletType } from '@/hooks/useWallets';
+import { useTrades } from '@/hooks/useTrades';
 
 interface WalletCardProps {
   compact?: boolean;
@@ -16,8 +17,10 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
   const { balances, totalUSDT, isLoading, isRefreshing, refresh, hasWallets, wallet: activeWallet, error } = useWalletBalance(wallet?.id);
   const { positions: rawPositions } = useOpenPositions();
   // Filter out dust/residual positions (amount too small to be meaningful)
-  // Threshold of 0.1 handles small leftover "dust" positions like 0.03 BNB
   const positions = rawPositions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0.1);
+  // Use DB active trades count to stay in sync with the Open Trades dashboard card
+  const { activeTrades } = useTrades();
+  const openTradesCount = activeTrades.length;
 
   const displayWallet = wallet || activeWallet;
 
@@ -100,9 +103,9 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
                 ${totalUSDT.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
-            {positions.length > 0 ? (
+            {openTradesCount > 0 ? (
               <div className="text-sm">
-                <span className="text-muted-foreground">{positions.length} open position{positions.length !== 1 ? 's' : ''}</span>
+                <span className="text-muted-foreground">{openTradesCount} open position{openTradesCount !== 1 ? 's' : ''}</span>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">No open positions</p>
