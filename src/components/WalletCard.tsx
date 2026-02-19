@@ -16,7 +16,8 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
   const { balances, totalUSDT, isLoading, isRefreshing, refresh, hasWallets, wallet: activeWallet, error } = useWalletBalance(wallet?.id);
   const { positions: rawPositions } = useOpenPositions();
   // Filter out dust/residual positions (amount too small to be meaningful)
-  const positions = rawPositions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0.001);
+  // Threshold of 0.1 handles small leftover "dust" positions like 0.03 BNB
+  const positions = rawPositions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0.1);
 
   const displayWallet = wallet || activeWallet;
 
