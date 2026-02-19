@@ -1260,13 +1260,41 @@ async function syncOpenTradeWithExchange(
       hasPosition = balance && parseFloat(balance.free) + parseFloat(balance.locked) > 0.0001
     } else if (isCoinM) {
       const positions = await binanceCoinMRequest('/dapi/v1/positionRisk', apiKeys.api_key_encrypted.trim(), apiKeys.api_secret_encrypted.trim())
-      const pos = positions.find((p: any) => p.symbol === trade.symbol && Math.abs(parseFloat(p.positionAmt)) > 0)
-      hasPosition = !!pos
+      // In Hedge Mode, check by positionSide to avoid confusing LONG vs SHORT positions
+      const hedgeMode = await isHedgeMode(apiKeys.api_key_encrypted.trim(), apiKeys.api_secret_encrypted.trim(), true)
+      if (hedgeMode) {
+        const expectedSide = trade.signal_type === 'BUY' ? 'LONG' : 'SHORT'
+        const pos = positions.find((p: any) => p.symbol === trade.symbol && p.positionSide === expectedSide && Math.abs(parseFloat(p.positionAmt)) > 0)
+        hasPosition = !!pos
+        console.log(`[SYNC] CoinM Hedge mode check: symbol=${trade.symbol}, expectedSide=${expectedSide}, hasPosition=${hasPosition}`)
+      } else {
+        const pos = positions.find((p: any) => p.symbol === trade.symbol && Math.abs(parseFloat(p.positionAmt)) > 0)
+        hasPosition = !!pos
+      }
     } else {
       // USDT-M Futures
       const positions = await binanceRequest('/fapi/v2/positionRisk', apiKeys.api_key_encrypted.trim(), apiKeys.api_secret_encrypted.trim(), 'GET', { recvWindow: '10000' }, true)
-      const pos = positions.find((p: any) => p.symbol === trade.symbol && Math.abs(parseFloat(p.positionAmt)) > 0)
-      hasPosition = !!pos
+      // CRITICAL FIX: In Hedge Mode, there can be both a LONG and SHORT position open simultaneously.
+      // We must check specifically for the side that matches THIS trade (BUY=LONG, SELL=SHORT).
+      // Without this, if we have a SELL (SHORT) that closed and a new BUY (LONG) opened,
+      // the old SELL would still show as "open" because positionRisk still has positionAmt > 0 (from the LONG).
+      const hedgeMode = await isHedgeMode(apiKeys.api_key_encrypted.trim(), apiKeys.api_secret_encrypted.trim(), false)
+      if (hedgeMode) {
+        const expectedSide = trade.signal_type === 'BUY' ? 'LONG' : 'SHORT'
+        const pos = positions.find((p: any) => p.symbol === trade.symbol && p.positionSide === expectedSide && Math.abs(parseFloat(p.positionAmt)) > 0)
+        hasPosition = !!pos
+        console.log(`[SYNC] Hedge mode check: symbol=${trade.symbol}, expectedSide=${expectedSide}, hasPosition=${hasPosition}, allPositions=${JSON.stringify(positions.filter((p: any) => p.symbol === trade.symbol).map((p: any) => ({ side: p.positionSide, amt: p.positionAmt })))}`)
+      } else {
+        // ONE-WAY MODE: positionAmt is positive for LONG, negative for SHORT.
+        // We must check the SIGN to match this trade's direction.
+        // If we only check Math.abs > 0, a new LONG position would falsely keep an old SELL trade "open".
+        const positions2 = positions.filter((p: any) => p.symbol === trade.symbol)
+        const pos = trade.signal_type === 'BUY'
+          ? positions2.find((p: any) => parseFloat(p.positionAmt) > 0)   // LONG = positive
+          : positions2.find((p: any) => parseFloat(p.positionAmt) < 0)   // SHORT = negative
+        hasPosition = !!pos
+        console.log(`[SYNC] One-way mode check: symbol=${trade.symbol}, tradeType=${trade.signal_type}, hasPosition=${hasPosition}, positionAmts=${JSON.stringify(positions2.map((p: any) => p.positionAmt))}`)
+      }
     }
 
     if (!hasPosition) {
@@ -1362,14 +1390,37 @@ async function closeOpenTrade(
         }
       } else if (isCoinM) {
         const positions = await binanceCoinMRequest('/dapi/v1/positionRisk', keys.api_key_encrypted, keys.api_secret_encrypted)
-        const pos = positions.find((p: any) => p.symbol === trade.symbol && parseFloat(p.positionAmt) !== 0)
+        const hedgeMode = await isHedgeMode(keys.api_key_encrypted.trim(), keys.api_secret_encrypted.trim(), true)
+        let pos: any
+        if (hedgeMode) {
+          // In hedge mode, find ONLY the matching positionSide to avoid closing the wrong leg
+          const expectedSide = trade.signal_type === 'BUY' ? 'LONG' : 'SHORT'
+          pos = positions.find((p: any) => p.symbol === trade.symbol && p.positionSide === expectedSide && parseFloat(p.positionAmt) !== 0)
+          console.log(`[CLOSE] CoinM Hedge mode: looking for ${expectedSide} position, found=${!!pos}`)
+        } else {
+          pos = positions.find((p: any) => p.symbol === trade.symbol && parseFloat(p.positionAmt) !== 0)
+        }
         if (pos) {
           closeQty = Math.abs(parseFloat(pos.positionAmt)).toString()
         }
       } else {
         // USDT-M futures
         const positions = await binanceRequest('/fapi/v2/positionRisk', keys.api_key_encrypted, keys.api_secret_encrypted, 'GET', {}, true)
-        const pos = positions.find((p: any) => p.symbol === trade.symbol && parseFloat(p.positionAmt) !== 0)
+        const hedgeMode = await isHedgeMode(keys.api_key_encrypted.trim(), keys.api_secret_encrypted.trim(), false)
+        let pos: any
+        if (hedgeMode) {
+          // In hedge mode, find ONLY the matching positionSide to avoid closing the wrong leg
+          const expectedSide = trade.signal_type === 'BUY' ? 'LONG' : 'SHORT'
+          pos = positions.find((p: any) => p.symbol === trade.symbol && p.positionSide === expectedSide && parseFloat(p.positionAmt) !== 0)
+          console.log(`[CLOSE] Hedge mode: looking for ${expectedSide} position, found=${!!pos}`)
+        } else {
+          // One-way mode: use sign of positionAmt to match trade direction
+          const positions2 = positions.filter((p: any) => p.symbol === trade.symbol)
+          pos = trade.signal_type === 'BUY'
+            ? positions2.find((p: any) => parseFloat(p.positionAmt) > 0)
+            : positions2.find((p: any) => parseFloat(p.positionAmt) < 0)
+          console.log(`[CLOSE] One-way mode: tradeType=${trade.signal_type}, found position=${!!pos}, positionAmts=${JSON.stringify(positions2.map((p: any) => p.positionAmt))}`)
+        }
         if (pos) {
           closeQty = Math.abs(parseFloat(pos.positionAmt)).toString()
         }
