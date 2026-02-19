@@ -14,7 +14,9 @@ interface WalletCardProps {
 
 export default function WalletCard({ compact = false, wallet, showRoleBadge = false }: WalletCardProps) {
   const { balances, totalUSDT, isLoading, isRefreshing, refresh, hasWallets, wallet: activeWallet, error } = useWalletBalance(wallet?.id);
-  const { positions } = useOpenPositions();
+  const { positions: rawPositions } = useOpenPositions();
+  // Filter out dust/residual positions (amount too small to be meaningful)
+  const positions = rawPositions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0.001);
 
   const displayWallet = wallet || activeWallet;
 
