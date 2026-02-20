@@ -1033,13 +1033,32 @@ function evaluateStrategy(
   strategy: ParsedStrategy,
   indicators: IndicatorValues,
   ohlcv: OHLCV[],
-  currentPrice: number
+  currentPrice: number,
+  botStartedAt?: string // ISO timestamp — only fire signals from candles after this moment
 ): TradeSignal {
   const lastIndex = ohlcv.length - 1
   
+  // Determine the earliest candle open-time we will accept as a NEW signal
+  // (any candle that opened BEFORE bot_started_at is a pre-existing signal — ignore it)
+  const minCandleOpenTime = botStartedAt ? new Date(botStartedAt).getTime() : null
+  if (minCandleOpenTime) {
+    console.log(`[EVAL] bot_started_at filter: only accepting candles with openTime >= ${new Date(minCandleOpenTime).toISOString()}`)
+  }
+
   console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}, direction=${strategy.direction}`)
   
   const scanDepth = Math.min(5, lastIndex)
+
+  // Helper: check if candle at index is after bot start
+  const candleIsNew = (idx: number): boolean => {
+    if (!minCandleOpenTime) return true
+    const candleOpen = ohlcv[idx]?.openTime ?? 0
+    if (candleOpen < minCandleOpenTime) {
+      console.log(`[EVAL] Skipping candle idx=${idx} openTime=${new Date(candleOpen).toISOString()} — predates bot start`)
+      return false
+    }
+    return true
+  }
 
   // For bidirectional strategies, evaluate BOTH long entry AND short entry separately
   if (strategy.direction === 'both') {
@@ -1057,6 +1076,7 @@ function evaluateStrategy(
     let longSignal = false
     for (let checkIdx = lastIndex; checkIdx > lastIndex - scanDepth; checkIdx--) {
       if (checkIdx < 1) break
+      if (!candleIsNew(checkIdx)) continue
       let met = longConditions.length > 0
       for (const cond of longConditions) {
         met = met && evaluateCondition(cond, indicators, ohlcv, checkIdx)
@@ -1072,6 +1092,7 @@ function evaluateStrategy(
     let shortSignal = false
     for (let checkIdx = lastIndex; checkIdx > lastIndex - scanDepth; checkIdx--) {
       if (checkIdx < 1) break
+      if (!candleIsNew(checkIdx)) continue
       let met = shortConditions.length > 0
       for (const cond of shortConditions) {
         met = met && evaluateCondition(cond, indicators, ohlcv, checkIdx)
@@ -1101,6 +1122,7 @@ function evaluateStrategy(
   
   for (let checkIdx = lastIndex; checkIdx > lastIndex - scanDepth; checkIdx--) {
     if (checkIdx < 1) break
+    if (!candleIsNew(checkIdx)) continue
     let conditionsMet = strategy.entryConditions.length > 0
     
     for (const condition of strategy.entryConditions) {
@@ -2039,7 +2061,11 @@ Deno.serve(async (req) => {
         const currentPrice = await getCurrentPrice(symbol)
         const indicators = calculateAllIndicators(ohlcv)
         const strategy = parsePineScript(scriptContent)
-        const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice)
+        const botStartedAt = (us.settings_json as any)?.bot_started_at || undefined
+        if (botStartedAt) {
+          console.log(`[ENGINE] bot_started_at for user ${us.user_id}: ${botStartedAt}`)
+        }
+        const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice, botStartedAt)
         
         return new Response(
           JSON.stringify({
@@ -2075,6 +2101,7 @@ Deno.serve(async (req) => {
         const { data: userScripts, error: scriptsError } = await supabase
           .from('user_scripts')
           .select(`
+            id,
             script_id,
             user_id,
             is_active,
@@ -2128,12 +2155,14 @@ Deno.serve(async (req) => {
               script_id: us.script_id,
               user_id: us.user_id,
               script: mergedScript,
+              settings_json: us.settings_json || {},
             }
           }),
           ...(createdScripts || []).map((s: any) => ({
             script_id: s.id,
             user_id: s.created_by,
             script: s,
+            settings_json: {},
           })),
         ]
         
