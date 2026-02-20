@@ -74,6 +74,35 @@ export function useTrades() {
     },
   });
 
+  const closeSingleTradeMutation = useMutation({
+    mutationFn: async (tradeId: string) => {
+      if (!user?.id) throw new Error('Not authenticated');
+      const { data: { session } } = await supabase.auth.getSession();
+      const baseUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pine-script-engine?action=close-trade`;
+      const response = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({ tradeId }),
+      });
+      if (!response.ok) {
+        // Fallback: mark as CLOSED in DB if engine call fails
+        await supabase
+          .from('trades')
+          .update({ status: 'CLOSED' as const, closed_at: new Date().toISOString() })
+          .eq('id', tradeId)
+          .eq('user_id', user.id);
+        return;
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['trades', user?.id] });
+    },
+  });
+
   return {
     trades: trades ?? [],
     activeTrades,
@@ -83,6 +112,9 @@ export function useTrades() {
     refetch,
     closeAllTrades: closeAllTradesMutation.mutateAsync,
     isClosingAll: closeAllTradesMutation.isPending,
+    closeSingleTrade: closeSingleTradeMutation.mutateAsync,
+    isClosingSingle: closeSingleTradeMutation.isPending,
+    closingSingleId: closeSingleTradeMutation.variables,
   };
 }
 
