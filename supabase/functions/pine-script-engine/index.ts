@@ -1104,6 +1104,7 @@ function evaluateStrategy(
 
     // Check LONG entry
     let longSignal = false
+    let longSignalIdx = -1
     for (let checkIdx = lastIndex; checkIdx > lastIndex - scanDepth; checkIdx--) {
       if (checkIdx < 1) break
       if (!candleIsNew(checkIdx)) continue
@@ -1114,12 +1115,14 @@ function evaluateStrategy(
       if (met) {
         console.log(`[EVAL] LONG entry signal at candle ${checkIdx}`)
         longSignal = true
+        longSignalIdx = checkIdx
         break
       }
     }
 
     // Check SHORT entry (using exit conditions as short entry for bidirectional)
     let shortSignal = false
+    let shortSignalIdx = -1
     for (let checkIdx = lastIndex; checkIdx > lastIndex - scanDepth; checkIdx--) {
       if (checkIdx < 1) break
       if (!candleIsNew(checkIdx)) continue
@@ -1130,6 +1133,7 @@ function evaluateStrategy(
       if (met) {
         console.log(`[EVAL] SHORT entry signal at candle ${checkIdx}`)
         shortSignal = true
+        shortSignalIdx = checkIdx
         break
       }
     }
@@ -1139,17 +1143,24 @@ function evaluateStrategy(
       return { action: 'NONE', price: currentPrice, reason: 'No entry conditions met in recent candles' }
     }
 
-    // Suppress pre-existing signal: if conditions were ALREADY true before bot started, skip
+    // Suppress pre-existing signal ONLY for the very first candle after bot started.
+    // If the signal candle is more than 2 candles after startup, it's genuinely new — allow it.
     if (botStartedAt && preStartIdx >= 0) {
-      const longAlreadyTrue = longSignal && conditionsAlreadyTrueAt(preStartIdx, longConditions)
-      const shortAlreadyTrue = shortSignal && conditionsAlreadyTrueAt(preStartIdx, shortConditions)
-      if (longAlreadyTrue) {
-        console.log(`[EVAL] LONG signal suppressed — conditions were already true before bot started (preStartIdx=${preStartIdx})`)
-        longSignal = false
+      const startupWindowEnd = preStartIdx + 2 // only suppress within 2 candles of startup
+
+      if (longSignal && longSignalIdx <= startupWindowEnd) {
+        const longAlreadyTrue = conditionsAlreadyTrueAt(preStartIdx, longConditions)
+        if (longAlreadyTrue) {
+          console.log(`[EVAL] LONG signal suppressed — conditions were already true before bot started (startup window candle)`)
+          longSignal = false
+        }
       }
-      if (shortAlreadyTrue) {
-        console.log(`[EVAL] SHORT signal suppressed — conditions were already true before bot started (preStartIdx=${preStartIdx})`)
-        shortSignal = false
+      if (shortSignal && shortSignalIdx <= startupWindowEnd) {
+        const shortAlreadyTrue = conditionsAlreadyTrueAt(preStartIdx, shortConditions)
+        if (shortAlreadyTrue) {
+          console.log(`[EVAL] SHORT signal suppressed — conditions were already true before bot started (startup window candle)`)
+          shortSignal = false
+        }
       }
       if (!longSignal && !shortSignal) {
         return { action: 'NONE', price: currentPrice, reason: 'Signal suppressed: pre-existing condition at bot startup' }
@@ -1197,11 +1208,20 @@ function evaluateStrategy(
   // Suppress pre-existing signal: conditions must have transitioned FALSE → TRUE after bot started.
   // If they were ALREADY true on the last candle before bot_started_at, this is a continuation —
   // not a fresh signal. The bot should wait for the next genuine crossover/trigger.
+  // Suppress pre-existing signal ONLY within the startup window (first 2 candles after bot start).
+  // Beyond the startup window, any new signal is genuinely fresh and must be allowed through.
+  // This prevents the common bug where the pre-start suppression stays active forever and
+  // blocks ALL future signals if the pre-start conditions happen to be true.
   if (botStartedAt && preStartIdx >= 0) {
-    const alreadyTrue = conditionsAlreadyTrueAt(preStartIdx, strategy.entryConditions)
-    if (alreadyTrue) {
-      console.log(`[EVAL] Signal SUPPRESSED — entry conditions were already true before bot started (preStartIdx=${preStartIdx}). Waiting for fresh signal.`)
-      return { action: 'NONE', price: currentPrice, reason: 'Signal suppressed: conditions were pre-existing at bot startup. Waiting for a fresh signal.' }
+    const startupWindowEnd = preStartIdx + 2 // only suppress within 2 candles of startup
+    if (signalIndex <= startupWindowEnd) {
+      const alreadyTrue = conditionsAlreadyTrueAt(preStartIdx, strategy.entryConditions)
+      if (alreadyTrue) {
+        console.log(`[EVAL] Signal SUPPRESSED — entry conditions were already true before bot started (startup window). Waiting for fresh signal.`)
+        return { action: 'NONE', price: currentPrice, reason: 'Signal suppressed: pre-existing at bot startup. Waiting for a fresh signal.' }
+      }
+    } else {
+      console.log(`[EVAL] Signal is beyond startup window (signalIdx=${signalIndex}, startupWindowEnd=${startupWindowEnd}) — allowing as fresh signal`)
     }
   }
   
