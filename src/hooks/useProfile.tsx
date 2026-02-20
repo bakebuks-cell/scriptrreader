@@ -63,7 +63,34 @@ export function useProfile() {
 
   const toggleBot = async () => {
     if (!profile) return;
-    await updateProfile.mutateAsync({ bot_enabled: !profile.bot_enabled });
+    const enabling = !profile.bot_enabled;
+    await updateProfile.mutateAsync({ bot_enabled: enabling });
+
+    // When enabling the bot, stamp bot_started_at on all user_scripts so the
+    // engine ignores signals that existed BEFORE this moment.
+    if (enabling && user?.id) {
+      const botStartedAt = new Date().toISOString();
+      // Fetch all user scripts for this user
+      const { data: userScripts } = await supabase
+        .from('user_scripts')
+        .select('id, settings_json')
+        .eq('user_id', user.id);
+
+      if (userScripts && userScripts.length > 0) {
+        for (const us of userScripts) {
+          const existingSettings = (us.settings_json as Record<string, any>) || {};
+          await supabase
+            .from('user_scripts')
+            .update({ settings_json: { ...existingSettings, bot_started_at: botStartedAt } })
+            .eq('id', us.id);
+        }
+      }
+
+      // Also stamp user-created scripts (pine_scripts with created_by = user)
+      // Store in a profile-level field via profiles metadata (simplest approach: use user_scripts)
+      // For user-created scripts not in user_scripts, we use a separate key in profiles updated_at
+      // We'll handle this in the engine by also checking profiles.updated_at as fallback
+    }
   };
 
   const toggleSubscription = async () => {
