@@ -1,11 +1,13 @@
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Wallet, RefreshCw, TrendingUp, TrendingDown, Link2Off, ShieldCheck, User, AlertTriangle } from 'lucide-react';
+import { Wallet, RefreshCw, TrendingUp, TrendingDown, Link2Off, ShieldCheck, User, AlertTriangle, X, Loader2 } from 'lucide-react';
 import { useWalletBalance, useOpenPositions, Wallet as WalletType } from '@/hooks/useWallets';
 import { useTrades } from '@/hooks/useTrades';
+import { useToast } from '@/hooks/use-toast';
 
 interface WalletCardProps {
   compact?: boolean;
@@ -16,21 +18,32 @@ interface WalletCardProps {
 export default function WalletCard({ compact = false, wallet, showRoleBadge = false }: WalletCardProps) {
   const { balances, totalUSDT, isLoading, isRefreshing, refresh, hasWallets, wallet: activeWallet, error } = useWalletBalance(wallet?.id);
   const { positions: rawPositions } = useOpenPositions();
-  // Filter out dust/residual positions (amount too small to be meaningful)
   const positions = rawPositions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0.1);
-  // Use DB active trades as the single source of truth for open trade count
-  const { activeTrades } = useTrades();
-  // Show DB count - live Binance positions may lag or have dust filtered out
+  const { activeTrades, closeSingleTrade, closingSingleId } = useTrades();
   const openTradesCount = activeTrades.length;
+  const { toast } = useToast();
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  const handleCloseTrade = async (tradeId: string) => {
+    if (confirmingId !== tradeId) {
+      setConfirmingId(tradeId);
+      return;
+    }
+    try {
+      setConfirmingId(null);
+      await closeSingleTrade(tradeId);
+      toast({ title: 'Trade closed', description: 'Position has been closed successfully.' });
+    } catch {
+      toast({ title: 'Failed to close trade', description: 'Please try again.', variant: 'destructive' });
+    }
+  };
 
   const displayWallet = wallet || activeWallet;
 
-  // Show error state with actionable message
   const errorMessage = error?.message || '';
-  const isApiError = errorMessage.includes('Invalid API key') || 
-                     errorMessage.includes('IP not whitelisted') || 
+  const isApiError = errorMessage.includes('Invalid API key') ||
+                     errorMessage.includes('IP not whitelisted') ||
                      errorMessage.includes('unavailable in your region');
-
 
   if (!hasWallets && !wallet) {
     return compact ? (
@@ -64,7 +77,7 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
       <div className="space-y-3">
         {showRoleBadge && displayWallet && (
           <div className="flex items-center gap-2">
-            <Badge 
+            <Badge
               variant={displayWallet.role === 'ADMIN' ? 'default' : 'secondary'}
               className="text-xs"
             >
@@ -85,7 +98,7 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
               <div>
                 <p className="text-xs font-medium text-destructive">Connection Error</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {errorMessage.includes('IP not whitelisted') 
+                  {errorMessage.includes('IP not whitelisted')
                     ? 'Whitelist server IPs in your Binance API settings'
                     : errorMessage.includes('unavailable in your region')
                     ? 'Try using Binance US if in the US'
@@ -105,8 +118,48 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
               </p>
             </div>
             {openTradesCount > 0 ? (
-              <div className="text-sm">
-                <span className="text-muted-foreground">{openTradesCount} open position{openTradesCount !== 1 ? 's' : ''}</span>
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground font-medium">{openTradesCount} open position{openTradesCount !== 1 ? 's' : ''}</p>
+                {activeTrades.map((trade) => {
+                  const isClosing = closingSingleId === trade.id;
+                  const isConfirming = confirmingId === trade.id;
+                  return (
+                    <div
+                      key={trade.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-muted/50 border border-border/50"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{trade.symbol}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {trade.signal_type} · {trade.entry_price ? `$${trade.entry_price.toFixed(2)}` : 'Pending'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+                          trade.status === 'OPEN' ? 'bg-buy/10 text-buy' : 'bg-yellow-500/10 text-yellow-600'
+                        }`}>
+                          {trade.status}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant={isConfirming ? 'destructive' : 'outline'}
+                          className="h-6 text-xs px-2"
+                          disabled={isClosing}
+                          onClick={() => handleCloseTrade(trade.id)}
+                          onBlur={() => { if (confirmingId === trade.id) setConfirmingId(null); }}
+                        >
+                          {isClosing ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : isConfirming ? (
+                            'Confirm'
+                          ) : (
+                            <><X className="h-3 w-3 mr-0.5" />Close</>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">No open positions</p>
@@ -126,7 +179,7 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
               <Wallet className="h-5 w-5 text-primary" />
               {displayWallet?.name || 'Binance Wallet'}
               {showRoleBadge && displayWallet && (
-                <Badge 
+                <Badge
                   variant={displayWallet.role === 'ADMIN' ? 'default' : 'secondary'}
                   className="text-xs ml-2"
                 >
@@ -176,8 +229,8 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
               <div className="space-y-2">
                 <p className="text-sm font-medium">Assets</p>
                 {balances.slice(0, 5).map((balance) => (
-                  <div 
-                    key={balance.asset} 
+                  <div
+                    key={balance.asset}
                     className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted/70 transition-colors"
                   >
                     <div className="flex items-center gap-3">
@@ -211,8 +264,8 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
                     const pnl = parseFloat(position.unrealizedProfit);
                     const isProfit = pnl >= 0;
                     return (
-                      <div 
-                        key={idx} 
+                      <div
+                        key={idx}
                         className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
                       >
                         <div>
@@ -240,32 +293,50 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
                     );
                   })
                 ) : (
-                  // Fallback: show DB open trades when live positions are not visible
-                  activeTrades.map((trade) => (
-                    <div 
-                      key={trade.id} 
-                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                    >
-                      <div>
-                        <p className="font-medium">{trade.symbol}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {trade.signal_type} • Entry: {trade.entry_price ? `$${trade.entry_price.toFixed(2)}` : 'Pending'}
-                        </p>
+                  // Fallback: show DB open trades with Close buttons
+                  activeTrades.map((trade) => {
+                    const isClosing = closingSingleId === trade.id;
+                    const isConfirming = confirmingId === trade.id;
+                    return (
+                      <div
+                        key={trade.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                      >
+                        <div>
+                          <p className="font-medium">{trade.symbol}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {trade.signal_type} • Entry: {trade.entry_price ? `$${trade.entry_price.toFixed(2)}` : 'Pending'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{trade.timeframe}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                            trade.status === 'OPEN'
+                              ? 'bg-buy/10 text-buy'
+                              : 'bg-yellow-500/10 text-yellow-600'
+                          }`}>
+                            {trade.status}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant={isConfirming ? 'destructive' : 'outline'}
+                            className="h-7 text-xs px-2"
+                            disabled={isClosing}
+                            onClick={() => handleCloseTrade(trade.id)}
+                            onBlur={() => { if (confirmingId === trade.id) setConfirmingId(null); }}
+                          >
+                            {isClosing ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : isConfirming ? (
+                              'Confirm?'
+                            ) : (
+                              <><X className="h-3 w-3 mr-0.5" />Close</>
+                            )}
+                          </Button>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                          trade.status === 'OPEN' 
-                            ? 'bg-buy/10 text-buy' 
-                            : 'bg-yellow-500/10 text-yellow-600'
-                        }`}>
-                          {trade.status}
-                        </span>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {trade.timeframe}
-                        </p>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
