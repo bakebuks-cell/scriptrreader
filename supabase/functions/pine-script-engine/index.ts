@@ -1063,6 +1063,33 @@ function evaluateStrategy(
     return true
   }
 
+  // Helper: find the last candle index that opened BEFORE botStartedAt.
+  // Used to check if a signal was ALREADY true before the bot started (pre-existing state).
+  const preStartIdx = minCandleOpenTime
+    ? (() => {
+        for (let i = ohlcv.length - 1; i >= 0; i--) {
+          if ((ohlcv[i]?.openTime ?? 0) < minCandleOpenTime) return i
+        }
+        return -1
+      })()
+    : -1
+
+  // Helper: evaluate whether ALL entry conditions were ALREADY TRUE on a given candle index.
+  // If they were, a signal firing on the next candle is a continuation — NOT a fresh signal.
+  const conditionsAlreadyTrueAt = (idx: number, conditions: typeof strategy.entryConditions): boolean => {
+    if (idx < 1 || conditions.length === 0) return false
+    let met = true
+    for (const condition of conditions) {
+      const result = evaluateCondition(condition, indicators, ohlcv, idx)
+      if (condition.logic === 'and') {
+        met = met && result
+      } else {
+        met = met || result
+      }
+    }
+    return met
+  }
+
   // For bidirectional strategies, evaluate BOTH long entry AND short entry separately
   if (strategy.direction === 'both') {
     // Split conditions into long-entry and short-entry
@@ -1112,6 +1139,23 @@ function evaluateStrategy(
       return { action: 'NONE', price: currentPrice, reason: 'No entry conditions met in recent candles' }
     }
 
+    // Suppress pre-existing signal: if conditions were ALREADY true before bot started, skip
+    if (botStartedAt && preStartIdx >= 0) {
+      const longAlreadyTrue = longSignal && conditionsAlreadyTrueAt(preStartIdx, longConditions)
+      const shortAlreadyTrue = shortSignal && conditionsAlreadyTrueAt(preStartIdx, shortConditions)
+      if (longAlreadyTrue) {
+        console.log(`[EVAL] LONG signal suppressed — conditions were already true before bot started (preStartIdx=${preStartIdx})`)
+        longSignal = false
+      }
+      if (shortAlreadyTrue) {
+        console.log(`[EVAL] SHORT signal suppressed — conditions were already true before bot started (preStartIdx=${preStartIdx})`)
+        shortSignal = false
+      }
+      if (!longSignal && !shortSignal) {
+        return { action: 'NONE', price: currentPrice, reason: 'Signal suppressed: pre-existing condition at bot startup' }
+      }
+    }
+
     // Prefer short if both trigger (trend reversal = exit long + enter short)
     const action: 'BUY' | 'SELL' = shortSignal && !longSignal ? 'SELL' : 'BUY'
     console.log(`[EVAL] Bidirectional signal: ${action} (longSignal=${longSignal}, shortSignal=${shortSignal})`)
@@ -1148,6 +1192,17 @@ function evaluateStrategy(
   if (!shouldEnter) {
     console.log(`[EVAL] No entry signal in last ${scanDepth} candles`)
     return { action: 'NONE', price: currentPrice, reason: 'No entry conditions met in recent candles' }
+  }
+
+  // Suppress pre-existing signal: conditions must have transitioned FALSE → TRUE after bot started.
+  // If they were ALREADY true on the last candle before bot_started_at, this is a continuation —
+  // not a fresh signal. The bot should wait for the next genuine crossover/trigger.
+  if (botStartedAt && preStartIdx >= 0) {
+    const alreadyTrue = conditionsAlreadyTrueAt(preStartIdx, strategy.entryConditions)
+    if (alreadyTrue) {
+      console.log(`[EVAL] Signal SUPPRESSED — entry conditions were already true before bot started (preStartIdx=${preStartIdx}). Waiting for fresh signal.`)
+      return { action: 'NONE', price: currentPrice, reason: 'Signal suppressed: conditions were pre-existing at bot startup. Waiting for a fresh signal.' }
+    }
   }
   
   console.log(`[EVAL] ENTRY SIGNAL DETECTED at candle ${signalIndex}!`)

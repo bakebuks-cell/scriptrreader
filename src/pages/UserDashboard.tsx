@@ -395,7 +395,10 @@ export default function UserDashboard() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {recentTrades.map((trade) => (
+                      {recentTrades.map((trade) => {
+                        const openedAt = trade.opened_at || trade.created_at;
+                        const closedAt = trade.closed_at;
+                        return (
                         <div key={trade.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                           <div className="flex items-center gap-3">
                             <div className={`p-1.5 rounded ${trade.signal_type === 'BUY' ? 'bg-buy/10 text-buy' : 'bg-sell/10 text-sell'}`}>
@@ -404,9 +407,13 @@ export default function UserDashboard() {
                             <div>
                               <p className="font-medium text-sm">{trade.symbol}</p>
                               <p className="text-xs text-muted-foreground">
-                                {new Date(trade.created_at).toLocaleDateString()}{' '}
-                                {new Date(trade.created_at).toLocaleTimeString()}
+                                Opened: {new Date(openedAt).toLocaleDateString()} {new Date(openedAt).toLocaleTimeString()}
                               </p>
+                              {closedAt && (
+                                <p className="text-xs text-muted-foreground">
+                                  Closed: {new Date(closedAt).toLocaleDateString()} {new Date(closedAt).toLocaleTimeString()}
+                                </p>
+                              )}
                               {trade.status === 'FAILED' && trade.error_message && (
                                 <p className="text-xs text-destructive mt-0.5 truncate max-w-[200px]" title={trade.error_message}>
                                   {trade.error_message}
@@ -429,7 +436,8 @@ export default function UserDashboard() {
                             </Badge>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -502,22 +510,33 @@ export default function UserDashboard() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b text-left text-sm text-muted-foreground">
+                      <tr className="border-b text-left text-xs text-muted-foreground">
                         <th className="pb-3 font-medium">Side</th>
                         <th className="pb-3 font-medium">Symbol</th>
-                        <th className="pb-3 font-medium">Entry</th>
-                        <th className="pb-3 font-medium">Exit</th>
+                        <th className="pb-3 font-medium">Entry $</th>
+                        <th className="pb-3 font-medium">Exit $</th>
                         <th className="pb-3 font-medium">P&L</th>
                         <th className="pb-3 font-medium">Status</th>
-                        <th className="pb-3 font-medium">Date & Time</th>
+                        <th className="pb-3 font-medium">Opened</th>
+                        <th className="pb-3 font-medium">Closed</th>
                         <th className="pb-3 font-medium">Reason</th>
                       </tr>
                     </thead>
                     <tbody>
                       {trades.map((trade) => {
                         const pnl = calcPnL(trade);
+                        const fmtTime = (ts: string | null) => {
+                          if (!ts) return '-';
+                          const d = new Date(ts);
+                          return (
+                            <span className="whitespace-nowrap">
+                              <span className="block">{d.toLocaleDateString()}</span>
+                              <span className="text-xs text-muted-foreground">{d.toLocaleTimeString()}</span>
+                            </span>
+                          );
+                        };
                         return (
                         <tr key={trade.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
                           <td className="py-3">
@@ -527,9 +546,9 @@ export default function UserDashboard() {
                             </Badge>
                           </td>
                           <td className="py-3 font-medium">{trade.symbol}</td>
-                          <td className="py-3 font-mono text-sm">{trade.entry_price?.toFixed(2) || '-'}</td>
-                          <td className="py-3 font-mono text-sm">{trade.exit_price?.toFixed(2) || '-'}</td>
-                          <td className="py-3 font-mono text-sm font-semibold">
+                          <td className="py-3 font-mono">{trade.entry_price?.toFixed(2) || '-'}</td>
+                          <td className="py-3 font-mono">{trade.exit_price?.toFixed(2) || '-'}</td>
+                          <td className="py-3 font-mono font-semibold">
                             {pnl !== null ? (
                               <span className={pnl >= 0 ? 'text-buy' : 'text-sell'}>
                                 {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}
@@ -548,11 +567,9 @@ export default function UserDashboard() {
                               {trade.status}
                             </Badge>
                           </td>
-                          <td className="py-3 text-sm text-muted-foreground whitespace-nowrap">
-                            {new Date(trade.created_at).toLocaleDateString()}{' '}
-                            <span className="text-xs">{new Date(trade.created_at).toLocaleTimeString()}</span>
-                          </td>
-                          <td className="py-3 text-xs text-destructive max-w-[200px] truncate" title={trade.error_message || ''}>
+                          <td className="py-3">{fmtTime(trade.opened_at || trade.created_at)}</td>
+                          <td className="py-3">{fmtTime(trade.closed_at)}</td>
+                          <td className="py-3 text-xs text-destructive max-w-[180px] truncate" title={trade.error_message || ''}>
                             {trade.status === 'FAILED' && trade.error_message ? trade.error_message : '-'}
                           </td>
                         </tr>
