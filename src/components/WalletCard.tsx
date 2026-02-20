@@ -18,8 +18,9 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
   const { positions: rawPositions } = useOpenPositions();
   // Filter out dust/residual positions (amount too small to be meaningful)
   const positions = rawPositions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0.1);
-  // Use DB active trades count to stay in sync with the Open Trades dashboard card
+  // Use DB active trades as the single source of truth for open trade count
   const { activeTrades } = useTrades();
+  // Show DB count - live Binance positions may lag or have dust filtered out
   const openTradesCount = activeTrades.length;
 
   const displayWallet = wallet || activeWallet;
@@ -201,46 +202,75 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
               </div>
             )}
 
-            {/* Open Positions */}
-            {positions.length > 0 && (
+            {/* Open Positions - show live Binance positions OR DB open trades as fallback */}
+            {(positions.length > 0 || activeTrades.length > 0) && (
               <div className="space-y-2 pt-4 border-t border-border">
                 <p className="text-sm font-medium">Open Positions</p>
-                {positions.map((position, idx) => {
-                  const pnl = parseFloat(position.unrealizedProfit);
-                  const isProfit = pnl >= 0;
-                  return (
+                {positions.length > 0 ? (
+                  positions.map((position, idx) => {
+                    const pnl = parseFloat(position.unrealizedProfit);
+                    const isProfit = pnl >= 0;
+                    return (
+                      <div 
+                        key={idx} 
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                      >
+                        <div>
+                          <p className="font-medium">{position.symbol}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {position.leverage}x • Entry: ${parseFloat(position.entryPrice).toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {isProfit ? (
+                              <TrendingUp className="h-4 w-4 text-buy" />
+                            ) : (
+                              <TrendingDown className="h-4 w-4 text-sell" />
+                            )}
+                            <span className={`font-medium ${isProfit ? 'text-buy' : 'text-sell'}`}>
+                              ${Math.abs(pnl).toFixed(2)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Size: {position.positionAmt}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  // Fallback: show DB open trades when live positions are not visible
+                  activeTrades.map((trade) => (
                     <div 
-                      key={idx} 
+                      key={trade.id} 
                       className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
                     >
                       <div>
-                        <p className="font-medium">{position.symbol}</p>
+                        <p className="font-medium">{trade.symbol}</p>
                         <p className="text-xs text-muted-foreground">
-                          {position.leverage}x • Entry: ${parseFloat(position.entryPrice).toFixed(2)}
+                          {trade.signal_type} • Entry: {trade.entry_price ? `$${trade.entry_price.toFixed(2)}` : 'Pending'}
                         </p>
                       </div>
                       <div className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {isProfit ? (
-                            <TrendingUp className="h-4 w-4 text-buy" />
-                          ) : (
-                            <TrendingDown className="h-4 w-4 text-sell" />
-                          )}
-                          <span className={`font-medium ${isProfit ? 'text-buy' : 'text-sell'}`}>
-                            ${Math.abs(pnl).toFixed(2)}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Size: {position.positionAmt}
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          trade.status === 'OPEN' 
+                            ? 'bg-buy/10 text-buy' 
+                            : 'bg-yellow-500/10 text-yellow-600'
+                        }`}>
+                          {trade.status}
+                        </span>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {trade.timeframe}
                         </p>
                       </div>
                     </div>
-                  );
-                })}
+                  ))
+                )}
               </div>
             )}
 
-            {positions.length === 0 && balances.length === 0 && (
+            {positions.length === 0 && activeTrades.length === 0 && balances.length === 0 && (
               <div className="text-center py-4 text-muted-foreground">
                 <p className="text-sm">No assets or positions found</p>
               </div>
