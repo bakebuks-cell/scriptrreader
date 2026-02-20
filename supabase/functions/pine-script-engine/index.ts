@@ -1047,7 +1047,10 @@ function evaluateStrategy(
 
   console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}, direction=${strategy.direction}`)
   
-  const scanDepth = Math.min(5, lastIndex)
+  // scanDepth=1 means ONLY the current (last closed) candle is checked for entry.
+  // This prevents old/pre-existing signals from firing when the bot restarts.
+  // A new trade should only be entered when a signal fires on a brand-new candle.
+  const scanDepth = 1
 
   // Helper: check if candle at index is after bot start
   const candleIsNew = (idx: number): boolean => {
@@ -2458,7 +2461,12 @@ Deno.serve(async (req) => {
                 }
 
                 // ===== EVALUATE ENTRY =====
-                const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice)
+                // Pass bot_started_at so the engine ignores signals from candles before bot was enabled
+                const botStartedAt = (us.settings_json?.bot_started_at as string | undefined) || undefined
+                if (botStartedAt) {
+                  console.log(`[ENGINE] bot_started_at for user ${us.user_id}: ${botStartedAt}`)
+                }
+                const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice, botStartedAt)
                 
                 if (signal.action !== 'NONE') {
                   console.log(`[ENGINE] Signal: ${signal.action} ${symbol} @ ${signal.price}`)
