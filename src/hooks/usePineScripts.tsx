@@ -118,13 +118,20 @@ export function usePineScripts() {
 
   // Own scripts use their native is_active (exclude soft-deleted)
   // Own scripts: user-created, no admin_tag, not soft-deleted
+  // Merge settings from user_scripts (e.g. trade_mechanism) if a record exists
   const ownScripts: PineScriptWithUserState[] = (scripts ?? [])
     .filter(s => s.created_by === user?.id && !s.deleted_at && s.admin_tag === null)
-    .map(s => ({
-      ...s,
-      user_is_active: s.is_active,
-      user_script_id: null,
-    }));
+    .map(s => {
+      const userRecord = userScriptRecords?.find(us => us.script_id === s.id);
+      const userSettings = (userRecord as any)?.settings_json || {};
+      return {
+        ...s,
+        // Apply user_scripts settings (trade_mechanism, etc.)
+        ...(userSettings.trade_mechanism !== undefined && { trade_mechanism: userSettings.trade_mechanism }),
+        user_is_active: s.is_active,
+        user_script_id: userRecord?.id ?? null,
+      };
+    });
 
   const createScript = useMutation({
     mutationFn: async (input: CreatePineScriptInput) => {
