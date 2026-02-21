@@ -2369,25 +2369,34 @@ Deno.serve(async (req) => {
                   }
                 }
 
-                // ===== CHECK FOR OPEN TRADES TO CLOSE =====
+                // ================================================================
+                // CLEAN FLIP LOGIC — Single-position trade management
+                // Rules:
+                //   1. On bot start: wait for NEW signal only (bot_started_at filter)
+                //   2. No open position → open new trade per signal
+                //   3. Open position + OPPOSITE signal → close existing, then open new
+                //   4. Open position + SAME signal → ignore (no duplicate/stack)
+                //   5. Only ONE open position at a time
+                //   6. If close fails → do NOT open new trade
+                //   7. Never process same signal twice (candle-based dedup)
+                // ================================================================
+
+                // STEP 1: Sync open trades with exchange (detect SL/TP hits, manual closes)
                 const { data: openTrades } = await supabase
                   .from('trades')
                   .select('id, user_id, script_id, symbol, signal_type, entry_price')
                   .eq('user_id', us.user_id)
                   .eq('script_id', us.script_id)
                   .eq('symbol', symbol)
-                  .eq('status', 'OPEN')
+                  .in('status', ['OPEN', 'PENDING'])
 
+                // Sync each open trade with the exchange to detect external closes
                 if (openTrades && openTrades.length > 0) {
                   console.log(`[ENGINE] Found ${openTrades.length} open trade(s) for user ${us.user_id}, syncing with exchange...`)
-                  
-                  // STEP 1: Verify positions still exist on exchange (detect SL/TP hits, manual closes)
-                  let allSynced = true
-                  let anyClosedExternally = false
                   for (const openTrade of openTrades) {
                     const syncResult = await syncOpenTradeWithExchange(supabase, openTrade, scriptMarketType)
                     if (!syncResult.stillOpen) {
-                      anyClosedExternally = true
+                      console.log(`[ENGINE] Trade ${openTrade.id} was closed externally (SL/TP/manual)`)
                       results.push({
                         scriptId: us.script_id,
                         scriptName: us.script.name,
@@ -2401,90 +2410,22 @@ Deno.serve(async (req) => {
                       })
                     }
                   }
-
-                  // If all trades were closed externally, allow new entry evaluation below
-                  if (anyClosedExternally) {
-                    // Re-check if any trades are still actually open after sync
-                    const { data: stillOpenTrades } = await supabase
-                      .from('trades')
-                      .select('id')
-                      .eq('user_id', us.user_id)
-                      .eq('script_id', us.script_id)
-                      .eq('symbol', symbol)
-                      .eq('status', 'OPEN')
-                    
-                    if (!stillOpenTrades || stillOpenTrades.length === 0) {
-                      console.log(`[ENGINE] All positions synced/closed. Proceeding to evaluate new entry.`)
-                      // Fall through to entry evaluation below
-                    } else {
-                      console.log(`[ENGINE] Some positions still open after sync, checking exit conditions`)
-                      // Continue with exit condition check on remaining open trades
-                    }
-                  }
-
-                  // Re-fetch open trades after sync
-                  const { data: remainingOpenTrades } = await supabase
-                    .from('trades')
-                    .select('id, user_id, script_id, symbol, signal_type, entry_price')
-                    .eq('user_id', us.user_id)
-                    .eq('script_id', us.script_id)
-                    .eq('symbol', symbol)
-                    .eq('status', 'OPEN')
-
-                  if (remainingOpenTrades && remainingOpenTrades.length > 0) {
-                    console.log(`[ENGINE] ${remainingOpenTrades.length} trade(s) still open, checking exit conditions`)
-                    
-                    const exitResult = evaluateExitConditions(strategy, indicators, ohlcv, currentPrice)
-                    
-                    if (exitResult.shouldExit) {
-                      console.log(`[ENGINE] EXIT signal detected: ${exitResult.reason}`)
-                      for (const openTrade of remainingOpenTrades) {
-                        const closeResult = await closeOpenTrade(
-                          supabase,
-                          openTrade,
-                          currentPrice,
-                          scriptMarketType,
-                          exitResult.reason
-                        )
-                        results.push({
-                          scriptId: us.script_id,
-                          scriptName: us.script.name,
-                          userId: us.user_id,
-                          symbol,
-                          timeframe,
-                          action: 'CLOSE',
-                          tradeId: openTrade.id,
-                          executed: closeResult.success,
-                          error: closeResult.error,
-                          reason: exitResult.reason,
-                        })
-                      }
-                      // After closing, allow new entry evaluation for bidirectional strategies
-                      if (strategy.direction === 'both') {
-                        console.log(`[ENGINE] Bidirectional strategy: evaluating new entry after close`)
-                        // Fall through to entry evaluation below
-                      } else {
-                        continue
-                      }
-                    } else {
-                      console.log(`[ENGINE] Open trade exists, exit conditions not met — skipping entry`)
-                      results.push({
-                        scriptId: us.script_id,
-                        scriptName: us.script.name,
-                        userId: us.user_id,
-                        symbol,
-                        timeframe,
-                        executed: false,
-                        reason: 'Open trade exists, exit conditions not yet met',
-                      })
-                      continue // Don't open another trade while one is already open
-                    }
-                  }
-                  // If no remaining open trades, fall through to entry evaluation
                 }
 
-                // ===== CHECK FOR REPEATED FAILURES (circuit breaker - per user) =====
-                // Only check failures from the last 2 hours to avoid stale errors from old API keys
+                // STEP 2: Re-fetch current open position after sync
+                const { data: currentOpenTrades } = await supabase
+                  .from('trades')
+                  .select('id, user_id, script_id, symbol, signal_type, entry_price')
+                  .eq('user_id', us.user_id)
+                  .eq('symbol', symbol)
+                  .in('status', ['OPEN', 'PENDING'])
+
+                const currentPosition = currentOpenTrades && currentOpenTrades.length > 0 ? currentOpenTrades[0] : null
+                const currentDirection = currentPosition?.signal_type || null // 'BUY' or 'SELL'
+
+                console.log(`[ENGINE] Current position: ${currentPosition ? `${currentDirection} (trade ${currentPosition.id})` : 'NONE'}`)
+
+                // ===== CIRCUIT BREAKER (per user) =====
                 const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
                 const { data: recentFails } = await supabase
                   .from('trades')
@@ -2494,14 +2435,12 @@ Deno.serve(async (req) => {
                   .gte('created_at', twoHoursAgo)
                   .order('created_at', { ascending: false })
                   .limit(3)
-                
+
                 const apiPermissionErrors = (recentFails || []).filter(
                   (t: any) => t.error_message?.includes('Invalid API-key') || t.error_message?.includes('permissions for action')
                 )
-                
+
                 if (apiPermissionErrors.length >= 3) {
-                  // Check if the user updated their wallet AFTER the most recent failure
-                  // If so, they've likely fixed the issue — skip the circuit breaker
                   const lastFailTime = apiPermissionErrors[0]?.created_at
                   const { data: userWallet } = await supabase
                     .from('wallets')
@@ -2511,12 +2450,12 @@ Deno.serve(async (req) => {
                     .order('updated_at', { ascending: false })
                     .limit(1)
                     .maybeSingle()
-                  
+
                   const walletUpdatedAt = userWallet?.updated_at || userWallet?.created_at
                   const walletUpdatedAfterFail = walletUpdatedAt && lastFailTime && new Date(walletUpdatedAt) > new Date(lastFailTime)
-                  
+
                   if (!walletUpdatedAfterFail) {
-                    console.log(`[ENGINE] Circuit breaker for user ${us.user_id}: 3+ API failures in last 2h, wallet not updated since. Skipping.`)
+                    console.log(`[ENGINE] Circuit breaker for user ${us.user_id}: 3+ API failures in last 2h`)
                     results.push({
                       scriptId: us.script_id,
                       scriptName: us.script.name,
@@ -2524,81 +2463,21 @@ Deno.serve(async (req) => {
                       symbol,
                       timeframe,
                       executed: false,
-                      error: 'Trading paused: Binance API key has issues (invalid key, IP, or permissions). Please go to Binance → API Management → Edit and ensure: 1) Enable Futures, 2) Enable Spot & Margin Trading, 3) Enable Reading, 4) Set IP Access to "Unrestricted (Less Secure)".',
+                      error: 'Trading paused: Binance API key has issues. Please update your API keys.',
                     })
                     continue
-                  } else {
-                    console.log(`[ENGINE] Circuit breaker reset for user ${us.user_id}: wallet updated after last failure. Allowing retry.`)
                   }
                 }
 
-                // ===== EVALUATE ENTRY =====
-                // Pass bot_started_at so the engine ignores signals from candles before bot was enabled
+                // STEP 3: Evaluate signal (only fresh signals after bot start)
                 const botStartedAt = (us.settings_json?.bot_started_at as string | undefined) || undefined
                 if (botStartedAt) {
                   console.log(`[ENGINE] bot_started_at for user ${us.user_id}: ${botStartedAt}`)
                 }
                 const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice, botStartedAt)
-                
-                if (signal.action !== 'NONE') {
-                  // ===== SIGNAL DEDUPLICATION =====
-                  // Use candle-timestamp-based dedup: only one trade per signal_type per candle interval.
-                  // This is more precise than time-based dedup and prevents re-firing on old signals.
-                  const intervalMs = getIntervalMs(timeframe)
-                  // Check the last 2 candle windows for an existing trade of the same type
-                  const dedupWindowStart = new Date(Math.floor(Date.now() / intervalMs) * intervalMs - intervalMs).toISOString()
-                  const { data: recentTrade } = await supabase
-                    .from('trades')
-                    .select('id, signal_type, created_at')
-                    .eq('user_id', us.user_id)
-                    .eq('script_id', us.script_id)
-                    .eq('symbol', symbol)
-                    .eq('signal_type', signal.action)
-                    .gte('created_at', dedupWindowStart)
-                    .in('status', ['OPEN', 'PENDING', 'CLOSED'])
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle()
 
-                  if (recentTrade) {
-                    console.log(`[ENGINE] DEDUP: Skipping ${signal.action} ${symbol} — already traded at ${recentTrade.created_at} (trade ${recentTrade.id})`)
-                    results.push({
-                      scriptId: us.script_id,
-                      scriptName: us.script.name,
-                      userId: us.user_id,
-                      symbol,
-                      timeframe,
-                      signal,
-                      executed: false,
-                      reason: `Signal already acted on recently (trade ${recentTrade.id})`,
-                    })
-                    continue
-                  }
-
-                  console.log(`[ENGINE] Signal: ${signal.action} ${symbol} @ ${signal.price}`)
-                  const execResult = await executeTrade(
-                    supabase,
-                    us.user_id,
-                    us.script_id,
-                    signal,
-                    symbol,
-                    timeframe,
-                    scriptMarketType,
-                    scriptLeverage
-                  )
-                  
-                  results.push({
-                    scriptId: us.script_id,
-                    scriptName: us.script.name,
-                    userId: us.user_id,
-                    symbol,
-                    timeframe,
-                    signal,
-                    executed: execResult.success,
-                    error: execResult.error,
-                    tradeId: execResult.tradeId,
-                  })
-                } else {
+                if (signal.action === 'NONE') {
+                  // No signal — if position open, just hold. If no position, just wait.
                   results.push({
                     scriptId: us.script_id,
                     scriptName: us.script.name,
@@ -2609,7 +2488,136 @@ Deno.serve(async (req) => {
                     executed: false,
                     reason: signal.reason,
                   })
+                  continue
                 }
+
+                // STEP 4: Signal dedup — never process the same signal twice in the same candle window
+                const intervalMs = getIntervalMs(timeframe)
+                const dedupWindowStart = new Date(Math.floor(Date.now() / intervalMs) * intervalMs - intervalMs).toISOString()
+                const { data: recentTrade } = await supabase
+                  .from('trades')
+                  .select('id, signal_type, created_at')
+                  .eq('user_id', us.user_id)
+                  .eq('script_id', us.script_id)
+                  .eq('symbol', symbol)
+                  .eq('signal_type', signal.action)
+                  .gte('created_at', dedupWindowStart)
+                  .in('status', ['OPEN', 'PENDING', 'CLOSED'])
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle()
+
+                if (recentTrade) {
+                  console.log(`[ENGINE] DEDUP: Skipping ${signal.action} ${symbol} — already traded at ${recentTrade.created_at}`)
+                  results.push({
+                    scriptId: us.script_id,
+                    scriptName: us.script.name,
+                    userId: us.user_id,
+                    symbol,
+                    timeframe,
+                    signal,
+                    executed: false,
+                    reason: `Signal already acted on recently (trade ${recentTrade.id})`,
+                  })
+                  continue
+                }
+
+                // STEP 5: Apply clean flip logic
+                if (currentPosition) {
+                  // Case: SAME direction signal → IGNORE (no duplicate/stack)
+                  if (currentDirection === signal.action) {
+                    console.log(`[ENGINE] SAME direction signal (${signal.action}) while ${currentDirection} position open — IGNORING`)
+                    results.push({
+                      scriptId: us.script_id,
+                      scriptName: us.script.name,
+                      userId: us.user_id,
+                      symbol,
+                      timeframe,
+                      signal,
+                      executed: false,
+                      reason: `Same direction: ${currentDirection} position already open, ignoring ${signal.action} signal`,
+                    })
+                    continue
+                  }
+
+                  // Case: OPPOSITE direction signal → CLOSE existing FIRST, then open new
+                  console.log(`[ENGINE] OPPOSITE signal: ${signal.action} while ${currentDirection} position open — CLOSING first`)
+
+                  // Close ALL open trades for this symbol (should be just 1)
+                  let closeSuccess = true
+                  for (const trade of currentOpenTrades!) {
+                    const closeResult = await closeOpenTrade(
+                      supabase,
+                      trade,
+                      currentPrice,
+                      scriptMarketType,
+                      `Flipping: ${currentDirection} → ${signal.action}`
+                    )
+                    if (!closeResult.success) {
+                      console.log(`[ENGINE] CLOSE FAILED for trade ${trade.id}: ${closeResult.error}`)
+                      closeSuccess = false
+                      results.push({
+                        scriptId: us.script_id,
+                        scriptName: us.script.name,
+                        userId: us.user_id,
+                        symbol,
+                        timeframe,
+                        action: 'CLOSE_FAILED',
+                        tradeId: trade.id,
+                        executed: false,
+                        error: closeResult.error,
+                        reason: `Failed to close ${currentDirection} position before opening ${signal.action}`,
+                      })
+                    } else {
+                      console.log(`[ENGINE] Successfully closed trade ${trade.id}`)
+                      results.push({
+                        scriptId: us.script_id,
+                        scriptName: us.script.name,
+                        userId: us.user_id,
+                        symbol,
+                        timeframe,
+                        action: 'CLOSE',
+                        tradeId: trade.id,
+                        executed: true,
+                        reason: `Closed ${currentDirection} position for flip to ${signal.action}`,
+                      })
+                    }
+                  }
+
+                  // Safety rule: If close failed, do NOT open new trade
+                  if (!closeSuccess) {
+                    console.log(`[ENGINE] Close failed — NOT opening new ${signal.action} trade (safety rule)`)
+                    continue
+                  }
+
+                  // Small delay to let exchange settle
+                  await new Promise(r => setTimeout(r, 500))
+                }
+
+                // STEP 6: Open new trade (either fresh entry or flip after successful close)
+                console.log(`[ENGINE] Opening ${signal.action} ${symbol} @ ${signal.price}`)
+                const execResult = await executeTrade(
+                  supabase,
+                  us.user_id,
+                  us.script_id,
+                  signal,
+                  symbol,
+                  timeframe,
+                  scriptMarketType,
+                  scriptLeverage
+                )
+
+                results.push({
+                  scriptId: us.script_id,
+                  scriptName: us.script.name,
+                  userId: us.user_id,
+                  symbol,
+                  timeframe,
+                  signal,
+                  executed: execResult.success,
+                  error: execResult.error,
+                  tradeId: execResult.tradeId,
+                })
               } catch (scriptErr) {
                 console.error(`[ENGINE] Script error:`, scriptErr)
                 results.push({
