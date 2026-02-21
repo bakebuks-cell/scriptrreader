@@ -1000,7 +1000,7 @@ function evaluateExitConditions(
   }
 
   const lastIndex = ohlcv.length - 1
-  const scanDepth = Math.min(5, lastIndex)
+  const scanDepth = Math.min(2, lastIndex)
 
   for (let checkIdx = lastIndex; checkIdx > lastIndex - scanDepth; checkIdx--) {
     if (checkIdx < 1) break
@@ -1047,12 +1047,11 @@ function evaluateStrategy(
 
   console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}, direction=${strategy.direction}`)
   
-  // scanDepth=5 means we check the last 5 candles for a direction change.
-  // This is critical because the engine may run slightly late (e.g. 1-2 seconds after
-  // a candle closes) and miss the exact candle where the SuperTrend flipped.
-  // Deduplication is handled downstream: the engine checks for existing open trades
-  // and the signals table prevents re-firing on the same candle timestamp.
-  const scanDepth = 5
+  // scanDepth=2: only check the most recent completed candle + 1 buffer.
+  // A larger window (e.g. 5) causes the engine to re-detect OLD direction changes
+  // across multiple runs, firing stale/duplicate trades.
+  // 2 candles is sufficient: if the engine runs 1-2s late, the flip is still visible.
+  const scanDepth = 2
 
   // Helper: check if candle at index is after bot start
   const candleIsNew = (idx: number): boolean => {
@@ -2543,9 +2542,11 @@ Deno.serve(async (req) => {
                 
                 if (signal.action !== 'NONE') {
                   // ===== SIGNAL DEDUPLICATION =====
-                  // With scanDepth > 1, the same direction change can be detected multiple engine runs.
-                  // Check if we already placed a trade for this signal recently (last 10 minutes).
-                  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+                  // Use candle-timestamp-based dedup: only one trade per signal_type per candle interval.
+                  // This is more precise than time-based dedup and prevents re-firing on old signals.
+                  const intervalMs = getIntervalMs(timeframe)
+                  // Check the last 2 candle windows for an existing trade of the same type
+                  const dedupWindowStart = new Date(Math.floor(Date.now() / intervalMs) * intervalMs - intervalMs).toISOString()
                   const { data: recentTrade } = await supabase
                     .from('trades')
                     .select('id, signal_type, created_at')
@@ -2553,7 +2554,7 @@ Deno.serve(async (req) => {
                     .eq('script_id', us.script_id)
                     .eq('symbol', symbol)
                     .eq('signal_type', signal.action)
-                    .gte('created_at', tenMinAgo)
+                    .gte('created_at', dedupWindowStart)
                     .in('status', ['OPEN', 'PENDING', 'CLOSED'])
                     .order('created_at', { ascending: false })
                     .limit(1)
