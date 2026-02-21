@@ -180,9 +180,12 @@ const FUTURES_ONLY_SYMBOLS = ['XAUUSDT', 'XAGUSDT']
 // Cache for hedge mode detection per API key (avoid repeated calls)
 const hedgeModeCache = new Map<string, boolean>()
 
-async function isHedgeMode(apiKey: string, apiSecret: string, isCoinM: boolean = false): Promise<boolean> {
+async function ensureOneWayMode(apiKey: string, apiSecret: string, isCoinM: boolean = false): Promise<void> {
   const cacheKey = apiKey.substring(0, 8) + (isCoinM ? '_coinm' : '_usdtm')
-  if (hedgeModeCache.has(cacheKey)) return hedgeModeCache.get(cacheKey)!
+  if (hedgeModeCache.has(cacheKey) && !hedgeModeCache.get(cacheKey)) {
+    // Already confirmed one-way mode
+    return
+  }
   
   try {
     const endpoint = isCoinM ? '/dapi/v1/positionSide/dual' : '/fapi/v1/positionSide/dual'
@@ -190,14 +193,38 @@ async function isHedgeMode(apiKey: string, apiSecret: string, isCoinM: boolean =
       ? await binanceCoinMRequest(endpoint, apiKey, apiSecret)
       : await binanceRequest(endpoint, apiKey, apiSecret, 'GET', {}, !isCoinM)
     const isHedge = result.dualSidePosition === true
-    hedgeModeCache.set(cacheKey, isHedge)
-    console.log(`[HEDGE] Account position mode: ${isHedge ? 'Hedge Mode' : 'One-Way Mode'}`)
-    return isHedge
+    
+    if (isHedge) {
+      console.log(`[HEDGE] Account is in Hedge Mode — auto-switching to One-Way Mode...`)
+      // Switch to One-Way mode via POST with dualSidePosition=false
+      try {
+        if (isCoinM) {
+          await binanceCoinMRequest(endpoint, apiKey, apiSecret, 'POST', { dualSidePosition: 'false' })
+        } else {
+          await binanceRequest(endpoint, apiKey, apiSecret, 'POST', { dualSidePosition: 'false' }, true)
+        }
+        console.log(`[HEDGE] Successfully switched to One-Way Mode`)
+        hedgeModeCache.set(cacheKey, false)
+      } catch (switchErr) {
+        // May fail if there are open positions — log and continue
+        console.log(`[HEDGE] Failed to switch to One-Way Mode (may have open positions):`, switchErr instanceof Error ? switchErr.message : switchErr)
+        hedgeModeCache.set(cacheKey, true)
+      }
+    } else {
+      console.log(`[HEDGE] Account already in One-Way Mode`)
+      hedgeModeCache.set(cacheKey, false)
+    }
   } catch (err) {
     console.log(`[HEDGE] Could not detect position mode, assuming one-way:`, err)
     hedgeModeCache.set(cacheKey, false)
-    return false
   }
+}
+
+// Legacy compat wrapper
+async function isHedgeMode(apiKey: string, apiSecret: string, isCoinM: boolean = false): Promise<boolean> {
+  await ensureOneWayMode(apiKey, apiSecret, isCoinM)
+  const cacheKey = apiKey.substring(0, 8) + (isCoinM ? '_coinm' : '_usdtm')
+  return hedgeModeCache.get(cacheKey) ?? false
 }
 
 // Cancel ALL open orders for a symbol on Binance Futures (or Coin-M)
@@ -1915,6 +1942,15 @@ async function executeTrade(
       
       console.log(`[TRADE] Available balance: ${availableUSDT}`)
       
+      // ===== ENSURE ONE-WAY MODE (futures only) =====
+      if (isFutures) {
+        try {
+          await ensureOneWayMode(apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, isCoinM)
+        } catch (modeErr) {
+          console.log(`[TRADE] Position mode check failed (non-fatal):`, modeErr)
+        }
+      }
+      
       // ===== SET LEVERAGE (futures only) =====
       if (isFutures && leverage > 0) {
         try {
@@ -2387,9 +2423,34 @@ Deno.serve(async (req) => {
           )
         }
         
+        // ===== DUPLICATE SYMBOL GUARD =====
+        // Prevent 2+ scripts on the same symbol for the same user (would cause position conflicts / crashes)
+        const userSymbolMap = new Map<string, any>() // key: "userId:symbol"
+        const deduplicatedScripts: any[] = []
+        for (const us of filteredScripts) {
+          const sym = us.script.symbol
+          const dedupKey = `${us.user_id}:${sym}`
+          if (userSymbolMap.has(dedupKey)) {
+            const existing = userSymbolMap.get(dedupKey)
+            console.log(`[ENGINE] BLOCKED: User ${us.user_id} has multiple scripts on ${sym} — keeping "${existing.script.name}", skipping "${us.script.name}"`)
+            results.push({
+              scriptId: us.script_id,
+              scriptName: us.script.name,
+              userId: us.user_id,
+              symbol: sym,
+              timeframe: us.script.allowed_timeframes?.[0] || '1h',
+              executed: false,
+              reason: `Blocked: another script ("${existing.script.name}") already runs on ${sym}. Only 1 script per coin is allowed.`,
+            })
+            continue
+          }
+          userSymbolMap.set(dedupKey, us)
+          deduplicatedScripts.push(us)
+        }
+
         // Group by symbol+timeframe
         const bySymbolTimeframe: Record<string, any[]> = {}
-        for (const us of filteredScripts) {
+        for (const us of deduplicatedScripts) {
           const sym = us.script.symbol
           const tf = us.script.allowed_timeframes?.[0] || '1h'
           const key = `${sym}:${tf}`
