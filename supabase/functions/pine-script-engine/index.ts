@@ -2608,7 +2608,77 @@ Deno.serve(async (req) => {
                     continue
                   }
 
-                  // Small delay to let exchange settle (flip mode only)
+                  // RULE 7 (MANDATORY): Re-fetch position from EXCHANGE to confirm NONE before opening
+                  // Never rely on DB alone — the exchange is the source of truth.
+                  console.log(`[ENGINE] FLIP: Re-checking exchange position after close...`)
+                  let positionConfirmedNone = false
+                  try {
+                    const { data: recheckKeys } = await supabase
+                      .from('wallets')
+                      .select('api_key_encrypted, api_secret_encrypted')
+                      .eq('user_id', us.user_id)
+                      .eq('is_active', true)
+                      .not('api_key_encrypted', 'is', null)
+                      .limit(1)
+                      .maybeSingle()
+
+                    if (recheckKeys) {
+                      const isCoinM = scriptMarketType === 'coin_margin'
+                      const isSpot = scriptMarketType === 'spot'
+
+                      if (isSpot) {
+                        const baseAsset = symbol.replace('USDT', '').replace('BUSD', '')
+                        const accountInfo = await binanceRequest('/api/v3/account', recheckKeys.api_key_encrypted.trim(), recheckKeys.api_secret_encrypted.trim())
+                        const balance = accountInfo.balances?.find((b: any) => b.asset === baseAsset)
+                        const hasPos = balance && parseFloat(balance.free) + parseFloat(balance.locked) > 0.0001
+                        positionConfirmedNone = !hasPos
+                      } else {
+                        const positions = isCoinM
+                          ? await binanceCoinMRequest('/dapi/v1/positionRisk', recheckKeys.api_key_encrypted.trim(), recheckKeys.api_secret_encrypted.trim())
+                          : await binanceRequest('/fapi/v2/positionRisk', recheckKeys.api_key_encrypted.trim(), recheckKeys.api_secret_encrypted.trim(), 'GET', { recvWindow: '10000' }, true)
+
+                        const hedgeMode = await isHedgeMode(recheckKeys.api_key_encrypted.trim(), recheckKeys.api_secret_encrypted.trim(), isCoinM)
+                        let hasPos = false
+                        if (hedgeMode) {
+                          // Check the CLOSED side — should be NONE now
+                          const closedSide = currentDirection === 'BUY' ? 'LONG' : 'SHORT'
+                          const pos = positions.find((p: any) => p.symbol === symbol && p.positionSide === closedSide && Math.abs(parseFloat(p.positionAmt)) > 0)
+                          hasPos = !!pos
+                        } else {
+                          // One-way: check if ANY position remains
+                          const pos = positions.find((p: any) => p.symbol === symbol && Math.abs(parseFloat(p.positionAmt)) > 0.001)
+                          hasPos = !!pos
+                        }
+                        positionConfirmedNone = !hasPos
+                      }
+                      console.log(`[ENGINE] Re-check result: positionConfirmedNone=${positionConfirmedNone}`)
+                    } else {
+                      console.log(`[ENGINE] No API keys for re-check — assuming position closed`)
+                      positionConfirmedNone = true
+                    }
+                  } catch (recheckErr) {
+                    console.log(`[ENGINE] Re-check failed:`, recheckErr)
+                    positionConfirmedNone = false
+                  }
+
+                  if (!positionConfirmedNone) {
+                    console.log(`[ENGINE] ABORT: Exchange still shows open position after close — NOT opening ${signal.action}`)
+                    results.push({
+                      scriptId: us.script_id,
+                      scriptName: us.script.name,
+                      userId: us.user_id,
+                      symbol,
+                      timeframe,
+                      action: 'ABORT_RECHECK',
+                      executed: false,
+                      reason: `Close succeeded in DB but exchange still shows position — aborting flip to ${signal.action}`,
+                    })
+                    continue
+                  }
+
+                  console.log(`[ENGINE] FLIP confirmed: position is NONE on exchange. Proceeding to open ${signal.action}`)
+
+                  // Small delay to let exchange settle
                   await new Promise(r => setTimeout(r, 500))
                 }
 
@@ -2624,6 +2694,9 @@ Deno.serve(async (req) => {
                   scriptMarketType,
                   scriptLeverage
                 )
+
+                // RULE 12: Log final state
+                console.log(`[ENGINE] Final state: ${signal.action} ${symbol} executed=${execResult.success}${execResult.tradeId ? ` tradeId=${execResult.tradeId}` : ''}${execResult.error ? ` error=${execResult.error}` : ''}`)
 
                 results.push({
                   scriptId: us.script_id,
