@@ -200,6 +200,44 @@ async function isHedgeMode(apiKey: string, apiSecret: string, isCoinM: boolean =
   }
 }
 
+// Cancel ALL open orders for a symbol on Binance Futures (or Coin-M)
+async function cancelAllOpenOrders(apiKey: string, apiSecret: string, symbol: string, isCoinM: boolean = false): Promise<void> {
+  try {
+    const endpoint = isCoinM ? '/dapi/v1/allOpenOrders' : '/fapi/v1/allOpenOrders'
+    if (isCoinM) {
+      await binanceCoinMRequest(endpoint, apiKey, apiSecret, 'DELETE', { symbol })
+    } else {
+      await binanceRequest(endpoint, apiKey, apiSecret, 'DELETE', { symbol }, true)
+    }
+    console.log(`[CANCEL] All open orders cancelled for ${symbol}`)
+  } catch (err) {
+    // "Unknown order sent" or "No open orders" — both are fine
+    console.log(`[CANCEL] Cancel orders result:`, err instanceof Error ? err.message : err)
+  }
+}
+
+// Get current exchange position for a symbol (Futures one-way mode)
+async function getExchangePosition(
+  apiKey: string,
+  apiSecret: string,
+  symbol: string,
+  isCoinM: boolean = false
+): Promise<{ side: 'LONG' | 'SHORT' | 'NONE'; amt: number; entryPrice: number }> {
+  const positions = isCoinM
+    ? await binanceCoinMRequest('/dapi/v1/positionRisk', apiKey, apiSecret)
+    : await binanceRequest('/fapi/v2/positionRisk', apiKey, apiSecret, 'GET', { recvWindow: '10000' }, true)
+
+  const pos = positions.find((p: any) => p.symbol === symbol && Math.abs(parseFloat(p.positionAmt)) > 0.001)
+  if (!pos) return { side: 'NONE', amt: 0, entryPrice: 0 }
+
+  const amt = parseFloat(pos.positionAmt)
+  return {
+    side: amt > 0 ? 'LONG' : 'SHORT',
+    amt: Math.abs(amt),
+    entryPrice: parseFloat(pos.entryPrice || '0'),
+  }
+}
+
 function isFuturesOnlySymbol(symbol: string): boolean {
   return FUTURES_ONLY_SYMBOLS.includes(symbol.toUpperCase())
 }
@@ -1995,79 +2033,143 @@ async function executeTrade(
         ? parseFloat(orderResult.fills?.[0]?.price || signal.price.toString())
         : parseFloat(orderResult.avgPrice || orderResult.price || signal.price.toString()) || signal.price
       console.log(`[TRADE] Fill price: ${fillPrice} (avgPrice=${orderResult.avgPrice}, price=${orderResult.price})`)
+
+      // ===== FETCH ACTUAL POSITION FROM EXCHANGE (for accurate TP/SL) =====
+      let actualEntryPrice = fillPrice
+      let actualQty = quantity
+      if (isFutures) {
+        try {
+          // Small delay to let Binance process the fill
+          await new Promise(r => setTimeout(r, 300))
+          const posInfo = await getExchangePosition(
+            apiKeys.api_key_encrypted.trim(),
+            apiKeys.api_secret_encrypted.trim(),
+            symbol,
+            isCoinM
+          )
+          if (posInfo.side !== 'NONE') {
+            actualEntryPrice = posInfo.entryPrice || fillPrice
+            actualQty = posInfo.amt.toString()
+            console.log(`[TRADE] Exchange confirmed: side=${posInfo.side}, entryPrice=${actualEntryPrice}, qty=${actualQty}`)
+          } else {
+            console.log(`[TRADE] WARNING: Exchange shows no position after fill — using fill price`)
+          }
+        } catch (posErr) {
+          console.log(`[TRADE] Could not fetch position after fill:`, posErr)
+        }
+      }
+
+      // Recalculate TP/SL based on ACTUAL entry price from exchange
+      let actualSL = signal.stopLoss
+      let actualTP = signal.takeProfit
+      if (actualEntryPrice !== signal.price && (actualSL || actualTP)) {
+        console.log(`[TRADE] Recalculating TP/SL from actual entry ${actualEntryPrice} (signal price was ${signal.price})`)
+        if (actualSL) {
+          const slDist = Math.abs(signal.price - actualSL)
+          actualSL = signal.action === 'BUY' ? actualEntryPrice - slDist : actualEntryPrice + slDist
+        }
+        if (actualTP) {
+          const tpDist = Math.abs(signal.price - actualTP)
+          actualTP = signal.action === 'BUY' ? actualEntryPrice + tpDist : actualEntryPrice - tpDist
+        }
+        console.log(`[TRADE] Adjusted SL=${actualSL?.toFixed(2)}, TP=${actualTP?.toFixed(2)}`)
+      }
+
       await supabase
         .from('trades')
         .update({
           status: 'OPEN',
-          entry_price: fillPrice,
+          entry_price: actualEntryPrice,
+          stop_loss: actualSL,
+          take_profit: actualTP,
           opened_at: new Date().toISOString(),
           coin_consumed: true,
         })
         .eq('id', trade.id)
       
       // ===== STOP LOSS =====
-      if (signal.stopLoss) {
+      // For LONG: SL below entry. For SHORT: SL above entry.
+      // Futures: reduceOnly=true, closePosition=false, correct quantity
+      if (actualSL) {
         try {
           const slSide = signal.action === 'BUY' ? 'SELL' : 'BUY'
-          if (isSpot) {
+          // Validate SL direction
+          const slValid = signal.action === 'BUY' ? actualSL < actualEntryPrice : actualSL > actualEntryPrice
+          if (!slValid) {
+            console.log(`[TRADE] SL ${actualSL} is on wrong side of entry ${actualEntryPrice} for ${signal.action} — skipping`)
+          } else if (isSpot) {
             await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
               symbol: symbol,
               side: slSide,
               type: 'STOP_LOSS_LIMIT',
-              quantity: quantity,
-              stopPrice: signal.stopLoss.toFixed(2),
-              price: (signal.stopLoss * (signal.action === 'BUY' ? 0.995 : 1.005)).toFixed(2),
+              quantity: actualQty,
+              stopPrice: actualSL.toFixed(2),
+              price: (actualSL * (signal.action === 'BUY' ? 0.995 : 1.005)).toFixed(2),
               timeInForce: 'GTC',
             })
+            console.log(`[TRADE] Stop loss placed at ${actualSL.toFixed(2)}`)
           } else {
             const slEndpoint = isCoinM ? '/dapi/v1/order' : '/fapi/v1/order'
             const slParams: Record<string, string> = {
               symbol: symbol,
               side: slSide,
               type: 'STOP_MARKET',
-              quantity: quantity,
-              stopPrice: signal.stopLoss.toFixed(2),
-              closePosition: 'false',
+              quantity: actualQty,
+              stopPrice: actualSL.toFixed(2),
+              reduceOnly: 'true',
             }
-            if (positionSide) slParams.positionSide = positionSide
+            if (positionSide) {
+              slParams.positionSide = positionSide
+              delete (slParams as any).reduceOnly // hedge mode uses positionSide instead
+            }
             const slFn = isCoinM ? binanceCoinMRequest : (ep: string, ak: string, as2: string, m: string, p: any) => binanceRequest(ep, ak, as2, m, p, true)
             await slFn(slEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', slParams)
+            console.log(`[TRADE] Stop loss placed at ${actualSL.toFixed(2)} (reduceOnly, qty=${actualQty})`)
           }
-          console.log(`[TRADE] Stop loss placed at ${signal.stopLoss.toFixed(2)}`)
         } catch (slError) {
           console.log('[TRADE] Stop loss order failed (non-critical):', slError)
         }
       }
       
       // ===== TAKE PROFIT =====
-      if (signal.takeProfit) {
+      // For LONG: TP above entry. For SHORT: TP below entry.
+      // Futures: reduceOnly=true, closePosition=false, correct quantity
+      if (actualTP) {
         try {
           const tpSide = signal.action === 'BUY' ? 'SELL' : 'BUY'
-          if (isSpot) {
+          // Validate TP direction
+          const tpValid = signal.action === 'BUY' ? actualTP > actualEntryPrice : actualTP < actualEntryPrice
+          if (!tpValid) {
+            console.log(`[TRADE] TP ${actualTP} is on wrong side of entry ${actualEntryPrice} for ${signal.action} — skipping`)
+          } else if (isSpot) {
             await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
               symbol: symbol,
               side: tpSide,
               type: 'TAKE_PROFIT_LIMIT',
-              quantity: quantity,
-              stopPrice: signal.takeProfit.toFixed(2),
-              price: (signal.takeProfit * (signal.action === 'BUY' ? 1.005 : 0.995)).toFixed(2),
+              quantity: actualQty,
+              stopPrice: actualTP.toFixed(2),
+              price: (actualTP * (signal.action === 'BUY' ? 1.005 : 0.995)).toFixed(2),
               timeInForce: 'GTC',
             })
+            console.log(`[TRADE] Take profit placed at ${actualTP.toFixed(2)}`)
           } else {
             const tpEndpoint = isCoinM ? '/dapi/v1/order' : '/fapi/v1/order'
             const tpParams: Record<string, string> = {
               symbol: symbol,
               side: tpSide,
               type: 'TAKE_PROFIT_MARKET',
-              quantity: quantity,
-              stopPrice: signal.takeProfit.toFixed(2),
-              closePosition: 'false',
+              quantity: actualQty,
+              stopPrice: actualTP.toFixed(2),
+              reduceOnly: 'true',
             }
-            if (positionSide) tpParams.positionSide = positionSide
+            if (positionSide) {
+              tpParams.positionSide = positionSide
+              delete (tpParams as any).reduceOnly // hedge mode uses positionSide instead
+            }
             const tpFn = isCoinM ? binanceCoinMRequest : (ep: string, ak: string, as2: string, m: string, p: any) => binanceRequest(ep, ak, as2, m, p, true)
             await tpFn(tpEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', tpParams)
+            console.log(`[TRADE] Take profit placed at ${actualTP.toFixed(2)} (reduceOnly, qty=${actualQty})`)
           }
-          console.log(`[TRADE] Take profit placed at ${signal.takeProfit.toFixed(2)}`)
         } catch (tpError) {
           console.log('[TRADE] Take profit order failed (non-critical):', tpError)
         }
@@ -2237,9 +2339,28 @@ Deno.serve(async (req) => {
             script_id: s.id,
             user_id: s.created_by,
             script: s,
-            settings_json: {},
+            settings_json: {}, // Will be enriched below
+            _needsSettingsLookup: true,
           })),
         ]
+
+        // Enrich user-created scripts with their user_scripts settings (if any)
+        const createdScriptIds = allScripts.filter((s: any) => s._needsSettingsLookup).map((s: any) => s.script_id)
+        if (createdScriptIds.length > 0) {
+          const { data: createdUserScripts } = await supabase
+            .from('user_scripts')
+            .select('script_id, user_id, settings_json')
+            .in('script_id', createdScriptIds)
+          if (createdUserScripts) {
+            for (const cus of createdUserScripts) {
+              const match = allScripts.find((s: any) => s.script_id === cus.script_id && s.user_id === cus.user_id)
+              if (match && cus.settings_json) {
+                match.settings_json = cus.settings_json
+                console.log(`[ENGINE] Enriched settings for script ${cus.script_id}: trade_mechanism=${(cus.settings_json as any).trade_mechanism || 'plain'}`)
+              }
+            }
+          }
+        }
         
         // Filter by target timeframe if specified (from cron job)
         const filteredScripts = targetTimeframe
@@ -2471,15 +2592,77 @@ Deno.serve(async (req) => {
                   }
                 }
 
-                // STEP 3: Evaluate signal (only fresh signals after bot start)
+                // STEP 3: Evaluate signal
                 const botStartedAt = (us.settings_json?.bot_started_at as string | undefined) || undefined
                 if (botStartedAt) {
                   console.log(`[ENGINE] bot_started_at for user ${us.user_id}: ${botStartedAt}`)
                 }
-                const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice, botStartedAt)
+
+                let signal: TradeSignal
+
+                // ================================================================
+                // FLIP MODE + SUPERTREND: STATE-BASED SIGNAL DETECTION
+                // Instead of looking for a direction_change event in the last N candles
+                // (which can be missed if cron is late), we compare the CURRENT
+                // SuperTrend direction to the CURRENT position.  This is robust:
+                //   direction=1 (bullish) + position=SHORT → BUY (flip)
+                //   direction=1 (bullish) + position=NONE  → BUY (open)
+                //   direction=-1 (bearish) + position=LONG → SELL (flip)
+                //   direction=-1 (bearish) + position=NONE → SELL (open)
+                //   direction matches position             → NONE (hold)
+                // ================================================================
+                const isSuperTrendFlip = tradeMechanism === 'flip' &&
+                  strategy.direction === 'both' &&
+                  strategy.entryConditions.some(c => c.type === 'direction_change_up' || c.type === 'direction_change_down') &&
+                  indicators.supertrend?.direction && indicators.supertrend.direction.length > 0
+
+                if (isSuperTrendFlip) {
+                  const stDirection = indicators.supertrend!.direction
+                  const currentSTDir = stDirection[stDirection.length - 1] // 1=bull, -1=bear
+                  const desiredAction: 'BUY' | 'SELL' = currentSTDir === 1 ? 'BUY' : 'SELL'
+                  const positionAction = currentDirection // 'BUY' | 'SELL' | null
+
+                  console.log(`[ENGINE] FLIP+ST state-based: SuperTrend=${currentSTDir === 1 ? 'BULLISH' : 'BEARISH'}, position=${positionAction || 'NONE'}, desired=${desiredAction}`)
+
+                  // Bot start filter: if bot just started, require a direction change AFTER start
+                  // to avoid opening into a pre-existing trend
+                  if (botStartedAt && !currentPosition) {
+                    const minCandleOpenTime = new Date(botStartedAt).getTime()
+                    // Find last direction change
+                    let lastChangeIdx = -1
+                    for (let di = stDirection.length - 1; di > 0; di--) {
+                      if (stDirection[di] !== stDirection[di - 1]) {
+                        lastChangeIdx = di
+                        break
+                      }
+                    }
+                    // Map supertrend index to ohlcv index
+                    const atrOffset = 10 // default SuperTrend ATR period
+                    const ohlcvChangeIdx = lastChangeIdx >= 0 ? lastChangeIdx + atrOffset : -1
+                    const changeCandleTime = ohlcvChangeIdx >= 0 && ohlcvChangeIdx < ohlcv.length
+                      ? ohlcv[ohlcvChangeIdx].openTime : 0
+
+                    if (changeCandleTime < minCandleOpenTime) {
+                      console.log(`[ENGINE] FLIP+ST: Last direction change (${new Date(changeCandleTime).toISOString()}) predates bot start (${botStartedAt}) — waiting for fresh signal`)
+                      signal = { action: 'NONE', price: currentPrice, reason: 'Waiting for fresh SuperTrend direction change after bot start' }
+                    } else {
+                      console.log(`[ENGINE] FLIP+ST: Direction change after bot start — proceeding with ${desiredAction}`)
+                      signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
+                    }
+                  } else if (positionAction === desiredAction) {
+                    // Position already aligned with SuperTrend — hold
+                    signal = { action: 'NONE', price: currentPrice, reason: `Position aligned with SuperTrend (${currentSTDir === 1 ? 'bullish' : 'bearish'})` }
+                  } else {
+                    // Either no position or opposite position → generate signal
+                    signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
+                    console.log(`[ENGINE] FLIP+ST: Signal=${desiredAction} (${positionAction ? 'flip from ' + positionAction : 'new entry'})`)
+                  }
+                } else {
+                  // Standard event-based evaluation (for plain mode or non-SuperTrend)
+                  signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice, botStartedAt)
+                }
 
                 if (signal.action === 'NONE') {
-                  // No signal — if position open, just hold. If no position, just wait.
                   results.push({
                     scriptId: us.script_id,
                     scriptName: us.script.name,
@@ -2544,14 +2727,34 @@ Deno.serve(async (req) => {
 
                   // Case: OPPOSITE direction signal → depends on trade mechanism
                   if (tradeMechanism === 'flip') {
-                    // FLIP: Close existing FIRST, then open new in opposite direction
-                    console.log(`[ENGINE] FLIP: OPPOSITE signal ${signal.action} while ${currentDirection} position open — CLOSING first, then opening`)
+                    console.log(`[ENGINE] FLIP: OPPOSITE signal ${signal.action} while ${currentDirection} position open`)
+                    console.log(`[ENGINE] FLIP SEQUENCE: 1) Cancel Orders → 2) Close Position → 3) Confirm NONE → 4) Open New → 5) Confirm Fill → 6) Place TP/SL`)
                   } else {
-                    // PLAIN: Close existing, do NOT open new
                     console.log(`[ENGINE] PLAIN: OPPOSITE signal ${signal.action} while ${currentDirection} position open — CLOSING only (no flip)`)
                   }
 
-                  // Close ALL open trades for this symbol (should be just 1)
+                  // STEP 1 (FLIP): Cancel ALL open orders for this symbol FIRST
+                  // This removes any stale TP/SL from the previous position
+                  if (tradeMechanism === 'flip' && scriptMarketType !== 'spot') {
+                    try {
+                      const { data: cancelKeys } = await supabase
+                        .from('wallets')
+                        .select('api_key_encrypted, api_secret_encrypted')
+                        .eq('user_id', us.user_id)
+                        .eq('is_active', true)
+                        .not('api_key_encrypted', 'is', null)
+                        .limit(1)
+                        .maybeSingle()
+                      if (cancelKeys) {
+                        const isCoinM = scriptMarketType === 'coin_margin'
+                        await cancelAllOpenOrders(cancelKeys.api_key_encrypted.trim(), cancelKeys.api_secret_encrypted.trim(), symbol, isCoinM)
+                      }
+                    } catch (cancelErr) {
+                      console.log(`[ENGINE] Cancel orders error (non-fatal):`, cancelErr)
+                    }
+                  }
+
+                  // STEP 2: Close position with MARKET reduceOnly
                   let closeSuccess = true
                   for (const trade of currentOpenTrades!) {
                     const closeResult = await closeOpenTrade(
