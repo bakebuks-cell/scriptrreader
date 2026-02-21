@@ -1047,10 +1047,12 @@ function evaluateStrategy(
 
   console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}, direction=${strategy.direction}`)
   
-  // scanDepth=1 means ONLY the current (last closed) candle is checked for entry.
-  // This prevents old/pre-existing signals from firing when the bot restarts.
-  // A new trade should only be entered when a signal fires on a brand-new candle.
-  const scanDepth = 1
+  // scanDepth=5 means we check the last 5 candles for a direction change.
+  // This is critical because the engine may run slightly late (e.g. 1-2 seconds after
+  // a candle closes) and miss the exact candle where the SuperTrend flipped.
+  // Deduplication is handled downstream: the engine checks for existing open trades
+  // and the signals table prevents re-firing on the same candle timestamp.
+  const scanDepth = 5
 
   // Helper: check if candle at index is after bot start
   const candleIsNew = (idx: number): boolean => {
@@ -2139,11 +2141,7 @@ Deno.serve(async (req) => {
         const currentPrice = await getCurrentPrice(symbol)
         const indicators = calculateAllIndicators(ohlcv)
         const strategy = parsePineScript(scriptContent)
-        const botStartedAt = (us.settings_json as any)?.bot_started_at || undefined
-        if (botStartedAt) {
-          console.log(`[ENGINE] bot_started_at for user ${us.user_id}: ${botStartedAt}`)
-        }
-        const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice, botStartedAt)
+        const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice)
         
         return new Response(
           JSON.stringify({
@@ -2544,6 +2542,38 @@ Deno.serve(async (req) => {
                 const signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice, botStartedAt)
                 
                 if (signal.action !== 'NONE') {
+                  // ===== SIGNAL DEDUPLICATION =====
+                  // With scanDepth > 1, the same direction change can be detected multiple engine runs.
+                  // Check if we already placed a trade for this signal recently (last 10 minutes).
+                  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+                  const { data: recentTrade } = await supabase
+                    .from('trades')
+                    .select('id, signal_type, created_at')
+                    .eq('user_id', us.user_id)
+                    .eq('script_id', us.script_id)
+                    .eq('symbol', symbol)
+                    .eq('signal_type', signal.action)
+                    .gte('created_at', tenMinAgo)
+                    .in('status', ['OPEN', 'PENDING', 'CLOSED'])
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle()
+
+                  if (recentTrade) {
+                    console.log(`[ENGINE] DEDUP: Skipping ${signal.action} ${symbol} — already traded at ${recentTrade.created_at} (trade ${recentTrade.id})`)
+                    results.push({
+                      scriptId: us.script_id,
+                      scriptName: us.script.name,
+                      userId: us.user_id,
+                      symbol,
+                      timeframe,
+                      signal,
+                      executed: false,
+                      reason: `Signal already acted on recently (trade ${recentTrade.id})`,
+                    })
+                    continue
+                  }
+
                   console.log(`[ENGINE] Signal: ${signal.action} ${symbol} @ ${signal.price}`)
                   const execResult = await executeTrade(
                     supabase,
