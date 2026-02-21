@@ -581,7 +581,7 @@ export default function BotConfigForm({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="position_size" className="text-xs text-muted-foreground">
-                {config.position_size_type === 'fixed' ? 'Fixed Amount (USDT)' : 'Percentage of Wallet (%)'}
+                {config.position_size_type === 'fixed' ? 'Margin Amount (USDT)' : 'Percentage of Wallet (%)'}
               </Label>
               <Input
                 id="position_size"
@@ -596,6 +596,11 @@ export default function BotConfigForm({
               {adminLimits && (
                 <p className="text-xs text-muted-foreground mt-1">
                   Max: {adminLimits.max_position_size} {config.position_size_type === 'percentage' ? '%' : 'USDT'}
+                </p>
+              )}
+              {config.position_size_type === 'fixed' && isFutures && config.leverage > 1 && (
+                <p className="text-xs text-primary mt-1 font-medium">
+                  Actual trade amount: {(config.position_size_value * config.leverage).toLocaleString()} USDT ({config.position_size_value} × {config.leverage}x)
                 </p>
               )}
             </div>
