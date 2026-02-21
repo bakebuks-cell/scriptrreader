@@ -239,6 +239,24 @@ export function usePineScripts() {
       if (!data || data.length === 0) {
         throw new Error('Script not found or update failed');
       }
+
+      // Also save trade_mechanism to user_scripts.settings_json for user-created scripts
+      const tradeMechanism = (updates as any).trade_mechanism;
+      if (tradeMechanism !== undefined) {
+        const existingRecord = userScriptRecords?.find(us => us.script_id === id);
+        if (existingRecord) {
+          const mergedSettings = { ...((existingRecord as any).settings_json || {}), trade_mechanism: tradeMechanism };
+          await supabase
+            .from('user_scripts')
+            .update({ settings_json: mergedSettings })
+            .eq('id', existingRecord.id);
+        } else {
+          // Create user_scripts record to store settings
+          await supabase
+            .from('user_scripts')
+            .insert({ user_id: user.id, script_id: id, is_active: true, settings_json: { trade_mechanism: tradeMechanism } });
+        }
+      }
       
       return data[0] as PineScript;
     },
