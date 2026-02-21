@@ -6,6 +6,7 @@ import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { 
   CANDLE_TYPES, 
   MARKET_TYPES, 
@@ -25,11 +26,16 @@ import {
   X,
   FileCode,
   Copy,
-  Check
+  Check,
+  Info,
+  ArrowRightLeft,
+  Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import SymbolMultiSelect from '@/components/SymbolMultiSelect';
+
+export type TradeMechanism = 'plain' | 'flip';
 
 export interface BotConfig {
   candle_type: string;
@@ -41,6 +47,7 @@ export interface BotConfig {
   max_capital: number;
   leverage: number;
   max_trades_per_day: number;
+  trade_mechanism?: TradeMechanism;
 }
 
 export interface StrategyConfig {
@@ -321,11 +328,121 @@ export default function BotConfigForm({
         </CardContent>
       </Card>
 
-      {/* Section 3: Market & Symbol Configuration */}
+      {/* Section: Trade Mechanism */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-xs font-mono">{showStrategySection ? '3' : '2'}</Badge>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <ArrowRightLeft className="h-4 w-4 text-primary" />
+              Trade Mechanism
+            </CardTitle>
+          </div>
+          <CardDescription className="text-xs">
+            Choose how the bot handles new signals when a position is already open
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Plain Trade */}
+          <label
+            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+              (config.trade_mechanism || 'plain') === 'plain'
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:bg-accent/50'
+            }`}
+          >
+            <input
+              type="radio"
+              name="trade_mechanism"
+              checked={(config.trade_mechanism || 'plain') === 'plain'}
+              onChange={() => handleChange('trade_mechanism', 'plain')}
+              disabled={disabled}
+              className="accent-primary"
+            />
+            <div className="flex items-center gap-2 flex-1">
+              <Zap className="h-4 w-4 text-primary shrink-0" />
+              <div>
+                <span className="text-sm font-medium">Plain Trade</span>
+                <p className="text-xs text-muted-foreground">Open and close trades independently based on signals</p>
+              </div>
+            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <Info className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 text-sm" side="left">
+                <h4 className="font-semibold mb-2">Plain Trade Mechanism</h4>
+                <ul className="space-y-1.5 text-muted-foreground text-xs">
+                  <li>• <strong>BUY signal</strong> → Opens a LONG position</li>
+                  <li>• <strong>SELL signal</strong> → Opens a SHORT position</li>
+                  <li>• Only ONE position is open at a time</li>
+                  <li>• Same-direction signals are ignored (no stacking)</li>
+                  <li>• Opposite signals close the existing position, but do <strong>NOT</strong> automatically open a new one in the opposite direction</li>
+                  <li>• Trades close via SL/TP or manual close</li>
+                </ul>
+                <p className="mt-2 text-xs text-muted-foreground italic">Best for: strategies where each signal is a standalone trade entry/exit.</p>
+              </PopoverContent>
+            </Popover>
+          </label>
+
+          {/* Flip Mechanism */}
+          <label
+            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+              config.trade_mechanism === 'flip'
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:bg-accent/50'
+            }`}
+          >
+            <input
+              type="radio"
+              name="trade_mechanism"
+              checked={config.trade_mechanism === 'flip'}
+              onChange={() => handleChange('trade_mechanism', 'flip')}
+              disabled={disabled}
+              className="accent-primary"
+            />
+            <div className="flex items-center gap-2 flex-1">
+              <ArrowRightLeft className="h-4 w-4 text-primary shrink-0" />
+              <div>
+                <span className="text-sm font-medium">Flip Mechanism</span>
+                <p className="text-xs text-muted-foreground">Auto-reverse position on opposite signals</p>
+              </div>
+            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <Info className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 text-sm" side="left">
+                <h4 className="font-semibold mb-2">Flip Mechanism (Clean Flip Logic)</h4>
+                <ul className="space-y-1.5 text-muted-foreground text-xs">
+                  <li>• <strong>No open position</strong> → Opens new trade per signal direction</li>
+                  <li>• <strong>Opposite signal</strong> → Closes existing position first, confirms closure, then opens new position in opposite direction</li>
+                  <li>• <strong>Same signal</strong> → Ignored (no duplicate/stacking)</li>
+                  <li>• If close fails → new trade is <strong>NOT</strong> opened (safety interlock)</li>
+                  <li>• Only ONE position allowed at any time</li>
+                </ul>
+                <div className="mt-2 p-2 bg-accent/50 rounded text-xs">
+                  <p className="font-medium mb-1">Example flow:</p>
+                  <p>BUY → open LONG → wait</p>
+                  <p>SELL → close LONG → open SHORT → wait</p>
+                  <p>BUY → close SHORT → open LONG → wait</p>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground italic">Best for: trend-following strategies like SuperTrend that continuously flip direction.</p>
+              </PopoverContent>
+            </Popover>
+          </label>
+        </CardContent>
+      </Card>
+
+      {/* Section 3: Market & Symbol Configuration */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs font-mono">{showStrategySection ? '4' : '3'}</Badge>
             <CardTitle className="text-sm flex items-center gap-2">
               <Layers className="h-4 w-4 text-primary" />
               Market & Symbol Configuration
@@ -431,7 +548,7 @@ export default function BotConfigForm({
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs font-mono">{showStrategySection ? '4' : '3'}</Badge>
+            <Badge variant="outline" className="text-xs font-mono">{showStrategySection ? '5' : '4'}</Badge>
             <CardTitle className="text-sm flex items-center gap-2">
               <Wallet className="h-4 w-4 text-primary" />
               Capital & Position Sizing
@@ -511,7 +628,7 @@ export default function BotConfigForm({
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs font-mono">{showStrategySection ? '5' : '4'}</Badge>
+              <Badge variant="outline" className="text-xs font-mono">{showStrategySection ? '6' : '5'}</Badge>
               <CardTitle className="text-sm flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-primary" />
                 Leverage & Margin
@@ -557,7 +674,7 @@ export default function BotConfigForm({
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs font-mono">{showStrategySection ? '6' : isFutures ? '5' : '4'}</Badge>
+            <Badge variant="outline" className="text-xs font-mono">{showStrategySection ? '7' : isFutures ? '6' : '5'}</Badge>
             <CardTitle className="text-sm flex items-center gap-2">
               <Shield className="h-4 w-4 text-primary" />
               Trade Frequency & Safety

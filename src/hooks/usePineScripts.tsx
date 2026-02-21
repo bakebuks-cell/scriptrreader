@@ -110,6 +110,7 @@ export function usePineScripts() {
         ...(userSettings.position_size_value !== undefined && { position_size_value: userSettings.position_size_value }),
         ...(userSettings.max_capital !== undefined && { max_capital: userSettings.max_capital }),
         ...(userSettings.max_trades_per_day !== undefined && { max_trades_per_day: userSettings.max_trades_per_day }),
+        ...(userSettings.trade_mechanism !== undefined && { trade_mechanism: userSettings.trade_mechanism }),
         user_is_active: userRecord?.is_active ?? false,
         user_script_id: userRecord?.id ?? null,
       };
@@ -185,6 +186,7 @@ export function usePineScripts() {
         if (updates.position_size_value !== undefined) userSettings.position_size_value = updates.position_size_value;
         if (updates.max_capital !== undefined) userSettings.max_capital = updates.max_capital;
         if (updates.max_trades_per_day !== undefined) userSettings.max_trades_per_day = updates.max_trades_per_day;
+        if ((updates as any).trade_mechanism !== undefined) userSettings.trade_mechanism = (updates as any).trade_mechanism;
 
         const existingRecord = userScriptRecords?.find(us => us.script_id === id);
         if (existingRecord) {

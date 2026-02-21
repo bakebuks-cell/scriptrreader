@@ -74,6 +74,7 @@ const DEFAULT_BOT_CONFIG: BotConfig = {
   max_capital: 1000,
   leverage: 1,
   max_trades_per_day: 10,
+  trade_mechanism: 'plain',
 };
 
 export default function PineScriptEditor({
@@ -143,6 +144,7 @@ export default function PineScriptEditor({
         max_capital: selectedScript.max_capital || 1000,
         leverage: selectedScript.leverage || 1,
         max_trades_per_day: selectedScript.max_trades_per_day || 10,
+        trade_mechanism: (selectedScript as any).trade_mechanism || 'plain',
       });
     }
   }, [selectedScript]);

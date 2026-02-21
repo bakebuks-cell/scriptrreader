@@ -2297,6 +2297,8 @@ Deno.serve(async (req) => {
                 const rawMarketType = us.script.market_type || 'futures'
                 const scriptMarketType = isFuturesOnlySymbol(symbol) ? 'usdt_futures' : rawMarketType
                 const scriptLeverage = us.script.leverage || 1
+                const tradeMechanism = us.settings_json?.trade_mechanism || 'plain'
+                console.log(`[ENGINE] Trade mechanism: ${tradeMechanism}`)
 
                 // ===== ORPHANED POSITION DETECTOR =====
                 // If there's a live Binance position but NO open DB trade, auto-close it
@@ -2540,8 +2542,14 @@ Deno.serve(async (req) => {
                     continue
                   }
 
-                  // Case: OPPOSITE direction signal → CLOSE existing FIRST, then open new
-                  console.log(`[ENGINE] OPPOSITE signal: ${signal.action} while ${currentDirection} position open — CLOSING first`)
+                  // Case: OPPOSITE direction signal → depends on trade mechanism
+                  if (tradeMechanism === 'flip') {
+                    // FLIP: Close existing FIRST, then open new in opposite direction
+                    console.log(`[ENGINE] FLIP: OPPOSITE signal ${signal.action} while ${currentDirection} position open — CLOSING first, then opening`)
+                  } else {
+                    // PLAIN: Close existing, do NOT open new
+                    console.log(`[ENGINE] PLAIN: OPPOSITE signal ${signal.action} while ${currentDirection} position open — CLOSING only (no flip)`)
+                  }
 
                   // Close ALL open trades for this symbol (should be just 1)
                   let closeSuccess = true
@@ -2551,7 +2559,9 @@ Deno.serve(async (req) => {
                       trade,
                       currentPrice,
                       scriptMarketType,
-                      `Flipping: ${currentDirection} → ${signal.action}`
+                      tradeMechanism === 'flip'
+                        ? `Flipping: ${currentDirection} → ${signal.action}`
+                        : `Plain close: opposite signal ${signal.action}`
                     )
                     if (!closeResult.success) {
                       console.log(`[ENGINE] CLOSE FAILED for trade ${trade.id}: ${closeResult.error}`)
@@ -2566,7 +2576,7 @@ Deno.serve(async (req) => {
                         tradeId: trade.id,
                         executed: false,
                         error: closeResult.error,
-                        reason: `Failed to close ${currentDirection} position before opening ${signal.action}`,
+                        reason: `Failed to close ${currentDirection} position before ${tradeMechanism === 'flip' ? 'opening ' + signal.action : 'plain close'}`,
                       })
                     } else {
                       console.log(`[ENGINE] Successfully closed trade ${trade.id}`)
@@ -2579,7 +2589,9 @@ Deno.serve(async (req) => {
                         action: 'CLOSE',
                         tradeId: trade.id,
                         executed: true,
-                        reason: `Closed ${currentDirection} position for flip to ${signal.action}`,
+                        reason: tradeMechanism === 'flip'
+                          ? `Closed ${currentDirection} position for flip to ${signal.action}`
+                          : `Closed ${currentDirection} position (plain trade, opposite signal)`,
                       })
                     }
                   }
@@ -2590,7 +2602,13 @@ Deno.serve(async (req) => {
                     continue
                   }
 
-                  // Small delay to let exchange settle
+                  // PLAIN MODE: Do not open new trade after closing — just stop here
+                  if (tradeMechanism !== 'flip') {
+                    console.log(`[ENGINE] PLAIN mode — closed position, NOT opening new trade. Waiting for next signal.`)
+                    continue
+                  }
+
+                  // Small delay to let exchange settle (flip mode only)
                   await new Promise(r => setTimeout(r, 500))
                 }
 
