@@ -1716,9 +1716,7 @@ async function executeTrade(
   symbol: string,
   timeframe: string,
   marketType: string = 'futures',
-  leverage: number = 1,
-  positionSizeType: string = 'fixed',
-  positionSizeValue: number = 100
+  leverage: number = 1
 ): Promise<{ success: boolean; error?: string; tradeId?: string }> {
   try {
     console.log(`[TRADE] Starting execution: user=${userId}, script=${scriptId}, signal=${signal.action} ${symbol} @ ${signal.price}`)
@@ -2038,19 +2036,8 @@ async function executeTrade(
       }
       
       // ===== CALCULATE QUANTITY =====
-      // Use user-configured margin × leverage for fixed, or % of balance for percentage
-      let userDesiredAmount: number
-      if (positionSizeType === 'percentage') {
-        // percentage of available balance, then multiply by leverage
-        userDesiredAmount = (availableUSDT * positionSizeValue / 100) * leverage
-      } else {
-        // fixed margin amount × leverage = total trade notional
-        userDesiredAmount = positionSizeValue * leverage
-      }
-      console.log(`[TRADE] Position sizing: type=${positionSizeType}, value=${positionSizeValue}, leverage=${leverage}x, desired=$${userDesiredAmount.toFixed(2)}`)
-      
       const minRequired = minNotional * 1.05
-      const tradeAmount = Math.max(Math.min(userDesiredAmount, 1000), minRequired)
+      const tradeAmount = Math.max(Math.min(availableUSDT * 0.1, 1000), minRequired)
       
       if (availableUSDT < minRequired) {
         throw new Error(`Insufficient balance (${availableUSDT.toFixed(2)} available, minimum ~${minRequired.toFixed(2)} required)`)
@@ -3378,9 +3365,6 @@ Deno.serve(async (req) => {
 
                 // Open new trade (either fresh entry or flip after successful close)
                 console.log(`[ENGINE] Opening ${signal.action} ${symbol} @ ${signal.price}`)
-                const scriptPositionSizeType = us.script.position_size_type || us.settings_json?.position_size_type || 'fixed'
-                const scriptPositionSizeValue = us.settings_json?.position_size_value ?? us.script.position_size_value ?? 100
-                console.log(`[ENGINE] Position size config: type=${scriptPositionSizeType}, value=${scriptPositionSizeValue}, leverage=${scriptLeverage}x`)
                 const execResult = await executeTrade(
                   supabase,
                   us.user_id,
@@ -3389,9 +3373,7 @@ Deno.serve(async (req) => {
                   symbol,
                   timeframe,
                   scriptMarketType,
-                  scriptLeverage,
-                  scriptPositionSizeType,
-                  scriptPositionSizeValue
+                  scriptLeverage
                 )
 
                 // RULE 12: Log final state
