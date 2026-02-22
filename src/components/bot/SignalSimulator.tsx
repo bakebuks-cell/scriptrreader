@@ -1,15 +1,12 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { FlaskConical, Play, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import type { TradeMode } from '@/hooks/useProfile';
+import type { TradeMode, StrategyOppositePolicy } from '@/hooks/useProfile';
 
 interface SimulationResult {
   valid: boolean;
@@ -18,12 +15,14 @@ interface SimulationResult {
   decision: string;
   errors: string[];
   warnings: string[];
+  wouldExecute?: boolean;
 }
 
 interface SignalSimulatorProps {
   symbol?: string;
   timeframe?: string;
   tradeMode?: TradeMode;
+  oppositePolicy?: StrategyOppositePolicy;
   compact?: boolean;
 }
 
@@ -31,12 +30,15 @@ const SAMPLE_PAYLOADS: Record<string, string> = {
   plain_buy: JSON.stringify({ signal_type: 'BUY', symbol: 'BTCUSDT', timeframe: '1h', bar_close_time: Date.now() }, null, 2),
   plain_sell: JSON.stringify({ signal_type: 'SELL', symbol: 'BTCUSDT', timeframe: '1h', bar_close_time: Date.now() }, null, 2),
   strategy_buy_open: JSON.stringify({ signal_type: 'BUY_OPEN', symbol: 'BTCUSDT', timeframe: '1h', bar_close_time: Date.now() }, null, 2),
+  strategy_buy_exit: JSON.stringify({ signal_type: 'BUY_EXIT', symbol: 'BTCUSDT', timeframe: '1h', bar_close_time: Date.now() }, null, 2),
+  strategy_sell_open: JSON.stringify({ signal_type: 'SELL_OPEN', symbol: 'BTCUSDT', timeframe: '1h', bar_close_time: Date.now() }, null, 2),
   strategy_sell_exit: JSON.stringify({ signal_type: 'SELL_EXIT', symbol: 'BTCUSDT', timeframe: '1h', bar_close_time: Date.now() }, null, 2),
 };
 
-export default function SignalSimulator({ symbol = 'BTCUSDT', timeframe = '1h', tradeMode = 'auto', compact = false }: SignalSimulatorProps) {
+export default function SignalSimulator({ symbol = 'BTCUSDT', timeframe = '1h', tradeMode = 'auto', oppositePolicy = 'reject', compact = false }: SignalSimulatorProps) {
   const { toast } = useToast();
   const [payload, setPayload] = useState(SAMPLE_PAYLOADS.plain_buy);
+  const [currentPosition, setCurrentPosition] = useState<'NONE' | 'LONG' | 'SHORT'>('NONE');
   const [isSimulating, setIsSimulating] = useState(false);
   const [result, setResult] = useState<SimulationResult | null>(null);
 
@@ -45,7 +47,6 @@ export default function SignalSimulator({ symbol = 'BTCUSDT', timeframe = '1h', 
     setResult(null);
 
     try {
-      // Parse the payload
       let parsed: any;
       try {
         parsed = JSON.parse(payload);
@@ -67,10 +68,10 @@ export default function SignalSimulator({ symbol = 'BTCUSDT', timeframe = '1h', 
 
       if (!parsed.signal_type) errors.push('Missing required field: signal_type');
       if (!parsed.symbol) errors.push('Missing required field: symbol');
-      if (!parsed.timeframe) errors.push('Missing required field: timeframe');
-      if (!parsed.bar_close_time && !parsed.signal_id) errors.push('Missing required field: bar_close_time or signal_id');
+      if (!parsed.timeframe) warnings.push('Missing field: timeframe (will use script default)');
+      if (!parsed.bar_close_time && !parsed.signal_id) warnings.push('Missing dedup key (bar_close_time or signal_id)');
 
-      const signalType = parsed.signal_type?.toUpperCase();
+      const signalType = (parsed.signal_type || '').toUpperCase();
       const plainSignals = ['BUY', 'SELL'];
       const strategySignals = ['BUY_OPEN', 'BUY_EXIT', 'SELL_OPEN', 'SELL_EXIT'];
       const allValid = [...plainSignals, ...strategySignals];
@@ -92,19 +93,47 @@ export default function SignalSimulator({ symbol = 'BTCUSDT', timeframe = '1h', 
         errors.push(`Signal "${signalType}" is a Plain signal, but account is set to Strategy mode`);
       }
 
-      // Determine decision
+      // Simulate execution decision based on current position
       let decision = '';
+      let wouldExecute = false;
+      const effectiveMode = tradeMode === 'auto' ? detectedMode.toLowerCase() : tradeMode;
+
       if (errors.length > 0) {
         decision = 'REJECTED — fix errors above';
-      } else {
+      } else if (effectiveMode === 'plain') {
+        if (signalType === 'BUY') {
+          if (currentPosition === 'LONG') { decision = 'IGNORE — Already LONG'; }
+          else if (currentPosition === 'SHORT') { decision = 'FLIP — Cancel orders → Close SHORT → Confirm NONE → Open LONG'; wouldExecute = true; }
+          else { decision = 'OPEN LONG'; wouldExecute = true; }
+        } else if (signalType === 'SELL') {
+          if (currentPosition === 'SHORT') { decision = 'IGNORE — Already SHORT'; }
+          else if (currentPosition === 'LONG') { decision = 'FLIP — Cancel orders → Close LONG → Confirm NONE → Open SHORT'; wouldExecute = true; }
+          else { decision = 'OPEN SHORT'; wouldExecute = true; }
+        }
+      } else if (effectiveMode === 'strategy') {
         switch (signalType) {
-          case 'BUY': decision = 'Target: LONG. If SHORT → flip. If NONE → open LONG. If LONG → ignore.'; break;
-          case 'SELL': decision = 'Target: SHORT. If LONG → flip. If NONE → open SHORT. If SHORT → ignore.'; break;
-          case 'BUY_OPEN': decision = 'Open LONG (if not already long). Opposite policy applies if SHORT exists.'; break;
-          case 'BUY_EXIT': decision = 'Close LONG only. Never opens SHORT.'; break;
-          case 'SELL_OPEN': decision = 'Open SHORT (if not already short). Opposite policy applies if LONG exists.'; break;
-          case 'SELL_EXIT': decision = 'Close SHORT only. Never opens LONG.'; break;
-          default: decision = 'Unknown signal type';
+          case 'BUY_OPEN':
+            if (currentPosition === 'LONG') { decision = 'IGNORE — Already LONG'; }
+            else if (currentPosition === 'SHORT') {
+              if (oppositePolicy === 'flip') { decision = 'FLIP (policy=flip) — Close SHORT → Open LONG'; wouldExecute = true; }
+              else { decision = 'REJECT (policy=reject) — Opposite SHORT exists. Wait for SELL_EXIT.'; }
+            } else { decision = 'OPEN LONG'; wouldExecute = true; }
+            break;
+          case 'BUY_EXIT':
+            if (currentPosition === 'LONG') { decision = 'CLOSE LONG — Cancel orders → Close → Confirm NONE'; wouldExecute = true; }
+            else { decision = 'IGNORE — No LONG position to exit (never opens SHORT)'; }
+            break;
+          case 'SELL_OPEN':
+            if (currentPosition === 'SHORT') { decision = 'IGNORE — Already SHORT'; }
+            else if (currentPosition === 'LONG') {
+              if (oppositePolicy === 'flip') { decision = 'FLIP (policy=flip) — Close LONG → Open SHORT'; wouldExecute = true; }
+              else { decision = 'REJECT (policy=reject) — Opposite LONG exists. Wait for BUY_EXIT.'; }
+            } else { decision = 'OPEN SHORT'; wouldExecute = true; }
+            break;
+          case 'SELL_EXIT':
+            if (currentPosition === 'SHORT') { decision = 'CLOSE SHORT — Cancel orders → Close → Confirm NONE'; wouldExecute = true; }
+            else { decision = 'IGNORE — No SHORT position to exit (never opens LONG)'; }
+            break;
         }
       }
 
@@ -115,6 +144,7 @@ export default function SignalSimulator({ symbol = 'BTCUSDT', timeframe = '1h', 
         decision,
         errors,
         warnings,
+        wouldExecute,
       });
     } catch (err) {
       toast({ title: 'Simulation Error', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
@@ -126,12 +156,12 @@ export default function SignalSimulator({ symbol = 'BTCUSDT', timeframe = '1h', 
   const loadSample = (key: string) => {
     const sample = SAMPLE_PAYLOADS[key];
     if (sample) {
-      // Replace symbol/timeframe with current context
       const parsed = JSON.parse(sample);
       parsed.symbol = symbol;
       parsed.timeframe = timeframe;
       parsed.bar_close_time = Date.now();
       setPayload(JSON.stringify(parsed, null, 2));
+      setResult(null);
     }
   };
 
@@ -153,6 +183,8 @@ export default function SignalSimulator({ symbol = 'BTCUSDT', timeframe = '1h', 
           <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => loadSample('plain_buy')}>BUY</Button>
           <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => loadSample('plain_sell')}>SELL</Button>
           <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => loadSample('strategy_buy_open')}>BUY_OPEN</Button>
+          <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => loadSample('strategy_buy_exit')}>BUY_EXIT</Button>
+          <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => loadSample('strategy_sell_open')}>SELL_OPEN</Button>
           <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => loadSample('strategy_sell_exit')}>SELL_EXIT</Button>
         </div>
 
@@ -163,10 +195,30 @@ export default function SignalSimulator({ symbol = 'BTCUSDT', timeframe = '1h', 
           placeholder='{"signal_type": "BUY", "symbol": "BTCUSDT", "timeframe": "1h", "bar_close_time": 1234567890}'
         />
 
+        {/* Current position selector */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Simulated Position:</span>
+          <Select value={currentPosition} onValueChange={(v) => { setCurrentPosition(v as any); setResult(null); }}>
+            <SelectTrigger className="h-7 w-28 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="NONE">NONE</SelectItem>
+              <SelectItem value="LONG">LONG</SelectItem>
+              <SelectItem value="SHORT">SHORT</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-xs">
             Mode: {tradeMode.toUpperCase()}
           </Badge>
+          {tradeMode === 'strategy' && (
+            <Badge variant="outline" className="text-xs">
+              Opposite: {oppositePolicy.toUpperCase()}
+            </Badge>
+          )}
           <Badge variant="outline" className="text-xs">
             {symbol} • {timeframe}
           </Badge>
@@ -179,10 +231,16 @@ export default function SignalSimulator({ symbol = 'BTCUSDT', timeframe = '1h', 
 
         {/* Results */}
         {result && (
-          <div className={`p-3 rounded-lg border ${result.valid ? 'border-green-500/30 bg-green-500/5' : 'border-destructive/30 bg-destructive/5'}`}>
+          <div className={`p-3 rounded-lg border ${result.valid ? (result.wouldExecute ? 'border-green-500/30 bg-green-500/5' : 'border-yellow-500/30 bg-yellow-500/5') : 'border-destructive/30 bg-destructive/5'}`}>
             <div className="flex items-center gap-2 mb-2">
-              {result.valid ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-destructive" />}
-              <span className="text-sm font-medium">{result.valid ? 'Valid Signal' : 'Invalid Signal'}</span>
+              {result.valid ? (
+                result.wouldExecute ? <CheckCircle className="h-4 w-4 text-green-500" /> : <AlertTriangle className="h-4 w-4 text-yellow-500" />
+              ) : (
+                <XCircle className="h-4 w-4 text-destructive" />
+              )}
+              <span className="text-sm font-medium">
+                {result.valid ? (result.wouldExecute ? 'Would Execute' : 'Valid — No Action') : 'Invalid Signal'}
+              </span>
               <Badge variant={result.detected_mode === 'PLAIN' ? 'default' : result.detected_mode === 'STRATEGY' ? 'secondary' : 'destructive'} className="text-[10px]">
                 {result.detected_mode}
               </Badge>

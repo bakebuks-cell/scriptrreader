@@ -575,6 +575,7 @@ export default function PineScriptEditor({
                     symbol={formData.symbols[0] || 'BTCUSDT'}
                     timeframe={formData.allowed_timeframes[0] || '1h'}
                     tradeMode={(profile as any)?.trade_mode || 'auto'}
+                    oppositePolicy={(profile as any)?.strategy_opposite_policy || 'reject'}
                   />
                 </TabsContent>
               </Tabs>
