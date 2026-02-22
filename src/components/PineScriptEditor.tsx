@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Shield, Power } from 'lucide-react';
+import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Shield, Power, AlertTriangle } from 'lucide-react';
 import { AVAILABLE_TIMEFRAMES, MAX_SYMBOLS_PER_SCRIPT } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { useEvaluateScript, useRunEngine } from '@/hooks/usePineScriptEngine';
@@ -44,6 +44,9 @@ interface PineScript {
   max_capital?: number;
   leverage?: number;
   max_trades_per_day?: number;
+  // Validation fields
+  validation_status?: string;
+  validation_errors?: string[];
 }
 
 interface PineScriptEditorProps {
@@ -349,6 +352,12 @@ export default function PineScriptEditor({
                               Admin
                             </Badge>
                           )}
+                          {script.validation_status === 'invalid' && (
+                            <Badge variant="destructive" className="gap-1 shrink-0">
+                              <AlertTriangle className="h-3 w-3" />
+                              Invalid
+                            </Badge>
+                          )}
                           <Badge 
                             variant={scriptActive ? 'default' : 'outline'} 
                             className={`shrink-0 ${scriptActive ? 'bg-green-600' : ''}`}
@@ -378,7 +387,13 @@ export default function PineScriptEditor({
                             <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                               <Switch
                                 checked={scriptActive}
-                                onCheckedChange={(checked) => onToggleActivation(script.id, checked)}
+                                onCheckedChange={(checked) => {
+                                  if (checked && script.validation_status === 'invalid') {
+                                    toast({ title: 'Cannot Activate', description: 'Fix validation errors before enabling this script', variant: 'destructive' });
+                                    return;
+                                  }
+                                  onToggleActivation(script.id, checked);
+                                }}
                                 disabled={isToggling}
                                 className="scale-75"
                               />
@@ -426,6 +441,26 @@ export default function PineScriptEditor({
           </CardHeader>
           <CardContent className="space-y-4">
             {(isCreating || selectedScript) ? (
+              <>
+                {/* Validation Error Banner */}
+                {selectedScript && selectedScript.validation_status === 'invalid' && (
+                  <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/5 mb-4">
+                    <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-destructive text-sm">Script Validation Failed</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        This script cannot be activated or run. Fix the errors below:
+                      </p>
+                      {selectedScript.validation_errors?.length > 0 && (
+                        <ul className="text-xs text-destructive mt-1 list-disc pl-4">
+                          {selectedScript.validation_errors.map((err: string, i: number) => (
+                            <li key={i}>{err}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="strategy" className="flex items-center gap-2">
@@ -579,6 +614,7 @@ export default function PineScriptEditor({
                   />
                 </TabsContent>
               </Tabs>
+              </>
             ) : (
               <div className="text-center py-12 text-muted-foreground">
                 <Code className="h-12 w-12 mx-auto mb-4 opacity-50" />

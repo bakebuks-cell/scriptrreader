@@ -2429,6 +2429,119 @@ function simulateSignalDecision(
 }
 
 // ============================================
+// SCRIPT CONTENT VALIDATION
+// ============================================
+
+interface ScriptValidationResult {
+  valid: boolean
+  errors: string[]
+  warnings: string[]
+  detectedIndicators: string[]
+  hasEntryConditions: boolean
+  hasExitConditions: boolean
+  usedDefaultFallback: boolean
+}
+
+function validateScriptContent(scriptContent: string): ScriptValidationResult {
+  const result: ScriptValidationResult = {
+    valid: true,
+    errors: [],
+    warnings: [],
+    detectedIndicators: [],
+    hasEntryConditions: false,
+    hasExitConditions: false,
+    usedDefaultFallback: false,
+  }
+
+  if (!scriptContent || !scriptContent.trim()) {
+    result.valid = false
+    result.errors.push('Script content is empty')
+    return result
+  }
+
+  const content = scriptContent.toLowerCase()
+
+  // Check for basic Pine Script structure
+  const hasIndicatorOrStrategy = content.includes('//@version') || 
+    content.includes('strategy(') || content.includes('indicator(') ||
+    content.includes('study(')
+  
+  if (!hasIndicatorOrStrategy) {
+    result.warnings.push('Script does not contain a standard Pine Script header (//@version, strategy(), or indicator())')
+  }
+
+  // Detect supported indicators
+  const hasSuperTrend = content.includes('supertrend') || 
+    (content.includes('atr') && content.includes('hl2') && content.includes('trend')) ||
+    (content.includes('buysignal') && content.includes('sellsignal') && content.includes('trend'))
+  
+  const hasBB = content.includes('sma(close') && (content.includes('stdev') || content.includes('bb') || content.includes('upper_band') || content.includes('lower_band'))
+  
+  const hasEMACross = content.includes('crossover') && content.includes('ema')
+  const hasSMACross = content.includes('crossover') && content.includes('sma')
+  const hasRSI = /rsi\s*[\(<]/i.test(scriptContent) || /rsi\w*\s*[<>]\s*\d+/i.test(scriptContent)
+  const hasMACD = content.includes('macd') && content.includes('signal')
+  const hasCloseComparison = /close\s*[<>]\s*[\d.]+/i.test(scriptContent)
+
+  if (hasSuperTrend) result.detectedIndicators.push('SuperTrend')
+  if (hasBB) result.detectedIndicators.push('Bollinger Bands')
+  if (hasEMACross) result.detectedIndicators.push('EMA Crossover')
+  if (hasSMACross) result.detectedIndicators.push('SMA Crossover')
+  if (hasRSI) result.detectedIndicators.push('RSI')
+  if (hasMACD) result.detectedIndicators.push('MACD')
+  if (hasCloseComparison) result.detectedIndicators.push('Price Level')
+
+  // Check for entry/exit logic
+  const hasStrategyEntry = content.includes('strategy.entry') || content.includes('strategy.long') || content.includes('strategy.short')
+  const hasStrategyClose = content.includes('strategy.close') || content.includes('strategy.exit')
+  const hasCrossover = content.includes('crossover') || content.includes('crossunder')
+  const hasConditionalEntry = content.includes('if ') && (content.includes('buy') || content.includes('sell') || content.includes('long') || content.includes('short'))
+  const hasPlotSignals = (content.includes('buysignal') || content.includes('sellsignal')) || (content.includes('buy_signal') || content.includes('sell_signal'))
+
+  result.hasEntryConditions = hasStrategyEntry || hasCrossover || hasConditionalEntry || hasPlotSignals || hasCloseComparison || hasSuperTrend
+  result.hasExitConditions = hasStrategyClose || hasCrossover || hasPlotSignals || hasSuperTrend
+
+  // Validate: must have at least one recognizable indicator or entry pattern
+  if (result.detectedIndicators.length === 0 && !result.hasEntryConditions) {
+    result.valid = false
+    result.errors.push('No supported trading indicators detected. Supported: SuperTrend, Bollinger Bands, EMA/SMA Crossover, RSI, MACD, or price-level conditions.')
+    result.usedDefaultFallback = true
+  }
+
+  // Try parsing to verify it produces real conditions (not just defaults)
+  try {
+    const strategy = parsePineScript(scriptContent)
+    
+    // Check if the parser fell back to default EMA 9/21
+    const isDefaultFallback = strategy.entryConditions.length === 1 &&
+      strategy.entryConditions[0].type === 'crossover' &&
+      strategy.entryConditions[0].indicator1.name === 'ema' &&
+      strategy.entryConditions[0].indicator1.period === 9 &&
+      typeof strategy.entryConditions[0].indicator2 === 'object' &&
+      (strategy.entryConditions[0].indicator2 as IndicatorRef).name === 'ema' &&
+      (strategy.entryConditions[0].indicator2 as IndicatorRef).period === 21 &&
+      result.detectedIndicators.length === 0
+
+    if (isDefaultFallback) {
+      result.valid = false
+      result.usedDefaultFallback = true
+      result.errors.push('Script does not contain recognizable entry/exit logic. The engine cannot extract valid trading conditions from this script.')
+    }
+  } catch (parseErr) {
+    result.valid = false
+    result.errors.push(`Script parsing failed: ${parseErr instanceof Error ? parseErr.message : 'Unknown error'}`)
+  }
+
+  // Warn about missing stop loss / take profit
+  const hasSL = /stop_?loss|sl\s*[=:]/i.test(scriptContent)
+  const hasTP = /take_?profit|tp\s*[=:]/i.test(scriptContent)
+  if (!hasSL) result.warnings.push('No stop loss defined — engine will use defaults')
+  if (!hasTP) result.warnings.push('No take profit defined — engine will use defaults')
+
+  return result
+}
+
+// ============================================
 // MAIN HANDLER
 // ============================================
 
@@ -2512,7 +2625,8 @@ Deno.serve(async (req) => {
               is_active,
               allowed_timeframes,
               market_type,
-              leverage
+              leverage,
+              validation_status
             )
           `)
           .eq('is_active', true)
@@ -2591,9 +2705,28 @@ Deno.serve(async (req) => {
             })
           : allScripts
         
-        console.log(`[ENGINE] Total scripts: ${allScripts.length}, after timeframe filter: ${filteredScripts.length}`)
+        // Filter out invalid scripts
+        const validScripts = filteredScripts.filter((s: any) => {
+          const status = s.script.validation_status
+          if (status === 'invalid') {
+            console.log(`[ENGINE] SKIPPED script "${s.script.name}" (${s.script_id}) — validation_status=invalid`)
+            results.push({
+              scriptId: s.script_id,
+              scriptName: s.script.name,
+              userId: s.user_id,
+              symbol: s.script.symbol,
+              action: 'SKIP',
+              executed: false,
+              reason: 'Script validation failed — fix errors before running',
+            })
+            return false
+          }
+          return true
+        })
+
+        console.log(`[ENGINE] Total scripts: ${allScripts.length}, after timeframe filter: ${filteredScripts.length}, after validation filter: ${validScripts.length}`)
         
-        if (filteredScripts.length === 0) {
+        if (validScripts.length === 0) {
           return new Response(
             JSON.stringify({ 
               processed: 0,
@@ -2612,7 +2745,7 @@ Deno.serve(async (req) => {
         // Prevent 2+ scripts on the same symbol for the same user (would cause position conflicts / crashes)
         const userSymbolMap = new Map<string, any>() // key: "userId:symbol"
         const deduplicatedScripts: any[] = []
-        for (const us of filteredScripts) {
+        for (const us of validScripts) {
           const sym = us.script.symbol
           const dedupKey = `${us.user_id}:${sym}`
           if (userSymbolMap.has(dedupKey)) {
@@ -3365,6 +3498,37 @@ Deno.serve(async (req) => {
         
         return new Response(
           JSON.stringify(result),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      case 'validate-script': {
+        const body = await req.json()
+        const { scriptContent, scriptId } = body
+        
+        if (!scriptContent) {
+          return new Response(
+            JSON.stringify({ error: 'Missing scriptContent' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const validationResult = validateScriptContent(scriptContent)
+        
+        // If scriptId provided, update the pine_scripts record
+        if (scriptId) {
+          await supabase
+            .from('pine_scripts')
+            .update({
+              validation_status: validationResult.valid ? 'valid' : 'invalid',
+              validation_errors: validationResult.errors,
+            })
+            .eq('id', scriptId)
+          console.log(`[VALIDATE] Script ${scriptId}: ${validationResult.valid ? 'VALID' : 'INVALID'} (${validationResult.errors.length} errors)`)
+        }
+        
+        return new Response(
+          JSON.stringify(validationResult),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
