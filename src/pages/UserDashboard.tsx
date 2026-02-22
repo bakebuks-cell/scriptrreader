@@ -27,7 +27,8 @@ import {
   CheckCircle2,
   XCircle,
   BarChart3,
-  Key
+  Key,
+  Loader2
 } from 'lucide-react';
 import WalletCard from '@/components/WalletCard';
 import BinanceApiKeyForm from '@/components/BinanceApiKeyForm';
@@ -46,7 +47,7 @@ export default function UserDashboard() {
   const [dismissedOnboarding, setDismissedOnboarding] = useState(false);
   const { user, role, loading: authLoading } = useAuth();
   const { profile, isLoading: profileLoading, toggleBot, toggleSubscription, isUpdating } = useProfile();
-  const { trades, activeTrades, isLoading: tradesLoading } = useTrades();
+  const { trades, activeTrades, isLoading: tradesLoading, closeSingleTrade, isClosingSingle, closingSingleId } = useTrades();
   const { hasWallets, activeWallet } = useUserWallets();
   const { 
     scripts, 
@@ -518,10 +519,13 @@ export default function UserDashboard() {
                         <th className="pb-3 font-medium">Entry $</th>
                         <th className="pb-3 font-medium">Exit $</th>
                         <th className="pb-3 font-medium">P&L</th>
+                        <th className="pb-3 font-medium">Leverage</th>
+                        <th className="pb-3 font-medium">Margin</th>
+                        <th className="pb-3 font-medium">Trade Amt</th>
                         <th className="pb-3 font-medium">Status</th>
-                        <th className="pb-3 font-medium">Opened</th>
-                        <th className="pb-3 font-medium">Closed</th>
-                        <th className="pb-3 font-medium">Reason</th>
+                        <th className="pb-3 font-medium">Entry Time</th>
+                        <th className="pb-3 font-medium">Exit Time</th>
+                        <th className="pb-3 font-medium">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -537,6 +541,13 @@ export default function UserDashboard() {
                             </span>
                           );
                         };
+                        // Get script details for leverage/margin
+                        const linkedScript = trade.script_id ? scripts.find(s => s.id === trade.script_id) : null;
+                        const leverage = linkedScript?.leverage ?? 1;
+                        const positionSize = linkedScript?.position_size_value ?? 100;
+                        const margin = positionSize / leverage;
+                        const isOpen = trade.status === 'OPEN' || trade.status === 'PENDING';
+                        const isClosingThis = closingSingleId === trade.id && isClosingSingle;
                         return (
                         <tr key={trade.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
                           <td className="py-3">
@@ -555,6 +566,9 @@ export default function UserDashboard() {
                               </span>
                             ) : '-'}
                           </td>
+                          <td className="py-3 font-mono">{leverage}x</td>
+                          <td className="py-3 font-mono">${margin.toFixed(2)}</td>
+                          <td className="py-3 font-mono">${positionSize.toFixed(2)}</td>
                           <td className="py-3">
                             <Badge variant={
                               trade.status === 'OPEN' ? 'default' :
@@ -569,8 +583,24 @@ export default function UserDashboard() {
                           </td>
                           <td className="py-3">{fmtTime(trade.opened_at || trade.created_at)}</td>
                           <td className="py-3">{fmtTime(trade.closed_at)}</td>
-                          <td className="py-3 text-xs text-destructive max-w-[180px] truncate" title={trade.error_message || ''}>
-                            {trade.status === 'FAILED' && trade.error_message ? trade.error_message : '-'}
+                          <td className="py-3">
+                            {isOpen ? (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                disabled={isClosingThis}
+                                onClick={() => closeSingleTrade(trade.id)}
+                                className="gap-1"
+                              >
+                                {isClosingThis ? (
+                                  <><Loader2 className="h-3 w-3 animate-spin" /> Closing</>
+                                ) : (
+                                  <><XCircle className="h-3 w-3" /> Close</>
+                                )}
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
                           </td>
                         </tr>
                         );
