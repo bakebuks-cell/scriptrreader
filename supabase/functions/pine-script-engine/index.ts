@@ -2047,17 +2047,13 @@ async function executeTrade(
         // fixed margin amount × leverage = total trade notional
         userDesiredAmount = positionSizeValue * leverage
       }
-      // For futures, margin required = notional / leverage. For spot, margin = notional (no leverage).
-      const effectiveLeverage = isFutures ? Math.max(leverage, 1) : 1
-      const marginRequired = userDesiredAmount / effectiveLeverage
-      console.log(`[TRADE] Position sizing: type=${positionSizeType}, value=${positionSizeValue}, leverage=${leverage}x, desired=$${userDesiredAmount.toFixed(2)}, margin=$${marginRequired.toFixed(2)}`)
+      console.log(`[TRADE] Position sizing: type=${positionSizeType}, value=${positionSizeValue}, leverage=${leverage}x, desired=$${userDesiredAmount.toFixed(2)}`)
       
-      const minRequired = (minNotional * 1.05) / effectiveLeverage
-      const tradeAmount = Math.max(Math.min(userDesiredAmount, 1000), minNotional * 1.05)
+      const minRequired = minNotional * 1.05
+      const tradeAmount = Math.max(Math.min(userDesiredAmount, 1000), minRequired)
       
-      const tradeMargin = tradeAmount / effectiveLeverage
-      if (availableUSDT < Math.min(minRequired, tradeMargin)) {
-        throw new Error(`Insufficient margin (${availableUSDT.toFixed(2)} available, need ~$${tradeMargin.toFixed(2)} margin for $${tradeAmount.toFixed(2)} trade at ${effectiveLeverage}x)`)
+      if (availableUSDT < minRequired) {
+        throw new Error(`Insufficient balance (${availableUSDT.toFixed(2)} available, minimum ~${minRequired.toFixed(2)} required)`)
       }
       
       const rawQty = tradeAmount / signal.price
@@ -2065,16 +2061,14 @@ async function executeTrade(
       let quantity = (Math.ceil(rawQty / stepSize) * stepSize).toFixed(precision)
       
       const notionalValue = parseFloat(quantity) * signal.price
-      const actualMargin = notionalValue / effectiveLeverage
-      console.log(`[TRADE] Quantity=${quantity}, notional=$${notionalValue.toFixed(2)}, margin=$${actualMargin.toFixed(2)}, minNotional=${minNotional}`)
+      console.log(`[TRADE] Quantity=${quantity}, notional=$${notionalValue.toFixed(2)}, minNotional=${minNotional}`)
       
       if (parseFloat(quantity) < minQty) {
         throw new Error(`Calculated quantity ${quantity} below minimum ${minQty} for ${symbol}`)
       }
       
-      // For futures: check margin (notional/leverage) vs balance. For spot: check full notional.
-      if (actualMargin > availableUSDT) {
-        throw new Error(`Required margin $${actualMargin.toFixed(2)} exceeds available balance $${availableUSDT.toFixed(2)} (${effectiveLeverage}x leverage)`)
+      if (notionalValue > availableUSDT) {
+        throw new Error(`Order value $${notionalValue.toFixed(2)} exceeds available balance $${availableUSDT.toFixed(2)}`)
       }
       
       console.log(`[TRADE] Placing ${marketType} ${signal.action} order: ${quantity} ${symbol} (~$${tradeAmount.toFixed(2)}, leverage=${leverage}x)`)
