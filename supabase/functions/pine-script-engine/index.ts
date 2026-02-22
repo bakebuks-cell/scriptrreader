@@ -3057,10 +3057,58 @@ Deno.serve(async (req) => {
                   } else if (positionAction === desiredAction) {
                     // Position already aligned with SuperTrend — hold
                     signal = { action: 'NONE', price: currentPrice, reason: `Position aligned with SuperTrend (${currentSTDir === 1 ? 'bullish' : 'bearish'})` }
+                  } else if (!positionAction) {
+                    // No position — check if we recently closed the SAME direction (SL/TP hit)
+                    // to avoid re-entering immediately ("double trade" bug)
+                    const { data: lastClosed } = await supabase
+                      .from('trades')
+                      .select('id, signal_type, closed_at')
+                      .eq('user_id', us.user_id)
+                      .eq('script_id', us.script_id)
+                      .eq('symbol', symbol)
+                      .eq('status', 'CLOSED')
+                      .order('closed_at', { ascending: false })
+                      .limit(1)
+                      .maybeSingle()
+
+                    if (lastClosed && lastClosed.signal_type === desiredAction && lastClosed.closed_at) {
+                      // If the last closed trade was the same direction AND closed within the last 2 candle intervals,
+                      // do NOT re-enter — wait for a SuperTrend direction change first
+                      const closedAgo = Date.now() - new Date(lastClosed.closed_at).getTime()
+                      const candleMs = getIntervalMs(timeframe)
+                      const suppressionWindow = candleMs * 2
+
+                      // Find last direction change index in SuperTrend
+                      let lastSTChangeIdx = -1
+                      for (let di = stDirection.length - 1; di > 0; di--) {
+                        if (stDirection[di] !== stDirection[di - 1]) {
+                          lastSTChangeIdx = di
+                          break
+                        }
+                      }
+                      const atrOffset2 = 10
+                      const stChangeOhlcvIdx = lastSTChangeIdx >= 0 ? lastSTChangeIdx + atrOffset2 : -1
+                      const stChangeTime = stChangeOhlcvIdx >= 0 && stChangeOhlcvIdx < ohlcv.length
+                        ? ohlcv[stChangeOhlcvIdx].openTime : 0
+
+                      // Only suppress if there was NO fresh direction change after the trade closed
+                      const freshChangeAfterClose = stChangeTime > new Date(lastClosed.closed_at).getTime()
+
+                      if (!freshChangeAfterClose && closedAgo < suppressionWindow) {
+                        console.log(`[ENGINE] FLIP+ST: Suppressed re-entry ${desiredAction} — last ${desiredAction} trade closed ${(closedAgo / 1000).toFixed(0)}s ago (SL/TP hit), waiting for fresh direction change`)
+                        signal = { action: 'NONE', price: currentPrice, reason: `Suppressed re-entry: last ${desiredAction} closed recently by SL/TP, waiting for direction change` }
+                      } else {
+                        signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
+                        console.log(`[ENGINE] FLIP+ST: Signal=${desiredAction} (new entry after close, fresh change=${freshChangeAfterClose})`)
+                      }
+                    } else {
+                      signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
+                      console.log(`[ENGINE] FLIP+ST: Signal=${desiredAction} (new entry, no recent same-direction close)`)
+                    }
                   } else {
-                    // Either no position or opposite position → generate signal
+                    // Opposite position → flip
                     signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
-                    console.log(`[ENGINE] FLIP+ST: Signal=${desiredAction} (${positionAction ? 'flip from ' + positionAction : 'new entry'})`)
+                    console.log(`[ENGINE] FLIP+ST: Signal=${desiredAction} (flip from ${positionAction})`)
                   }
                 } else {
                   // Standard event-based evaluation (for plain mode or non-SuperTrend)
