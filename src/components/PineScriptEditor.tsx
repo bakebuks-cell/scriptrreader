@@ -15,9 +15,11 @@ import { useToast } from '@/hooks/use-toast';
 import { useEvaluateScript, useRunEngine } from '@/hooks/usePineScriptEngine';
 import SignalPreview from '@/components/SignalPreview';
 import BotConfigForm, { BotConfig } from '@/components/bot/BotConfigForm';
+import SignalSimulator from '@/components/bot/SignalSimulator';
 import PineScriptActions from '@/components/PineScriptActions';
 import SymbolMultiSelect from '@/components/SymbolMultiSelect';
 import { useAuth } from '@/hooks/useAuth';
+import { useProfile } from '@/hooks/useProfile';
 import { supabase } from '@/integrations/supabase/client';
 
 interface PineScript {
@@ -96,6 +98,7 @@ export default function PineScriptEditor({
 }: PineScriptEditorProps) {
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
+  const { profile, updateProfile } = useProfile();
   const [selectedScript, setSelectedScript] = useState<PineScript | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -544,11 +547,34 @@ export default function PineScriptEditor({
                   )}
                 </TabsContent>
 
-                <TabsContent value="config" className="mt-4">
+                <TabsContent value="config" className="mt-4 space-y-4">
                     <BotConfigForm
                     config={botConfig}
                     onChange={setBotConfig}
                     disabled={readOnly && !companyMode}
+                    tradeMode={(profile as any)?.trade_mode || 'auto'}
+                    onTradeModeChange={async (mode) => {
+                      try {
+                        await updateProfile({ trade_mode: mode } as any);
+                        toast({ title: 'Mode Updated', description: `Signal mode set to ${mode.toUpperCase()}` });
+                      } catch (e) {
+                        toast({ title: 'Error', description: 'Failed to update signal mode', variant: 'destructive' });
+                      }
+                    }}
+                    strategyOppositePolicy={(profile as any)?.strategy_opposite_policy || 'reject'}
+                    onStrategyOppositePolicyChange={async (policy) => {
+                      try {
+                        await updateProfile({ strategy_opposite_policy: policy } as any);
+                        toast({ title: 'Policy Updated', description: `Opposite policy set to ${policy.toUpperCase()}` });
+                      } catch (e) {
+                        toast({ title: 'Error', description: 'Failed to update policy', variant: 'destructive' });
+                      }
+                    }}
+                  />
+                  <SignalSimulator
+                    symbol={formData.symbols[0] || 'BTCUSDT'}
+                    timeframe={formData.allowed_timeframes[0] || '1h'}
+                    tradeMode={(profile as any)?.trade_mode || 'auto'}
                   />
                 </TabsContent>
               </Tabs>

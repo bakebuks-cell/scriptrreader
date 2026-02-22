@@ -314,7 +314,9 @@ export type Database = {
           free_trades_remaining: number
           id: string
           selected_timeframes: string[] | null
+          strategy_opposite_policy: string
           subscription_active: boolean
+          trade_mode: string
           updated_at: string
           user_id: string
         }
@@ -327,7 +329,9 @@ export type Database = {
           free_trades_remaining?: number
           id?: string
           selected_timeframes?: string[] | null
+          strategy_opposite_policy?: string
           subscription_active?: boolean
+          trade_mode?: string
           updated_at?: string
           user_id: string
         }
@@ -340,7 +344,9 @@ export type Database = {
           free_trades_remaining?: number
           id?: string
           selected_timeframes?: string[] | null
+          strategy_opposite_policy?: string
           subscription_active?: boolean
+          trade_mode?: string
           updated_at?: string
           user_id?: string
         }
