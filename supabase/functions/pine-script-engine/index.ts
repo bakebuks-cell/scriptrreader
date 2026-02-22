@@ -67,12 +67,44 @@ interface TakeProfitConfig {
   value: number
 }
 
+type TradeMode = 'plain' | 'strategy' | 'auto'
+type StrategyOppositePolicy = 'reject' | 'flip'
+type SignalAction = 'BUY' | 'SELL' | 'BUY_OPEN' | 'BUY_EXIT' | 'SELL_OPEN' | 'SELL_EXIT' | 'CLOSE' | 'NONE'
+
 interface TradeSignal {
   action: 'BUY' | 'SELL' | 'CLOSE' | 'NONE'
   price: number
   stopLoss?: number
   takeProfit?: number
   reason: string
+}
+
+// Extended signal for strategy mode (4-signal)
+interface StrategySignal {
+  action: SignalAction
+  price: number
+  stopLoss?: number
+  takeProfit?: number
+  reason: string
+}
+
+// Validation result for signal payloads
+interface ValidationResult {
+  valid: boolean
+  detectedMode: TradeMode | null
+  signalTypes: string[]
+  errors: string[]
+  warnings: string[]
+}
+
+// Simulation result
+interface SimulationResult {
+  signal: StrategySignal
+  currentPosition: 'LONG' | 'SHORT' | 'NONE'
+  decision: string
+  wouldExecute: boolean
+  mode: TradeMode
+  oppositePolicy?: StrategyOppositePolicy
 }
 
 interface UserScript {
@@ -2244,6 +2276,159 @@ async function executeTrade(
 }
 
 // ============================================
+// SIGNAL VALIDATION & SIMULATION
+// ============================================
+
+const PLAIN_SIGNALS = new Set(['BUY', 'SELL'])
+const STRATEGY_SIGNALS = new Set(['BUY_OPEN', 'BUY_EXIT', 'SELL_OPEN', 'SELL_EXIT'])
+const ALL_VALID_SIGNALS = new Set([...PLAIN_SIGNALS, ...STRATEGY_SIGNALS])
+
+function validateSignalPayload(payload: any): ValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  let detectedMode: TradeMode | null = null
+
+  if (!payload || typeof payload !== 'object') {
+    return { valid: false, detectedMode: null, signalTypes: [], errors: ['Payload must be a JSON object'], warnings: [] }
+  }
+
+  const signalType = payload.signal_type || payload.action
+  if (!signalType) {
+    errors.push('Missing required field: signal_type')
+  } else if (!ALL_VALID_SIGNALS.has(signalType.toUpperCase())) {
+    errors.push(`Invalid signal_type: "${signalType}". Must be one of: ${[...ALL_VALID_SIGNALS].join(', ')}`)
+  }
+
+  if (!payload.symbol) errors.push('Missing required field: symbol')
+  if (!payload.timeframe) warnings.push('Missing field: timeframe (will use script default)')
+
+  if (!payload.bar_close_time && !payload.signal_id && !payload.candle_timestamp) {
+    warnings.push('Missing dedup key (bar_close_time or signal_id). Duplicate signals may be processed.')
+  }
+
+  const signalTypes: string[] = []
+  if (payload.signal_type) signalTypes.push(payload.signal_type.toUpperCase())
+  if (payload.signals && Array.isArray(payload.signals)) {
+    for (const s of payload.signals) {
+      if (s.signal_type) signalTypes.push(s.signal_type.toUpperCase())
+    }
+  }
+
+  const hasPlain = signalTypes.some(s => PLAIN_SIGNALS.has(s))
+  const hasStrategy = signalTypes.some(s => STRATEGY_SIGNALS.has(s))
+
+  if (hasPlain && hasStrategy) {
+    errors.push('Mixed signal types detected (PLAIN + STRATEGY). Use only BUY/SELL or only BUY_OPEN/BUY_EXIT/SELL_OPEN/SELL_EXIT.')
+  } else if (hasPlain) {
+    detectedMode = 'plain'
+  } else if (hasStrategy) {
+    detectedMode = 'strategy'
+  }
+
+  return { valid: errors.length === 0, detectedMode, signalTypes, errors, warnings }
+}
+
+function simulateSignalDecision(
+  signalType: string,
+  currentPosition: 'LONG' | 'SHORT' | 'NONE',
+  mode: TradeMode,
+  oppositePolicy: StrategyOppositePolicy,
+  price: number
+): SimulationResult {
+  const signal = signalType.toUpperCase() as SignalAction
+  const baseResult: SimulationResult = {
+    signal: { action: signal, price, reason: '' },
+    currentPosition,
+    decision: '',
+    wouldExecute: false,
+    mode,
+    oppositePolicy,
+  }
+
+  if (mode === 'plain') {
+    if (signal === 'BUY') {
+      if (currentPosition === 'LONG') {
+        baseResult.decision = 'IGNORE — Already LONG'
+      } else if (currentPosition === 'SHORT') {
+        baseResult.decision = 'FLIP — Cancel orders → Close SHORT → Confirm NONE → Open LONG'
+        baseResult.wouldExecute = true
+      } else {
+        baseResult.decision = 'OPEN LONG'
+        baseResult.wouldExecute = true
+      }
+    } else if (signal === 'SELL') {
+      if (currentPosition === 'SHORT') {
+        baseResult.decision = 'IGNORE — Already SHORT'
+      } else if (currentPosition === 'LONG') {
+        baseResult.decision = 'FLIP — Cancel orders → Close LONG → Confirm NONE → Open SHORT'
+        baseResult.wouldExecute = true
+      } else {
+        baseResult.decision = 'OPEN SHORT'
+        baseResult.wouldExecute = true
+      }
+    } else {
+      baseResult.decision = `INVALID signal "${signal}" for PLAIN mode. Use BUY or SELL.`
+    }
+  } else if (mode === 'strategy') {
+    switch (signal) {
+      case 'BUY_OPEN':
+        if (currentPosition === 'LONG') {
+          baseResult.decision = 'IGNORE — Already LONG'
+        } else if (currentPosition === 'SHORT') {
+          if (oppositePolicy === 'flip') {
+            baseResult.decision = 'FLIP (policy=flip) — Close SHORT → Open LONG'
+            baseResult.wouldExecute = true
+          } else {
+            baseResult.decision = 'REJECT (policy=reject) — Opposite SHORT exists. Wait for SELL_EXIT.'
+          }
+        } else {
+          baseResult.decision = 'OPEN LONG'
+          baseResult.wouldExecute = true
+        }
+        break
+      case 'BUY_EXIT':
+        if (currentPosition === 'LONG') {
+          baseResult.decision = 'CLOSE LONG — Cancel orders → Close → Confirm NONE'
+          baseResult.wouldExecute = true
+        } else {
+          baseResult.decision = 'IGNORE — No LONG position to exit (never opens SHORT)'
+        }
+        break
+      case 'SELL_OPEN':
+        if (currentPosition === 'SHORT') {
+          baseResult.decision = 'IGNORE — Already SHORT'
+        } else if (currentPosition === 'LONG') {
+          if (oppositePolicy === 'flip') {
+            baseResult.decision = 'FLIP (policy=flip) — Close LONG → Open SHORT'
+            baseResult.wouldExecute = true
+          } else {
+            baseResult.decision = 'REJECT (policy=reject) — Opposite LONG exists. Wait for BUY_EXIT.'
+          }
+        } else {
+          baseResult.decision = 'OPEN SHORT'
+          baseResult.wouldExecute = true
+        }
+        break
+      case 'SELL_EXIT':
+        if (currentPosition === 'SHORT') {
+          baseResult.decision = 'CLOSE SHORT — Cancel orders → Close → Confirm NONE'
+          baseResult.wouldExecute = true
+        } else {
+          baseResult.decision = 'IGNORE — No SHORT position to exit (never opens LONG)'
+        }
+        break
+      default:
+        baseResult.decision = `INVALID signal "${signal}" for STRATEGY mode. Use BUY_OPEN/BUY_EXIT/SELL_OPEN/SELL_EXIT.`
+    }
+  } else {
+    baseResult.decision = `Unknown mode: ${mode}`
+  }
+
+  baseResult.signal.reason = baseResult.decision
+  return baseResult
+}
+
+// ============================================
 // MAIN HANDLER
 // ============================================
 
@@ -2479,8 +2664,34 @@ Deno.serve(async (req) => {
                 const rawMarketType = us.script.market_type || 'futures'
                 const scriptMarketType = isFuturesOnlySymbol(symbol) ? 'usdt_futures' : rawMarketType
                 const scriptLeverage = us.script.leverage || 1
-                const tradeMechanism = us.settings_json?.trade_mechanism || 'plain'
-                console.log(`[ENGINE] Trade mechanism: ${tradeMechanism}`)
+                // Fetch user's trade_mode and strategy_opposite_policy from profiles
+                const { data: userProfile } = await supabase
+                  .from('profiles')
+                  .select('trade_mode, strategy_opposite_policy')
+                  .eq('user_id', us.user_id)
+                  .single()
+
+                const userTradeMode: TradeMode = (userProfile?.trade_mode as TradeMode) || 'plain'
+                const userOppositePolicy: StrategyOppositePolicy = (userProfile?.strategy_opposite_policy as StrategyOppositePolicy) || 'reject'
+                
+                // Resolve effective trade mode
+                // For now, 'auto' falls back to 'plain' (auto-detect will check signal types at runtime)
+                // The old per-script 'trade_mechanism' setting is still respected as a fallback
+                const legacyMechanism = us.settings_json?.trade_mechanism || 'plain'
+                let effectiveMode: TradeMode = userTradeMode
+                if (effectiveMode === 'auto') {
+                  // Auto-detect: use plain by default, strategy mode would be detected from external webhook signals
+                  effectiveMode = legacyMechanism === 'flip' ? 'plain' : 'plain'
+                }
+                
+                // Map to tradeMechanism for backward compat with existing flip logic
+                // In plain mode: BUY=LONG, SELL=SHORT with flip behavior  
+                // In strategy mode: signals are BUY_OPEN/BUY_EXIT/SELL_OPEN/SELL_EXIT
+                const tradeMechanism = effectiveMode === 'plain' 
+                  ? (legacyMechanism === 'flip' ? 'flip' : 'plain')
+                  : 'strategy'
+                
+                console.log(`[ENGINE] Trade mode: ${effectiveMode} (profile=${userTradeMode}, legacy=${legacyMechanism}), mechanism=${tradeMechanism}, oppositePolicy=${userOppositePolicy}`)
 
                 // ===== ORPHANED POSITION DETECTOR =====
                 // If there's a live Binance position but NO open DB trade, auto-close it
@@ -3139,6 +3350,55 @@ Deno.serve(async (req) => {
         )
       }
       
+      case 'validate': {
+        const body = await req.json()
+        const { payload } = body
+        
+        if (!payload) {
+          return new Response(
+            JSON.stringify({ error: 'Missing payload' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const result = validateSignalPayload(payload)
+        
+        return new Response(
+          JSON.stringify(result),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      case 'simulate': {
+        const body = await req.json()
+        const { payload, currentPosition = 'NONE', mode = 'auto', oppositePolicy = 'reject' } = body
+        
+        if (!payload) {
+          return new Response(
+            JSON.stringify({ error: 'Missing payload' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const validation = validateSignalPayload(payload)
+        if (!validation.valid) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid payload', validation }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const effectiveMode = mode === 'auto' ? (validation.detectedMode || 'plain') : mode
+        const signalType = payload.signal_type || payload.action || 'NONE'
+        const price = payload.price || 0
+        const simulation = simulateSignalDecision(signalType, currentPosition, effectiveMode, oppositePolicy, price)
+        
+        return new Response(
+          JSON.stringify(simulation),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown action: ${action}` }),
