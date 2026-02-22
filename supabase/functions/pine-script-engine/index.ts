@@ -3131,7 +3131,7 @@ Deno.serve(async (req) => {
 
                 // STEP 4: Signal dedup — never process the same signal twice in the same candle window
                 const intervalMs = getIntervalMs(timeframe)
-                const dedupWindowStart = new Date(Math.floor(Date.now() / intervalMs) * intervalMs - intervalMs).toISOString()
+                const dedupWindowStart = new Date(Math.floor(Date.now() / intervalMs) * intervalMs - intervalMs * 3).toISOString()
                 const { data: recentTrade } = await supabase
                   .from('trades')
                   .select('id, signal_type, created_at')
@@ -3338,7 +3338,32 @@ Deno.serve(async (req) => {
                   await new Promise(r => setTimeout(r, 500))
                 }
 
-                // STEP 6: Open new trade (either fresh entry or flip after successful close)
+                // STEP 6: Pre-flight guard — NEVER open if an OPEN/PENDING trade already exists for this user+symbol
+                const { data: existingOpen } = await supabase
+                  .from('trades')
+                  .select('id, signal_type, status')
+                  .eq('user_id', us.user_id)
+                  .eq('symbol', symbol)
+                  .in('status', ['OPEN', 'PENDING'])
+                  .limit(1)
+                  .maybeSingle()
+
+                if (existingOpen) {
+                  console.log(`[ENGINE] BLOCKED: Already have ${existingOpen.status} ${existingOpen.signal_type} trade ${existingOpen.id} for ${symbol} — NOT opening another`)
+                  results.push({
+                    scriptId: us.script_id,
+                    scriptName: us.script.name,
+                    userId: us.user_id,
+                    symbol,
+                    timeframe,
+                    signal,
+                    executed: false,
+                    reason: `Blocked: existing ${existingOpen.status} trade ${existingOpen.id} for ${symbol}`,
+                  })
+                  continue
+                }
+
+                // Open new trade (either fresh entry or flip after successful close)
                 console.log(`[ENGINE] Opening ${signal.action} ${symbol} @ ${signal.price}`)
                 const execResult = await executeTrade(
                   supabase,
