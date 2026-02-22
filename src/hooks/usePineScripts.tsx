@@ -26,6 +26,9 @@ export interface PineScript {
   max_capital: number;
   leverage: number;
   max_trades_per_day: number;
+  // Validation fields
+  validation_status: string;
+  validation_errors: string[];
 }
 
 // Extended with per-user activation state
@@ -169,8 +172,25 @@ export function usePineScripts() {
       if (!data || data.length === 0) {
         throw new Error('Script was not created');
       }
+
+      // Validate script content server-side
+      const script = data[0] as PineScript;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const validateUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pine-script-engine?action=validate-script`;
+        await fetch(validateUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({ scriptContent: input.script_content, scriptId: script.id }),
+        });
+      } catch (valErr) {
+        console.warn('[VALIDATE] Server validation call failed:', valErr);
+      }
       
-      return data[0] as PineScript;
+      return script;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id] });
@@ -272,6 +292,24 @@ export function usePineScripts() {
           } else {
             console.log(`[SAVE] Created user_scripts with trade_mechanism=${tradeMechanism} for script ${id}`);
           }
+        }
+      }
+
+      // Re-validate if script_content changed
+      if (updates.script_content !== undefined) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const validateUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pine-script-engine?action=validate-script`;
+          await fetch(validateUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token || ''}`,
+            },
+            body: JSON.stringify({ scriptContent: updates.script_content, scriptId: id }),
+          });
+        } catch (valErr) {
+          console.warn('[VALIDATE] Server validation call failed:', valErr);
         }
       }
       

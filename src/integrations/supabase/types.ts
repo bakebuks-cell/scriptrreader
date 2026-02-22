@@ -252,6 +252,8 @@ export type Database = {
           symbol: string
           trading_pairs: string[] | null
           updated_at: string
+          validation_errors: string[]
+          validation_status: string
           webhook_secret: string
         }
         Insert: {
@@ -276,6 +278,8 @@ export type Database = {
           symbol: string
           trading_pairs?: string[] | null
           updated_at?: string
+          validation_errors?: string[]
+          validation_status?: string
           webhook_secret?: string
         }
         Update: {
@@ -300,6 +304,8 @@ export type Database = {
           symbol?: string
           trading_pairs?: string[] | null
           updated_at?: string
+          validation_errors?: string[]
+          validation_status?: string
           webhook_secret?: string
         }
         Relationships: []
