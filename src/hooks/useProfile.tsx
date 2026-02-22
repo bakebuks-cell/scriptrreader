@@ -3,6 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { MAX_SELECTED_TIMEFRAMES } from '@/lib/constants';
 
+export type TradeMode = 'plain' | 'strategy' | 'auto';
+export type StrategyOppositePolicy = 'reject' | 'flip';
+
 export interface Profile {
   id: string;
   user_id: string;
@@ -12,6 +15,8 @@ export interface Profile {
   bot_enabled: boolean;
   selected_timeframes: string[];
   subscription_active: boolean;
+  trade_mode: TradeMode;
+  strategy_opposite_policy: StrategyOppositePolicy;
   created_at: string;
   updated_at: string;
 }
@@ -38,7 +43,7 @@ export function useProfile() {
   });
 
   const updateProfile = useMutation({
-    mutationFn: async (updates: Partial<Pick<Profile, 'display_name' | 'bot_enabled' | 'selected_timeframes' | 'subscription_active'>>) => {
+    mutationFn: async (updates: Partial<Pick<Profile, 'display_name' | 'bot_enabled' | 'selected_timeframes' | 'subscription_active' | 'trade_mode' | 'strategy_opposite_policy'>>) => {
       if (!user?.id) throw new Error('Not authenticated');
 
       // Validate timeframes limit
