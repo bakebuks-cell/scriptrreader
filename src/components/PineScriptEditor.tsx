@@ -725,16 +725,6 @@ export default function PineScriptEditor({
                                   </p>
                                 </div>
                               )}
-
-                              <div className="mt-2 flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground">Current Bot Config:</span>
-                                <Badge variant="outline" className="text-xs">
-                                  {botConfig.trade_mechanism === 'flip' ? '🔄 Flip' : '📊 Plain'}
-                                </Badge>
-                                {validationResult.detectedMechanism === 'flip' && botConfig.trade_mechanism !== 'flip' && (
-                                  <span className="text-xs text-orange-500 font-medium">⚠️ Mismatch — script is Flip but config is Plain</span>
-                                )}
-                              </div>
                             </div>
                           )}
 
@@ -795,24 +785,6 @@ export default function PineScriptEditor({
                     config={botConfig}
                     onChange={setBotConfig}
                     disabled={readOnly && !companyMode}
-                    tradeMode={(profile as any)?.trade_mode || 'auto'}
-                    onTradeModeChange={async (mode) => {
-                      try {
-                        await updateProfile({ trade_mode: mode } as any);
-                        toast({ title: 'Mode Updated', description: `Signal mode set to ${mode.toUpperCase()}` });
-                      } catch (e) {
-                        toast({ title: 'Error', description: 'Failed to update signal mode', variant: 'destructive' });
-                      }
-                    }}
-                    strategyOppositePolicy={(profile as any)?.strategy_opposite_policy || 'reject'}
-                    onStrategyOppositePolicyChange={async (policy) => {
-                      try {
-                        await updateProfile({ strategy_opposite_policy: policy } as any);
-                        toast({ title: 'Policy Updated', description: `Opposite policy set to ${policy.toUpperCase()}` });
-                      } catch (e) {
-                        toast({ title: 'Error', description: 'Failed to update policy', variant: 'destructive' });
-                      }
-                    }}
                   />
                   <SignalSimulator
                     symbol={formData.symbols[0] || 'BTCUSDT'}
