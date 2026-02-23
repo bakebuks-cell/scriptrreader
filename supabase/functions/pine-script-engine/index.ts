@@ -1718,8 +1718,7 @@ async function executeTrade(
   marketType: string = 'futures',
   leverage: number = 1,
   positionSizeType: string = 'fixed',
-  positionSizeValue: number = 0,
-  maxCapital: number = 1000
+  positionSizeValue: number = 0
 ): Promise<{ success: boolean; error?: string; tradeId?: string }> {
   try {
     console.log(`[TRADE] Starting execution: user=${userId}, script=${scriptId}, signal=${signal.action} ${symbol} @ ${signal.price}`)
@@ -2041,56 +2040,50 @@ async function executeTrade(
       // ===== CALCULATE QUANTITY =====
       const minRequired = minNotional * 1.05
       
-      // Use user-configured position sizing instead of hardcoded values
+      // Determine margin amount from user config
       let marginAmount: number
       if (positionSizeValue > 0) {
         if (positionSizeType === 'percentage') {
-          // Percentage of available balance
           marginAmount = (availableUSDT * positionSizeValue) / 100
           console.log(`[TRADE] Position sizing: ${positionSizeValue}% of ${availableUSDT.toFixed(2)} = ${marginAmount.toFixed(2)} USDT margin`)
         } else {
-          // Fixed margin amount
           marginAmount = positionSizeValue
           console.log(`[TRADE] Position sizing: fixed margin ${marginAmount} USDT`)
         }
       } else {
-        // Fallback: 10% of balance (legacy behavior)
         marginAmount = availableUSDT * 0.1
         console.log(`[TRADE] Position sizing: fallback 10% of balance = ${marginAmount.toFixed(2)} USDT margin`)
       }
       
-      // Actual trade amount = margin × leverage (for futures)
-      const isFuturesForSizing = marketType !== 'spot'
-      const actualTradeAmount = isFuturesForSizing ? marginAmount * leverage : marginAmount
-      
-      // Cap by max_capital and available balance
-      const effectiveCap = Math.min(maxCapital, availableUSDT)
-      const tradeAmount = Math.max(Math.min(actualTradeAmount, effectiveCap), minRequired)
-      
-      console.log(`[TRADE] Sizing: margin=${marginAmount.toFixed(2)} × leverage=${leverage}x = ${actualTradeAmount.toFixed(2)}, cap=${effectiveCap.toFixed(2)}, final=${tradeAmount.toFixed(2)}`)
-      
-      // Check if margin required exceeds available balance
-      const marginRequired = isFuturesForSizing ? tradeAmount / leverage : tradeAmount
-      if (availableUSDT < Math.min(marginRequired, minRequired)) {
-        throw new Error(`Insufficient balance: ${availableUSDT.toFixed(2)} USDT available, need ${marginRequired.toFixed(2)} USDT margin (trade=${tradeAmount.toFixed(2)}, leverage=${leverage}x)`)
+      // Check margin against available balance
+      if (marginAmount > availableUSDT) {
+        throw new Error(`Insufficient balance: ${availableUSDT.toFixed(2)} USDT available, need ${marginAmount.toFixed(2)} USDT margin`)
       }
       
-      const rawQty = tradeAmount / signal.price
+      // Calculate quantity dynamically: quantity = (margin * leverage) / current_price
+      const isFuturesForSizing = marketType !== 'spot'
+      const effectiveLeverage = isFuturesForSizing ? leverage : 1
+      const totalExposure = marginAmount * effectiveLeverage
+      const rawQty = totalExposure / signal.price
+      
+      // Apply exchange precision (step size / lot size)
       const precision = stepSize < 1 ? Math.round(-Math.log10(stepSize)) : 0
-      let quantity = (Math.ceil(rawQty / stepSize) * stepSize).toFixed(precision)
+      const steppedQty = Math.floor(rawQty / stepSize) * stepSize
+      let quantity = steppedQty.toFixed(precision)
       
       const notionalValue = parseFloat(quantity) * signal.price
-      console.log(`[TRADE] Quantity=${quantity}, notional=$${notionalValue.toFixed(2)}, minNotional=${minNotional}`)
+      console.log(`[TRADE] Sizing: margin=${marginAmount.toFixed(2)} × leverage=${effectiveLeverage}x = exposure ${totalExposure.toFixed(2)} USDT`)
+      console.log(`[TRADE] Quantity = ${totalExposure.toFixed(2)} / ${signal.price} = ${quantity} ${symbol} (notional=$${notionalValue.toFixed(2)})`)
       
       if (parseFloat(quantity) < minQty) {
         throw new Error(`Calculated quantity ${quantity} below minimum ${minQty} for ${symbol}`)
       }
       
-      if (notionalValue > availableUSDT) {
-        throw new Error(`Order value $${notionalValue.toFixed(2)} exceeds available balance $${availableUSDT.toFixed(2)}`)
+      if (notionalValue < minNotional) {
+        throw new Error(`Order notional $${notionalValue.toFixed(2)} below exchange minimum $${minNotional}`)
       }
       
-      console.log(`[TRADE] Placing ${marketType} ${signal.action} order: ${quantity} ${symbol} (~$${tradeAmount.toFixed(2)}, leverage=${leverage}x)`)
+      console.log(`[TRADE] Placing ${marketType} ${signal.action} order: ${quantity} ${symbol} (margin=${marginAmount.toFixed(2)}, leverage=${effectiveLeverage}x)`)
       
       // ===== PLACE ORDER =====
       let orderEndpoint: string
@@ -2831,7 +2824,7 @@ Deno.serve(async (req) => {
                 const scriptLeverage = us.script.leverage || 1
                 const scriptPositionSizeType = us.settings_json?.position_size_type || us.script.position_size_type || 'fixed'
                 const scriptPositionSizeValue = us.settings_json?.position_size_value ?? us.script.position_size_value ?? 0
-                const scriptMaxCapital = us.settings_json?.max_capital ?? us.script.max_capital ?? 1000
+                // max_capital removed — margin amount is the sole trade sizing input
                 // Fetch user's trade_mode and strategy_opposite_policy from profiles
                 const { data: userProfile } = await supabase
                   .from('profiles')
@@ -3410,8 +3403,7 @@ Deno.serve(async (req) => {
                   scriptMarketType,
                   scriptLeverage,
                   scriptPositionSizeType,
-                  scriptPositionSizeValue,
-                  scriptMaxCapital
+                  scriptPositionSizeValue
                 )
 
                 // RULE 12: Log final state
