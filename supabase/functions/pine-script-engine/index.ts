@@ -1716,7 +1716,10 @@ async function executeTrade(
   symbol: string,
   timeframe: string,
   marketType: string = 'futures',
-  leverage: number = 1
+  leverage: number = 1,
+  positionSizeType: string = 'fixed',
+  positionSizeValue: number = 0,
+  maxCapital: number = 1000
 ): Promise<{ success: boolean; error?: string; tradeId?: string }> {
   try {
     console.log(`[TRADE] Starting execution: user=${userId}, script=${scriptId}, signal=${signal.action} ${symbol} @ ${signal.price}`)
@@ -2037,10 +2040,39 @@ async function executeTrade(
       
       // ===== CALCULATE QUANTITY =====
       const minRequired = minNotional * 1.05
-      const tradeAmount = Math.max(Math.min(availableUSDT * 0.1, 1000), minRequired)
       
-      if (availableUSDT < minRequired) {
-        throw new Error(`Insufficient balance (${availableUSDT.toFixed(2)} available, minimum ~${minRequired.toFixed(2)} required)`)
+      // Use user-configured position sizing instead of hardcoded values
+      let marginAmount: number
+      if (positionSizeValue > 0) {
+        if (positionSizeType === 'percentage') {
+          // Percentage of available balance
+          marginAmount = (availableUSDT * positionSizeValue) / 100
+          console.log(`[TRADE] Position sizing: ${positionSizeValue}% of ${availableUSDT.toFixed(2)} = ${marginAmount.toFixed(2)} USDT margin`)
+        } else {
+          // Fixed margin amount
+          marginAmount = positionSizeValue
+          console.log(`[TRADE] Position sizing: fixed margin ${marginAmount} USDT`)
+        }
+      } else {
+        // Fallback: 10% of balance (legacy behavior)
+        marginAmount = availableUSDT * 0.1
+        console.log(`[TRADE] Position sizing: fallback 10% of balance = ${marginAmount.toFixed(2)} USDT margin`)
+      }
+      
+      // Actual trade amount = margin × leverage (for futures)
+      const isFuturesForSizing = marketType !== 'spot'
+      const actualTradeAmount = isFuturesForSizing ? marginAmount * leverage : marginAmount
+      
+      // Cap by max_capital and available balance
+      const effectiveCap = Math.min(maxCapital, availableUSDT)
+      const tradeAmount = Math.max(Math.min(actualTradeAmount, effectiveCap), minRequired)
+      
+      console.log(`[TRADE] Sizing: margin=${marginAmount.toFixed(2)} × leverage=${leverage}x = ${actualTradeAmount.toFixed(2)}, cap=${effectiveCap.toFixed(2)}, final=${tradeAmount.toFixed(2)}`)
+      
+      // Check if margin required exceeds available balance
+      const marginRequired = isFuturesForSizing ? tradeAmount / leverage : tradeAmount
+      if (availableUSDT < Math.min(marginRequired, minRequired)) {
+        throw new Error(`Insufficient balance: ${availableUSDT.toFixed(2)} USDT available, need ${marginRequired.toFixed(2)} USDT margin (trade=${tradeAmount.toFixed(2)}, leverage=${leverage}x)`)
       }
       
       const rawQty = tradeAmount / signal.price
@@ -2797,6 +2829,9 @@ Deno.serve(async (req) => {
                 const rawMarketType = us.script.market_type || 'futures'
                 const scriptMarketType = isFuturesOnlySymbol(symbol) ? 'usdt_futures' : rawMarketType
                 const scriptLeverage = us.script.leverage || 1
+                const scriptPositionSizeType = us.settings_json?.position_size_type || us.script.position_size_type || 'fixed'
+                const scriptPositionSizeValue = us.settings_json?.position_size_value ?? us.script.position_size_value ?? 0
+                const scriptMaxCapital = us.settings_json?.max_capital ?? us.script.max_capital ?? 1000
                 // Fetch user's trade_mode and strategy_opposite_policy from profiles
                 const { data: userProfile } = await supabase
                   .from('profiles')
@@ -3373,7 +3408,10 @@ Deno.serve(async (req) => {
                   symbol,
                   timeframe,
                   scriptMarketType,
-                  scriptLeverage
+                  scriptLeverage,
+                  scriptPositionSizeType,
+                  scriptPositionSizeValue,
+                  scriptMaxCapital
                 )
 
                 // RULE 12: Log final state
