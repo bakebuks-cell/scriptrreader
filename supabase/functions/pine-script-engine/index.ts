@@ -2651,6 +2651,8 @@ Deno.serve(async (req) => {
               allowed_timeframes,
               market_type,
               leverage,
+              position_size_type,
+              position_size_value,
               validation_status
             )
           `)
@@ -2768,22 +2770,23 @@ Deno.serve(async (req) => {
         
         // ===== DUPLICATE SYMBOL GUARD =====
         // Prevent 2+ scripts on the same symbol for the same user (would cause position conflicts / crashes)
-        const userSymbolMap = new Map<string, any>() // key: "userId:symbol"
+        const userSymbolMap = new Map<string, any>() // key: "userId:symbol:timeframe"
         const deduplicatedScripts: any[] = []
         for (const us of validScripts) {
           const sym = us.script.symbol
-          const dedupKey = `${us.user_id}:${sym}`
+          const tf = us.script.allowed_timeframes?.[0] || '1h'
+          const dedupKey = `${us.user_id}:${sym}:${tf}`
           if (userSymbolMap.has(dedupKey)) {
             const existing = userSymbolMap.get(dedupKey)
-            console.log(`[ENGINE] BLOCKED: User ${us.user_id} has multiple scripts on ${sym} — keeping "${existing.script.name}", skipping "${us.script.name}"`)
+            console.log(`[ENGINE] BLOCKED: User ${us.user_id} has multiple scripts on ${sym}:${tf} — keeping "${existing.script.name}", skipping "${us.script.name}"`)
             results.push({
               scriptId: us.script_id,
               scriptName: us.script.name,
               userId: us.user_id,
               symbol: sym,
-              timeframe: us.script.allowed_timeframes?.[0] || '1h',
+              timeframe: tf,
               executed: false,
-              reason: `Blocked: another script ("${existing.script.name}") already runs on ${sym}. Only 1 script per coin is allowed.`,
+              reason: `Blocked: another script ("${existing.script.name}") already runs on ${sym}:${tf}. Only 1 script per coin+timeframe is allowed.`,
             })
             continue
           }
