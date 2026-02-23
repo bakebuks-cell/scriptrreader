@@ -2469,6 +2469,9 @@ interface ScriptValidationResult {
   mechanismReason: string
   canAutoConvertToFlip: boolean
   flipConversionNotes: string[]
+  detectedSymbols: string[]
+  symbolSource: 'script' | 'none'
+  isSymbolAgnostic: boolean
 }
 
 function validateScriptContent(scriptContent: string): ScriptValidationResult {
@@ -2484,6 +2487,9 @@ function validateScriptContent(scriptContent: string): ScriptValidationResult {
     mechanismReason: '',
     canAutoConvertToFlip: false,
     flipConversionNotes: [],
+    detectedSymbols: [],
+    symbolSource: 'none',
+    isSymbolAgnostic: true,
   }
 
   if (!scriptContent || !scriptContent.trim()) {
@@ -2501,6 +2507,51 @@ function validateScriptContent(scriptContent: string): ScriptValidationResult {
   
   if (!hasIndicatorOrStrategy) {
     result.warnings.push('Script does not contain a standard Pine Script header (//@version, strategy(), or indicator())')
+  }
+
+  // ======= SYMBOL DETECTION =======
+  // Common trading pair patterns (BTCUSDT, ETHBTC, BNB/USDT, etc.)
+  const symbolPatterns = [
+    // Direct mentions like "BTCUSDT", "ETHUSDT", "BNBUSDT" etc.
+    /\b([A-Z]{2,10})(USDT|BUSD|BTC|ETH|BNB|USDC)\b/g,
+    // With slash: "BTC/USDT"
+    /\b([A-Z]{2,10})\/(USDT|BUSD|BTC|ETH|BNB|USDC)\b/g,
+    // syminfo.ticker or syminfo.tickerid references with explicit symbol
+    /syminfo\.ticker(?:id)?\s*==\s*["']([A-Z]{2,10}(?:USDT|BUSD|BTC|ETH|BNB|USDC))["']/gi,
+    // request.security("BINANCE:BTCUSDT", ...)
+    /request\.security\s*\(\s*["'](?:BINANCE:|BYBIT:|KUCOIN:)?([A-Z]{2,10}(?:USDT|BUSD|BTC|ETH|BNB|USDC))["']/gi,
+    // input.symbol("BTCUSDT")
+    /input\.symbol\s*\(\s*["']([A-Z]{2,10}(?:USDT|BUSD|BTC|ETH|BNB|USDC))["']/gi,
+  ]
+  
+  const detectedSymbolsSet = new Set<string>()
+  for (const pattern of symbolPatterns) {
+    let match
+    // Reset regex
+    pattern.lastIndex = 0
+    while ((match = pattern.exec(scriptContent)) !== null) {
+      // For the first two patterns, construct the full symbol
+      if (pattern.source.includes('\\/')) {
+        detectedSymbolsSet.add(`${match[1]}${match[2]}`)
+      } else if (match[1] && match[2] && !match[1].includes('USDT')) {
+        detectedSymbolsSet.add(`${match[1]}${match[2]}`)
+      } else if (match[1]) {
+        detectedSymbolsSet.add(match[1])
+      }
+    }
+  }
+  
+  // Filter out common false positives (Pine Script keywords that look like symbols)
+  const falsePositives = new Set(['TRUEUSDT', 'FALSEUSDT', 'NONEUSDT', 'CLOSEUSDT', 'OPENUSDT', 'HIGHUSDT', 'LOWUSDT'])
+  const detectedSymbols = Array.from(detectedSymbolsSet).filter(s => !falsePositives.has(s) && s.length >= 5)
+  
+  result.detectedSymbols = detectedSymbols
+  if (detectedSymbols.length > 0) {
+    result.symbolSource = 'script'
+    result.isSymbolAgnostic = false
+  } else {
+    result.symbolSource = 'none'
+    result.isSymbolAgnostic = true
   }
 
   // Detect supported indicators
