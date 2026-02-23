@@ -122,6 +122,10 @@ export default function PineScriptEditor({
     hasEntryConditions: boolean;
     hasExitConditions: boolean;
     usedDefaultFallback: boolean;
+    detectedMechanism: 'flip' | 'plain' | 'unknown';
+    mechanismReason: string;
+    canAutoConvertToFlip: boolean;
+    flipConversionNotes: string[];
   }
   const [validationResult, setValidationResult] = useState<ScriptValidation | null>(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -320,6 +324,10 @@ export default function PineScriptEditor({
         hasEntryConditions: false,
         hasExitConditions: false,
         usedDefaultFallback: false,
+        detectedMechanism: 'unknown',
+        mechanismReason: '',
+        canAutoConvertToFlip: false,
+        flipConversionNotes: [],
       });
       toast({ title: 'Validation Error', description: err.message, variant: 'destructive' });
     } finally {
@@ -666,6 +674,70 @@ export default function PineScriptEditor({
                             </div>
                           </div>
 
+                          {/* Trade Mechanism Detection */}
+                          {validationResult.detectedMechanism && (
+                            <div className={`p-3 rounded-lg border ${
+                              validationResult.detectedMechanism === 'flip' ? 'border-blue-500/30 bg-blue-500/5' :
+                              validationResult.detectedMechanism === 'plain' ? 'border-orange-500/30 bg-orange-500/5' :
+                              'border-border bg-accent/20'
+                            }`}>
+                              <p className="text-xs font-semibold text-muted-foreground mb-2">TRADE MECHANISM DETECTED</p>
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge variant={validationResult.detectedMechanism === 'flip' ? 'default' : 'secondary'} 
+                                  className={validationResult.detectedMechanism === 'flip' ? 'bg-blue-600' : validationResult.detectedMechanism === 'plain' ? 'bg-orange-600 text-white' : ''}>
+                                  {validationResult.detectedMechanism === 'flip' ? '🔄 Flip Mechanism' : 
+                                   validationResult.detectedMechanism === 'plain' ? '📊 Plain Trade' : '❓ Unknown'}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground">{validationResult.mechanismReason}</p>
+                              
+                              {validationResult.detectedMechanism === 'plain' && validationResult.canAutoConvertToFlip && (
+                                <div className="mt-3 p-3 rounded-lg border border-blue-500/20 bg-blue-500/5">
+                                  <p className="text-xs font-semibold text-blue-600 mb-2">🔄 CONVERT TO FLIP MECHANISM</p>
+                                  <p className="text-sm text-muted-foreground mb-2">
+                                    This script is designed for Plain Trade, but you can run it with the Flip Mechanism:
+                                  </p>
+                                  <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1 mb-3">
+                                    {validationResult.flipConversionNotes.map((note, i) => (
+                                      <li key={i}>{note}</li>
+                                    ))}
+                                  </ul>
+                                  <Button
+                                    size="sm"
+                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                    onClick={() => {
+                                      setBotConfig(prev => ({ ...prev, trade_mechanism: 'flip' }));
+                                      toast({ 
+                                        title: '🔄 Converted to Flip Mechanism', 
+                                        description: 'Bot Configuration updated. The engine will now use Flip Mechanism for this script.' 
+                                      });
+                                    }}
+                                  >
+                                    Proceed — Convert to Flip Mechanism
+                                  </Button>
+                                </div>
+                              )}
+
+                              {validationResult.detectedMechanism === 'flip' && (
+                                <div className="mt-2 p-2 rounded bg-blue-500/10">
+                                  <p className="text-xs text-blue-600">
+                                    ✅ This script is natively designed for the Flip Mechanism. On trend reversal, it will automatically: Cancel orders → Close position → Open opposite direction.
+                                  </p>
+                                </div>
+                              )}
+
+                              <div className="mt-2 flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">Current Bot Config:</span>
+                                <Badge variant="outline" className="text-xs">
+                                  {botConfig.trade_mechanism === 'flip' ? '🔄 Flip' : '📊 Plain'}
+                                </Badge>
+                                {validationResult.detectedMechanism === 'flip' && botConfig.trade_mechanism !== 'flip' && (
+                                  <span className="text-xs text-orange-500 font-medium">⚠️ Mismatch — script is Flip but config is Plain</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
                           {/* Errors */}
                           {validationResult.errors.length > 0 && (
                             <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5">
@@ -787,7 +859,6 @@ export default function PineScriptEditor({
                       {isSaving ? 'Saving...' : companyMode ? 'Save Settings' : 'Save'}
                     </Button>
                   )}
-
 
 
                    {/* Run/Stop button - auto-activates the bot and runs engine */}
