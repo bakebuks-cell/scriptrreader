@@ -973,74 +973,6 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
 }
 
 // ============================================
-// PROFIT ANALYSIS GUARD
-// ============================================
-
-// Returns the analysis window in milliseconds, proportional to the timeframe.
-// 1m → 30s, 5m → 150s, 15m → 450s, 1h → 1800s, etc.
-// Capped at 45 seconds for edge function execution safety.
-function getAnalysisWindowMs(timeframe: string): number {
-  const tfMs = getIntervalMs(timeframe)
-  const proportionalMs = tfMs / 2 // half of the candle duration
-  const MAX_ANALYSIS_MS = 45_000 // 45 seconds max for edge function safety
-  return Math.min(proportionalMs, MAX_ANALYSIS_MS)
-}
-
-// Polls current price every 3 seconds during the analysis window.
-// Returns true if the trade is profitable (should KEEP the position).
-// Returns false if the trade is NOT profitable (safe to flip/close).
-async function analyzeTradeProfitability(
-  symbol: string,
-  entryPrice: number,
-  direction: 'BUY' | 'SELL',
-  timeframe: string,
-  minProfitPercent: number = 0.1 // 0.1% minimum profit to be considered "in profit"
-): Promise<{ isProfitable: boolean; avgPnlPercent: number; samples: number }> {
-  const windowMs = getAnalysisWindowMs(timeframe)
-  const pollIntervalMs = 3_000 // 3 seconds
-  const totalPolls = Math.max(1, Math.floor(windowMs / pollIntervalMs))
-  
-  console.log(`[PROFIT-GUARD] Starting analysis: ${symbol} ${direction} entry=${entryPrice}, window=${windowMs}ms, polls=${totalPolls}`)
-  
-  let profitableSamples = 0
-  let totalPnl = 0
-  let samplesCollected = 0
-  
-  for (let i = 0; i < totalPolls; i++) {
-    try {
-      const currentPrice = await getCurrentPrice(symbol)
-      const pnlPercent = direction === 'BUY'
-        ? ((currentPrice - entryPrice) / entryPrice) * 100
-        : ((entryPrice - currentPrice) / entryPrice) * 100
-      
-      totalPnl += pnlPercent
-      samplesCollected++
-      
-      if (pnlPercent > minProfitPercent) {
-        profitableSamples++
-      }
-      
-      console.log(`[PROFIT-GUARD] Poll ${i + 1}/${totalPolls}: price=${currentPrice.toFixed(4)}, PnL=${pnlPercent.toFixed(3)}%`)
-      
-      // If we still have more polls, wait 3 seconds
-      if (i < totalPolls - 1) {
-        await new Promise(r => setTimeout(r, pollIntervalMs))
-      }
-    } catch (err) {
-      console.log(`[PROFIT-GUARD] Poll ${i + 1} failed:`, err)
-    }
-  }
-  
-  const avgPnlPercent = samplesCollected > 0 ? totalPnl / samplesCollected : 0
-  // Trade is considered profitable if majority of samples show profit
-  const isProfitable = samplesCollected > 0 && (profitableSamples / samplesCollected) > 0.5 && avgPnlPercent > minProfitPercent
-  
-  console.log(`[PROFIT-GUARD] Result: isProfitable=${isProfitable}, avgPnL=${avgPnlPercent.toFixed(3)}%, profitableSamples=${profitableSamples}/${samplesCollected}`)
-  
-  return { isProfitable, avgPnlPercent, samples: samplesCollected }
-}
-
-// ============================================
 // SIGNAL EVALUATION
 // ============================================
 
@@ -3055,42 +2987,13 @@ Deno.serve(async (req) => {
                 // Update currentPrice to fresh value
                 const currentPrice = freshPrice
                 console.log(`[ENGINE] Evaluating script "${us.script.name}" for user ${us.user_id} (candle: ${isHA ? 'Heikin Ashi' : 'Regular'}, freshPrice=${currentPrice})`)
-                const strategy = parsePineScript(us.script.script_content)
+                // strategy is parsed inside the decision engine below
                 // Force USDT-M futures for futures-only symbols (XAU, XAG)
                 const rawMarketType = us.script.market_type || 'futures'
                 const scriptMarketType = isFuturesOnlySymbol(symbol) ? 'usdt_futures' : rawMarketType
                 const scriptLeverage = us.script.leverage || 1
                 const scriptPositionSizeType = us.settings_json?.position_size_type || us.script.position_size_type || 'fixed'
                 const scriptPositionSizeValue = us.settings_json?.position_size_value ?? us.script.position_size_value ?? 0
-                // max_capital removed — margin amount is the sole trade sizing input
-                // Fetch user's trade_mode and strategy_opposite_policy from profiles
-                const { data: userProfile } = await supabase
-                  .from('profiles')
-                  .select('trade_mode, strategy_opposite_policy')
-                  .eq('user_id', us.user_id)
-                  .single()
-
-                const userTradeMode: TradeMode = (userProfile?.trade_mode as TradeMode) || 'plain'
-                const userOppositePolicy: StrategyOppositePolicy = (userProfile?.strategy_opposite_policy as StrategyOppositePolicy) || 'reject'
-                
-                // Resolve effective trade mode
-                // For now, 'auto' falls back to 'plain' (auto-detect will check signal types at runtime)
-                // The old per-script 'trade_mechanism' setting is still respected as a fallback
-                const legacyMechanism = us.settings_json?.trade_mechanism || 'plain'
-                let effectiveMode: TradeMode = userTradeMode
-                if (effectiveMode === 'auto') {
-                  // Auto-detect: use plain by default, strategy mode would be detected from external webhook signals
-                  effectiveMode = legacyMechanism === 'flip' ? 'plain' : 'plain'
-                }
-                
-                // Map to tradeMechanism for backward compat with existing flip logic
-                // In plain mode: BUY=LONG, SELL=SHORT with flip behavior  
-                // In strategy mode: signals are BUY_OPEN/BUY_EXIT/SELL_OPEN/SELL_EXIT
-                const tradeMechanism = effectiveMode === 'plain' 
-                  ? (legacyMechanism === 'flip' ? 'flip' : 'plain')
-                  : 'strategy'
-                
-                console.log(`[ENGINE] Trade mode: ${effectiveMode} (profile=${userTradeMode}, legacy=${legacyMechanism}), mechanism=${tradeMechanism}, oppositePolicy=${userOppositePolicy}`)
 
                 // ===== ORPHANED POSITION DETECTOR =====
                 // If there's a live Binance position but NO open DB trade, auto-close it
@@ -3164,62 +3067,202 @@ Deno.serve(async (req) => {
                 }
 
                 // ================================================================
-                // CLEAN FLIP LOGIC — Single-position trade management
+                // REWRITTEN FLIP BOT DECISION ENGINE (strict rules)
+                //
                 // Rules:
-                //   1. On bot start: wait for NEW signal only (bot_started_at filter)
-                //   2. No open position → open new trade per signal
-                //   3. Open position + OPPOSITE signal → close existing, then open new
-                //   4. Open position + SAME signal → ignore (no duplicate/stack)
-                //   5. Only ONE open position at a time
-                //   6. If close fails → do NOT open new trade
-                //   7. Never process same signal twice (candle-based dedup)
+                //   1. Do NOT trade on startup — save baseline, wait for new candle
+                //   2. Ignore signals from same candle (dedup by candleTime)
+                //   3. Ignore signals within 1 candle after entry (cooldown)
+                //   4. Same-direction signal → do NOTHING
+                //   5. No Stop Loss — position stays open until opposite signal
+                //   6. TP placed very far (10%) so it doesn't interfere
+                //   7. Only ONE position at a time
+                //   8. Close must be confirmed before opening opposite
+                //   9. No auto-close based on time
                 // ================================================================
 
-                // STEP 1: Sync open trades with exchange (detect SL/TP hits, manual closes)
-                const { data: openTrades } = await supabase
+                // ----- STATE TRACKING -----
+                // We track state in user_scripts.settings_json:
+                //   lastProcessedCandleTime: number (openTime of last candle we acted on)
+                //   entryCandleTime: number (openTime of the candle where we entered)
+                //   positionSide: 'BUY' | 'SELL' | 'NONE'
+                //   baselineCandleTime: number (openTime of candle at bot startup)
+                //   baselineSignal: 'BUY' | 'SELL' | 'NONE' (signal at bot startup)
+                //   startupComplete: boolean (have we seen a new candle after startup?)
+
+                const settings = us.settings_json || {}
+                let lastProcessedCandleTime: number = settings.lastProcessedCandleTime || 0
+                let entryCandleTime: number = settings.entryCandleTime || 0
+                let positionSide: string = settings.positionSide || 'NONE'
+                let baselineCandleTime: number = settings.baselineCandleTime || 0
+                let baselineSignal: string = settings.baselineSignal || 'NONE'
+                let startupComplete: boolean = settings.startupComplete === true
+
+                // Current candle = last closed candle in OHLCV array
+                const lastCandle = candlesUsed[candlesUsed.length - 2] || candlesUsed[candlesUsed.length - 1]
+                const currentCandleTime = lastCandle.openTime
+                const intervalMs = getIntervalMs(timeframe)
+
+                // Helper: count candles between two openTimes
+                const candleDistance = (from: number, to: number): number => {
+                  if (from === 0 || to === 0) return Infinity
+                  return Math.floor(Math.abs(to - from) / intervalMs)
+                }
+
+                // ----- STEP 1: EVALUATE SIGNAL -----
+                const strategy = parsePineScript(us.script.script_content)
+                
+                // Determine signal from SuperTrend state or standard evaluation
+                const isSuperTrendStateBased =
+                  strategy.direction === 'both' &&
+                  strategy.entryConditions.some(c => c.type === 'direction_change_up' || c.type === 'direction_change_down') &&
+                  indicators.supertrend?.direction && indicators.supertrend.direction.length > 0
+
+                let rawSignalAction: 'BUY' | 'SELL' | 'NONE'
+                if (isSuperTrendStateBased) {
+                  const stDirection = indicators.supertrend!.direction
+                  const currentSTDir = stDirection[stDirection.length - 1]
+                  rawSignalAction = currentSTDir === 1 ? 'BUY' : 'SELL'
+                  console.log(`[ENGINE] SuperTrend state: ${currentSTDir === 1 ? 'BULLISH' : 'BEARISH'} → rawSignal=${rawSignalAction}`)
+                } else {
+                  const botStartedAt = (settings.bot_started_at as string | undefined) || undefined
+                  const evalResult = evaluateStrategy(strategy, indicators, candlesUsed, currentPrice, botStartedAt)
+                  rawSignalAction = evalResult.action === 'NONE' ? 'NONE' : evalResult.action
+                  console.log(`[ENGINE] Standard eval → rawSignal=${rawSignalAction}`)
+                }
+
+                // ----- STEP 2: STARTUP LOGIC -----
+                // On first run after bot start: save baseline, do NOT trade
+                if (!startupComplete) {
+                  if (baselineCandleTime === 0) {
+                    // Very first cycle — save baseline
+                    baselineCandleTime = currentCandleTime
+                    baselineSignal = rawSignalAction
+                    console.log(`[ENGINE] STARTUP: Baseline saved — candle=${currentCandleTime}, signal=${rawSignalAction}. Waiting for new candle.`)
+                    
+                    await supabase.from('user_scripts').update({
+                      settings_json: { ...settings, baselineCandleTime, baselineSignal, startupComplete: false, positionSide: 'NONE' },
+                    }).eq('script_id', us.script_id).eq('user_id', us.user_id)
+                    
+                    results.push({
+                      scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                      symbol, timeframe, executed: false,
+                      reason: 'Startup: baseline saved, waiting for new candle',
+                    })
+                    continue
+                  }
+
+                  // Still on same candle as baseline → wait
+                  if (currentCandleTime <= baselineCandleTime) {
+                    console.log(`[ENGINE] STARTUP: Still on baseline candle — waiting`)
+                    results.push({
+                      scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                      symbol, timeframe, executed: false,
+                      reason: 'Startup: waiting for new candle after baseline',
+                    })
+                    continue
+                  }
+
+                  // New candle arrived — mark startup complete
+                  startupComplete = true
+                  console.log(`[ENGINE] STARTUP COMPLETE: New candle detected (baseline=${baselineCandleTime}, current=${currentCandleTime})`)
+                }
+
+                // ----- STEP 3: SYNC POSITION WITH DB AND EXCHANGE -----
+                const { data: currentOpenTrades } = await supabase
                   .from('trades')
-                  .select('id, user_id, script_id, symbol, signal_type, entry_price')
+                  .select('id, user_id, script_id, symbol, signal_type, entry_price, created_at')
                   .eq('user_id', us.user_id)
-                  .eq('script_id', us.script_id)
                   .eq('symbol', symbol)
                   .in('status', ['OPEN', 'PENDING'])
 
-                // Sync each open trade with the exchange to detect external closes
-                if (openTrades && openTrades.length > 0) {
-                  console.log(`[ENGINE] Found ${openTrades.length} open trade(s) for user ${us.user_id}, syncing with exchange...`)
-                  for (const openTrade of openTrades) {
+                // Sync with exchange
+                if (currentOpenTrades && currentOpenTrades.length > 0) {
+                  for (const openTrade of currentOpenTrades) {
                     const syncResult = await syncOpenTradeWithExchange(supabase, openTrade, scriptMarketType)
                     if (!syncResult.stillOpen) {
-                      console.log(`[ENGINE] Trade ${openTrade.id} was closed externally (SL/TP/manual)`)
-                      results.push({
-                        scriptId: us.script_id,
-                        scriptName: us.script.name,
-                        userId: us.user_id,
-                        symbol,
-                        timeframe,
-                        action: 'SYNC_CLOSE',
-                        tradeId: openTrade.id,
-                        executed: true,
-                        reason: 'Position closed externally on exchange (SL/TP or manual)',
-                      })
+                      console.log(`[ENGINE] Trade ${openTrade.id} closed externally (TP hit)`)
+                      positionSide = 'NONE'
+                      entryCandleTime = 0
                     }
                   }
                 }
 
-                // STEP 2: Re-fetch current open position after sync
-                const { data: currentOpenTrades } = await supabase
+                // Re-fetch after sync
+                const { data: liveOpenTrades } = await supabase
                   .from('trades')
-                  .select('id, user_id, script_id, symbol, signal_type, entry_price')
+                  .select('id, user_id, script_id, symbol, signal_type, entry_price, created_at')
                   .eq('user_id', us.user_id)
                   .eq('symbol', symbol)
                   .in('status', ['OPEN', 'PENDING'])
 
-                const currentPosition = currentOpenTrades && currentOpenTrades.length > 0 ? currentOpenTrades[0] : null
-                const currentDirection = currentPosition?.signal_type || null // 'BUY' or 'SELL'
+                const currentPosition = liveOpenTrades && liveOpenTrades.length > 0 ? liveOpenTrades[0] : null
+                
+                // Reconcile positionSide with DB truth
+                if (currentPosition) {
+                  positionSide = currentPosition.signal_type // 'BUY' or 'SELL'
+                } else {
+                  positionSide = 'NONE'
+                }
 
-                console.log(`[ENGINE] Current position: ${currentPosition ? `${currentDirection} (trade ${currentPosition.id})` : 'NONE'}`)
+                console.log(`[ENGINE] State: positionSide=${positionSide}, rawSignal=${rawSignalAction}, currentCandle=${currentCandleTime}, lastProcessed=${lastProcessedCandleTime}, entryCandle=${entryCandleTime}`)
 
-                // ===== CIRCUIT BREAKER (per user) =====
+                // ----- STEP 4: SIGNAL = NONE → nothing to do -----
+                if (rawSignalAction === 'NONE') {
+                  results.push({
+                    scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                    symbol, timeframe, executed: false,
+                    reason: 'No signal from indicator',
+                  })
+                  // Persist state
+                  await supabase.from('user_scripts').update({
+                    settings_json: { ...settings, lastProcessedCandleTime, entryCandleTime, positionSide, baselineCandleTime, baselineSignal, startupComplete },
+                  }).eq('script_id', us.script_id).eq('user_id', us.user_id)
+                  continue
+                }
+
+                // ----- STEP 5: DEDUP — same candle check -----
+                if (currentCandleTime === lastProcessedCandleTime) {
+                  console.log(`[ENGINE] DEDUP: Same candle as last processed (${currentCandleTime}) — IGNORING`)
+                  results.push({
+                    scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                    symbol, timeframe, executed: false,
+                    reason: `Dedup: signal from same candle (${currentCandleTime})`,
+                  })
+                  continue
+                }
+
+                // ----- STEP 6: SAME-DIRECTION signal → do NOTHING -----
+                if (positionSide === rawSignalAction) {
+                  console.log(`[ENGINE] SAME direction: position=${positionSide}, signal=${rawSignalAction} — IGNORING`)
+                  results.push({
+                    scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                    symbol, timeframe, executed: false,
+                    reason: `Same direction: ${positionSide} position already open, ignoring ${rawSignalAction}`,
+                  })
+                  // Still update lastProcessedCandleTime to avoid re-processing
+                  lastProcessedCandleTime = currentCandleTime
+                  await supabase.from('user_scripts').update({
+                    settings_json: { ...settings, lastProcessedCandleTime, entryCandleTime, positionSide, baselineCandleTime, baselineSignal, startupComplete },
+                  }).eq('script_id', us.script_id).eq('user_id', us.user_id)
+                  continue
+                }
+
+                // ----- STEP 7: COOLDOWN — block signals within 1 candle of entry -----
+                if (positionSide !== 'NONE' && entryCandleTime > 0) {
+                  const dist = candleDistance(entryCandleTime, currentCandleTime)
+                  if (dist <= 1) {
+                    console.log(`[ENGINE] COOLDOWN: Only ${dist} candle(s) since entry — IGNORING flip signal`)
+                    results.push({
+                      scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                      symbol, timeframe, executed: false,
+                      reason: `Cooldown: ${dist} candle(s) since entry, need 2+`,
+                    })
+                    continue
+                  }
+                }
+
+                // ----- STEP 8: CIRCUIT BREAKER (per user) -----
                 const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
                 const { data: recentFails } = await supabase
                   .from('trades')
@@ -3233,200 +3276,32 @@ Deno.serve(async (req) => {
                 const apiPermissionErrors = (recentFails || []).filter(
                   (t: any) => t.error_message?.includes('Invalid API-key') || t.error_message?.includes('permissions for action')
                 )
-
                 if (apiPermissionErrors.length >= 3) {
-                  const lastFailTime = apiPermissionErrors[0]?.created_at
-                  const { data: userWallet } = await supabase
-                    .from('wallets')
-                    .select('updated_at, created_at')
-                    .eq('user_id', us.user_id)
-                    .eq('is_active', true)
-                    .order('updated_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle()
-
-                  const walletUpdatedAt = userWallet?.updated_at || userWallet?.created_at
-                  const walletUpdatedAfterFail = walletUpdatedAt && lastFailTime && new Date(walletUpdatedAt) > new Date(lastFailTime)
-
-                  if (!walletUpdatedAfterFail) {
-                    console.log(`[ENGINE] Circuit breaker for user ${us.user_id}: 3+ API failures in last 2h`)
-                    results.push({
-                      scriptId: us.script_id,
-                      scriptName: us.script.name,
-                      userId: us.user_id,
-                      symbol,
-                      timeframe,
-                      executed: false,
-                      error: 'Trading paused: Binance API key has issues. Please update your API keys.',
-                    })
-                    continue
-                  }
-                }
-
-                // STEP 3: Evaluate signal
-                const botStartedAt = (us.settings_json?.bot_started_at as string | undefined) || undefined
-                if (botStartedAt) {
-                  console.log(`[ENGINE] bot_started_at for user ${us.user_id}: ${botStartedAt}`)
-                }
-
-                let signal: TradeSignal
-
-                // ================================================================
-                // FLIP MODE + SUPERTREND: STATE-BASED SIGNAL DETECTION
-                // Instead of looking for a direction_change event in the last N candles
-                // (which can be missed if cron is late), we compare the CURRENT
-                // SuperTrend direction to the CURRENT position.  This is robust:
-                //   direction=1 (bullish) + position=SHORT → BUY (flip)
-                //   direction=1 (bullish) + position=NONE  → BUY (open)
-                //   direction=-1 (bearish) + position=LONG → SELL (flip)
-                //   direction=-1 (bearish) + position=NONE → SELL (open)
-                //   direction matches position             → NONE (hold)
-                // ================================================================
-                // State-based detection works for BOTH flip and plain mode SuperTrend strategies
-                const isSuperTrendStateBased =
-                  strategy.direction === 'both' &&
-                  strategy.entryConditions.some(c => c.type === 'direction_change_up' || c.type === 'direction_change_down') &&
-                  indicators.supertrend?.direction && indicators.supertrend.direction.length > 0
-
-                if (isSuperTrendStateBased) {
-                  const stDirection = indicators.supertrend!.direction
-                  const currentSTDir = stDirection[stDirection.length - 1] // 1=bull, -1=bear
-                  const desiredAction: 'BUY' | 'SELL' = currentSTDir === 1 ? 'BUY' : 'SELL'
-                  const positionAction = currentDirection // 'BUY' | 'SELL' | null
-
-                  console.log(`[ENGINE] ST state-based (${tradeMechanism}): SuperTrend=${currentSTDir === 1 ? 'BULLISH' : 'BEARISH'}, position=${positionAction || 'NONE'}, desired=${desiredAction}`)
-
-                  // State-based: immediately enter based on current SuperTrend direction
-                  // No bot_started_at filter — the user wants to trade the current trend
-                  if (positionAction === desiredAction) {
-                    // Position already aligned with SuperTrend — hold
-                    signal = { action: 'NONE', price: currentPrice, reason: `Position aligned with SuperTrend (${currentSTDir === 1 ? 'bullish' : 'bearish'})` }
-                  } else if (!positionAction) {
-                    // No position — immediately re-enter based on current SuperTrend direction
-                    signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, candlesUsed, candlesUsed.length - 1)
-                    console.log(`[ENGINE] ST: Signal=${desiredAction} (new entry, no position)`)
-                  } else {
-                    // Opposite position → flip
-                    signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, candlesUsed, candlesUsed.length - 1)
-                    console.log(`[ENGINE] ST: Signal=${desiredAction} (flip from ${positionAction})`)
-                  }
-                } else {
-                  // Standard event-based evaluation (for plain mode or non-SuperTrend)
-                  signal = evaluateStrategy(strategy, indicators, candlesUsed, currentPrice, botStartedAt)
-                }
-
-                if (signal.action === 'NONE') {
+                  console.log(`[ENGINE] Circuit breaker: 3+ API failures in last 2h`)
                   results.push({
-                    scriptId: us.script_id,
-                    scriptName: us.script.name,
-                    userId: us.user_id,
-                    symbol,
-                    timeframe,
-                    signal,
-                    executed: false,
-                    reason: signal.reason,
+                    scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                    symbol, timeframe, executed: false,
+                    error: 'Trading paused: Binance API key has issues. Please update your API keys.',
                   })
                   continue
                 }
 
-                // STEP 4: Signal dedup — never process the same signal twice in the same candle window
-                const intervalMs = getIntervalMs(timeframe)
-                const dedupWindowStart = new Date(Math.floor(Date.now() / intervalMs) * intervalMs - intervalMs * 3).toISOString()
-                const { data: recentTrade } = await supabase
-                  .from('trades')
-                  .select('id, signal_type, created_at')
-                  .eq('user_id', us.user_id)
-                  .eq('script_id', us.script_id)
-                  .eq('symbol', symbol)
-                  .eq('signal_type', signal.action)
-                  .gte('created_at', dedupWindowStart)
-                  .in('status', ['OPEN', 'PENDING'])
-                  .order('created_at', { ascending: false })
-                  .limit(1)
-                  .maybeSingle()
+                // =================================================================
+                // EXECUTION: Either fresh entry (no position) or flip (opposite)
+                // =================================================================
 
-                if (recentTrade) {
-                  console.log(`[ENGINE] DEDUP: Skipping ${signal.action} ${symbol} — already traded at ${recentTrade.created_at}`)
-                  results.push({
-                    scriptId: us.script_id,
-                    scriptName: us.script.name,
-                    userId: us.user_id,
-                    symbol,
-                    timeframe,
-                    signal,
-                    executed: false,
-                    reason: `Signal already acted on recently (trade ${recentTrade.id})`,
-                  })
-                  continue
-                }
-
-                // STEP 5: Apply clean flip logic
                 if (currentPosition) {
-                  // Case: SAME direction signal → IGNORE (no duplicate/stack)
-                  if (currentDirection === signal.action) {
-                    console.log(`[ENGINE] SAME direction signal (${signal.action}) while ${currentDirection} position open — IGNORING`)
-                    results.push({
-                      scriptId: us.script_id,
-                      scriptName: us.script.name,
-                      userId: us.user_id,
-                      symbol,
-                      timeframe,
-                      signal,
-                      executed: false,
-                      reason: `Same direction: ${currentDirection} position already open, ignoring ${signal.action} signal`,
-                    })
-                    continue
-                  }
+                  // ----- FLIP: Close existing, then open opposite -----
+                  console.log(`[ENGINE] FLIP: ${positionSide} → ${rawSignalAction}`)
 
-                  // ===== PROFIT ANALYSIS GUARD =====
-                  // Before flipping or closing, check if current trade is profitable.
-                  // If in profit, HOLD the position — don't flip/close prematurely.
-                  // Analysis polls price every 3s for a timeframe-proportional window.
-                  if (currentPosition.entry_price && currentPosition.entry_price > 0) {
-                    const profitResult = await analyzeTradeProfitability(
-                      symbol,
-                      currentPosition.entry_price,
-                      currentDirection as 'BUY' | 'SELL',
-                      timeframe
-                    )
-                    
-                    if (profitResult.isProfitable) {
-                      console.log(`[ENGINE] PROFIT-GUARD: Current ${currentDirection} trade is profitable (avg PnL ${profitResult.avgPnlPercent.toFixed(3)}%) — HOLDING position, ignoring ${signal.action} signal`)
-                      results.push({
-                        scriptId: us.script_id,
-                        scriptName: us.script.name,
-                        userId: us.user_id,
-                        symbol,
-                        timeframe,
-                        signal,
-                        executed: false,
-                        reason: `Profit guard: current ${currentDirection} trade is profitable (${profitResult.avgPnlPercent.toFixed(3)}% avg over ${profitResult.samples} checks). Holding position.`,
-                      })
-                      continue
-                    }
-                    console.log(`[ENGINE] PROFIT-GUARD: Current trade NOT profitable (avg PnL ${profitResult.avgPnlPercent.toFixed(3)}%) — proceeding with ${tradeMechanism === 'flip' ? 'flip' : 'close'}`)
-                  }
-
-                  // Case: OPPOSITE direction signal → depends on trade mechanism
-                  if (tradeMechanism === 'flip') {
-                    console.log(`[ENGINE] FLIP: OPPOSITE signal ${signal.action} while ${currentDirection} position open`)
-                    console.log(`[ENGINE] FLIP SEQUENCE: 1) Cancel Orders → 2) Close Position → 3) Confirm NONE → 4) Open New → 5) Confirm Fill → 6) Place TP/SL`)
-                  } else {
-                    console.log(`[ENGINE] PLAIN: OPPOSITE signal ${signal.action} while ${currentDirection} position open — CLOSING only (no flip)`)
-                  }
-
-                  // STEP 1 (FLIP): Cancel ALL open orders for this symbol FIRST
-                  // This removes any stale TP/SL from the previous position
-                  if (tradeMechanism === 'flip' && scriptMarketType !== 'spot') {
+                  // 1) Cancel all open orders (removes old TP)
+                  if (scriptMarketType !== 'spot') {
                     try {
                       const { data: cancelKeys } = await supabase
                         .from('wallets')
                         .select('api_key_encrypted, api_secret_encrypted')
-                        .eq('user_id', us.user_id)
-                        .eq('is_active', true)
-                        .not('api_key_encrypted', 'is', null)
-                        .limit(1)
-                        .maybeSingle()
+                        .eq('user_id', us.user_id).eq('is_active', true)
+                        .not('api_key_encrypted', 'is', null).limit(1).maybeSingle()
                       if (cancelKeys) {
                         const isCoinM = scriptMarketType === 'coin_margin'
                         await cancelAllOpenOrders(cancelKeys.api_key_encrypted.trim(), cancelKeys.api_secret_encrypted.trim(), symbol, isCoinM)
@@ -3436,187 +3311,124 @@ Deno.serve(async (req) => {
                     }
                   }
 
-                  // STEP 2: Close position with MARKET reduceOnly
-                  let closeSuccess = true
-                  for (const trade of currentOpenTrades!) {
-                    const closeResult = await closeOpenTrade(
-                      supabase,
-                      trade,
-                      currentPrice,
-                      scriptMarketType,
-                      tradeMechanism === 'flip'
-                        ? `Flipping: ${currentDirection} → ${signal.action}`
-                        : `Plain close: opposite signal ${signal.action}`
-                    )
-                    if (!closeResult.success) {
-                      console.log(`[ENGINE] CLOSE FAILED for trade ${trade.id}: ${closeResult.error}`)
-                      closeSuccess = false
-                      results.push({
-                        scriptId: us.script_id,
-                        scriptName: us.script.name,
-                        userId: us.user_id,
-                        symbol,
-                        timeframe,
-                        action: 'CLOSE_FAILED',
-                        tradeId: trade.id,
-                        executed: false,
-                        error: closeResult.error,
-                        reason: `Failed to close ${currentDirection} position before ${tradeMechanism === 'flip' ? 'opening ' + signal.action : 'plain close'}`,
-                      })
-                    } else {
-                      console.log(`[ENGINE] Successfully closed trade ${trade.id}`)
-                      results.push({
-                        scriptId: us.script_id,
-                        scriptName: us.script.name,
-                        userId: us.user_id,
-                        symbol,
-                        timeframe,
-                        action: 'CLOSE',
-                        tradeId: trade.id,
-                        executed: true,
-                        reason: tradeMechanism === 'flip'
-                          ? `Closed ${currentDirection} position for flip to ${signal.action}`
-                          : `Closed ${currentDirection} position (plain trade, opposite signal)`,
-                      })
-                    }
-                  }
+                  // 2) Close position
+                  const closeResult = await closeOpenTrade(
+                    supabase, currentPosition, currentPrice, scriptMarketType,
+                    `Flip: ${positionSide} → ${rawSignalAction}`
+                  )
 
-                  // Safety rule: If close failed, do NOT open new trade
-                  if (!closeSuccess) {
-                    console.log(`[ENGINE] Close failed — NOT opening new ${signal.action} trade (safety rule)`)
+                  if (!closeResult.success) {
+                    console.log(`[ENGINE] CLOSE FAILED — NOT opening ${rawSignalAction}`)
+                    results.push({
+                      scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                      symbol, timeframe, executed: false,
+                      error: closeResult.error,
+                      reason: `Close failed before flip to ${rawSignalAction}`,
+                    })
                     continue
                   }
 
-                  // PLAIN MODE: Do not open new trade after closing — just stop here
-                  if (tradeMechanism !== 'flip') {
-                    console.log(`[ENGINE] PLAIN mode — closed position, NOT opening new trade. Waiting for next signal.`)
-                    continue
-                  }
-
-                  // RULE 7 (MANDATORY): Re-fetch position from EXCHANGE to confirm NONE before opening
-                  // Never rely on DB alone — the exchange is the source of truth.
-                  console.log(`[ENGINE] FLIP: Re-checking exchange position after close...`)
+                  // 3) Confirm close on exchange (Rule 10)
                   let positionConfirmedNone = false
                   try {
                     const { data: recheckKeys } = await supabase
                       .from('wallets')
                       .select('api_key_encrypted, api_secret_encrypted')
-                      .eq('user_id', us.user_id)
-                      .eq('is_active', true)
-                      .not('api_key_encrypted', 'is', null)
-                      .limit(1)
-                      .maybeSingle()
+                      .eq('user_id', us.user_id).eq('is_active', true)
+                      .not('api_key_encrypted', 'is', null).limit(1).maybeSingle()
 
                     if (recheckKeys) {
                       const isCoinM = scriptMarketType === 'coin_margin'
-                      const isSpot = scriptMarketType === 'spot'
-
-                      if (isSpot) {
-                        const baseAsset = symbol.replace('USDT', '').replace('BUSD', '')
-                        const accountInfo = await binanceRequest('/api/v3/account', recheckKeys.api_key_encrypted.trim(), recheckKeys.api_secret_encrypted.trim())
-                        const balance = accountInfo.balances?.find((b: any) => b.asset === baseAsset)
-                        const hasPos = balance && parseFloat(balance.free) + parseFloat(balance.locked) > 0.0001
-                        positionConfirmedNone = !hasPos
-                      } else {
-                        const positions = isCoinM
-                          ? await binanceCoinMRequest('/dapi/v1/positionRisk', recheckKeys.api_key_encrypted.trim(), recheckKeys.api_secret_encrypted.trim())
-                          : await binanceRequest('/fapi/v2/positionRisk', recheckKeys.api_key_encrypted.trim(), recheckKeys.api_secret_encrypted.trim(), 'GET', { recvWindow: '10000' }, true)
-
-                        const hedgeMode = await isHedgeMode(recheckKeys.api_key_encrypted.trim(), recheckKeys.api_secret_encrypted.trim(), isCoinM)
-                        let hasPos = false
-                        if (hedgeMode) {
-                          // Check the CLOSED side — should be NONE now
-                          const closedSide = currentDirection === 'BUY' ? 'LONG' : 'SHORT'
-                          const pos = positions.find((p: any) => p.symbol === symbol && p.positionSide === closedSide && Math.abs(parseFloat(p.positionAmt)) > 0)
-                          hasPos = !!pos
-                        } else {
-                          // One-way: check if ANY position remains
-                          const pos = positions.find((p: any) => p.symbol === symbol && Math.abs(parseFloat(p.positionAmt)) > 0.001)
-                          hasPos = !!pos
-                        }
-                        positionConfirmedNone = !hasPos
-                      }
-                      console.log(`[ENGINE] Re-check result: positionConfirmedNone=${positionConfirmedNone}`)
+                      const positions = isCoinM
+                        ? await binanceCoinMRequest('/dapi/v1/positionRisk', recheckKeys.api_key_encrypted.trim(), recheckKeys.api_secret_encrypted.trim())
+                        : await binanceRequest('/fapi/v2/positionRisk', recheckKeys.api_key_encrypted.trim(), recheckKeys.api_secret_encrypted.trim(), 'GET', { recvWindow: '10000' }, true)
+                      const pos = positions.find((p: any) => p.symbol === symbol && Math.abs(parseFloat(p.positionAmt)) > 0.001)
+                      positionConfirmedNone = !pos
                     } else {
-                      console.log(`[ENGINE] No API keys for re-check — assuming position closed`)
                       positionConfirmedNone = true
                     }
                   } catch (recheckErr) {
-                    console.log(`[ENGINE] Re-check failed:`, recheckErr)
+                    console.log(`[ENGINE] Recheck failed:`, recheckErr)
                     positionConfirmedNone = false
                   }
 
                   if (!positionConfirmedNone) {
-                    console.log(`[ENGINE] ABORT: Exchange still shows open position after close — NOT opening ${signal.action}`)
+                    console.log(`[ENGINE] ABORT: Exchange still shows position after close`)
                     results.push({
-                      scriptId: us.script_id,
-                      scriptName: us.script.name,
-                      userId: us.user_id,
-                      symbol,
-                      timeframe,
-                      action: 'ABORT_RECHECK',
-                      executed: false,
-                      reason: `Close succeeded in DB but exchange still shows position — aborting flip to ${signal.action}`,
+                      scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                      symbol, timeframe, executed: false,
+                      reason: `Close confirmed in DB but exchange still shows position — aborting flip`,
                     })
                     continue
                   }
 
-                  console.log(`[ENGINE] FLIP confirmed: position is NONE on exchange. Proceeding to open ${signal.action}`)
-
-                  // Small delay to let exchange settle
+                  console.log(`[ENGINE] Close confirmed. Opening ${rawSignalAction}...`)
                   await new Promise(r => setTimeout(r, 500))
                 }
 
-                // STEP 6: Pre-flight guard — NEVER open if an OPEN/PENDING trade already exists for this user+symbol
+                // ----- Pre-flight: no open position should exist -----
                 const { data: existingOpen } = await supabase
                   .from('trades')
                   .select('id, signal_type, status')
-                  .eq('user_id', us.user_id)
-                  .eq('symbol', symbol)
-                  .in('status', ['OPEN', 'PENDING'])
-                  .limit(1)
-                  .maybeSingle()
+                  .eq('user_id', us.user_id).eq('symbol', symbol)
+                  .in('status', ['OPEN', 'PENDING']).limit(1).maybeSingle()
 
                 if (existingOpen) {
-                  console.log(`[ENGINE] BLOCKED: Already have ${existingOpen.status} ${existingOpen.signal_type} trade ${existingOpen.id} for ${symbol} — NOT opening another`)
+                  console.log(`[ENGINE] BLOCKED: ${existingOpen.status} trade ${existingOpen.id} still exists`)
                   results.push({
-                    scriptId: us.script_id,
-                    scriptName: us.script.name,
-                    userId: us.user_id,
-                    symbol,
-                    timeframe,
-                    signal,
-                    executed: false,
-                    reason: `Blocked: existing ${existingOpen.status} trade ${existingOpen.id} for ${symbol}`,
+                    scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                    symbol, timeframe, executed: false,
+                    reason: `Blocked: existing ${existingOpen.status} trade for ${symbol}`,
                   })
                   continue
                 }
 
-                // Open new trade (either fresh entry or flip after successful close)
-                console.log(`[ENGINE] Opening ${signal.action} ${symbol} @ ${signal.price}`)
+                // ----- BUILD SIGNAL WITH FAR TP, NO SL -----
+                const farTP = rawSignalAction === 'BUY'
+                  ? currentPrice * 1.10   // 10% above for LONG
+                  : currentPrice * 0.90   // 10% below for SHORT
+
+                const finalSignal: TradeSignal = {
+                  action: rawSignalAction,
+                  price: currentPrice,
+                  stopLoss: undefined,      // Rule 5: NO stop loss
+                  takeProfit: farTP,         // Rule 6: Far TP (10%)
+                  reason: `${rawSignalAction} signal: confirmed opposite flip`,
+                }
+
+                console.log(`[ENGINE] Executing ${rawSignalAction} ${symbol} @ ${currentPrice}, TP=${farTP.toFixed(2)}, SL=NONE`)
+
                 const execResult = await executeTrade(
-                  supabase,
-                  us.user_id,
-                  us.script_id,
-                  signal,
-                  symbol,
-                  timeframe,
-                  scriptMarketType,
-                  scriptLeverage,
-                  scriptPositionSizeType,
-                  scriptPositionSizeValue
+                  supabase, us.user_id, us.script_id, finalSignal,
+                  symbol, timeframe, scriptMarketType, scriptLeverage,
+                  scriptPositionSizeType, scriptPositionSizeValue
                 )
 
-                // RULE 12: Log final state
-                console.log(`[ENGINE] Final state: ${signal.action} ${symbol} executed=${execResult.success}${execResult.tradeId ? ` tradeId=${execResult.tradeId}` : ''}${execResult.error ? ` error=${execResult.error}` : ''}`)
+                // ----- UPDATE STATE -----
+                if (execResult.success) {
+                  lastProcessedCandleTime = currentCandleTime
+                  entryCandleTime = currentCandleTime
+                  positionSide = rawSignalAction
+                  console.log(`[ENGINE] State updated: positionSide=${positionSide}, entryCandle=${entryCandleTime}`)
+                }
+
+                // Persist state to settings_json
+                await supabase.from('user_scripts').update({
+                  settings_json: {
+                    ...settings,
+                    lastProcessedCandleTime,
+                    entryCandleTime,
+                    positionSide,
+                    baselineCandleTime,
+                    baselineSignal,
+                    startupComplete,
+                  },
+                }).eq('script_id', us.script_id).eq('user_id', us.user_id)
 
                 results.push({
-                  scriptId: us.script_id,
-                  scriptName: us.script.name,
-                  userId: us.user_id,
-                  symbol,
-                  timeframe,
-                  signal,
+                  scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                  symbol, timeframe,
+                  signal: finalSignal,
                   executed: execResult.success,
                   error: execResult.error,
                   tradeId: execResult.tradeId,
