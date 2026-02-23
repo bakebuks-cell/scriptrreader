@@ -328,6 +328,35 @@ async function fetchOHLCV(symbol: string, interval: string, limit: number = 100)
   }))
 }
 
+// Convert regular OHLCV candles to Heikin Ashi
+function convertToHeikinAshi(candles: OHLCV[]): OHLCV[] {
+  if (candles.length === 0) return []
+  
+  const ha: OHLCV[] = []
+  
+  for (let i = 0; i < candles.length; i++) {
+    const c = candles[i]
+    if (i === 0) {
+      // First HA candle: HA_Open = (Open + Close) / 2, HA_Close = (O+H+L+C)/4
+      const haClose = (c.open + c.high + c.low + c.close) / 4
+      const haOpen = (c.open + c.close) / 2
+      const haHigh = Math.max(c.high, haOpen, haClose)
+      const haLow = Math.min(c.low, haOpen, haClose)
+      ha.push({ ...c, open: haOpen, high: haHigh, low: haLow, close: haClose })
+    } else {
+      const prev = ha[i - 1]
+      const haClose = (c.open + c.high + c.low + c.close) / 4
+      const haOpen = (prev.open + prev.close) / 2
+      const haHigh = Math.max(c.high, haOpen, haClose)
+      const haLow = Math.min(c.low, haOpen, haClose)
+      ha.push({ ...c, open: haOpen, high: haHigh, low: haLow, close: haClose })
+    }
+  }
+  
+  console.log(`[ENGINE] Converted ${candles.length} candles to Heikin Ashi`)
+  return ha
+}
+
 async function getCurrentPrice(symbol: string): Promise<number> {
   const isFutures = isFuturesOnlySymbol(symbol)
   const baseUrl = isFutures ? 'https://fapi.binance.com/fapi/v1' : 'https://api.binance.com/api/v3'
@@ -2929,13 +2958,24 @@ Deno.serve(async (req) => {
           console.log(`[ENGINE] Processing ${key}: ${groupedScripts.length} scripts`)
           
           try {
-            const ohlcv = await fetchOHLCV(symbol, timeframe, 200)
+            let ohlcv = await fetchOHLCV(symbol, timeframe, 200)
             const currentPrice = await getCurrentPrice(symbol)
-            const indicators = calculateAllIndicators(ohlcv)
+            
+            // Check if any script in this group uses Heikin Ashi
+            // We need to compute indicators per candle_type
+            const regularScripts = groupedScripts.filter((us: any) => (us.script.candle_type || 'regular') === 'regular')
+            const haScripts = groupedScripts.filter((us: any) => us.script.candle_type === 'heikin_ashi')
+            
+            const regularIndicators = regularScripts.length > 0 ? calculateAllIndicators(ohlcv) : null
+            const haOhlcv = haScripts.length > 0 ? convertToHeikinAshi(ohlcv) : null
+            const haIndicators = haOhlcv ? calculateAllIndicators(haOhlcv) : null
             
             for (const us of groupedScripts) {
               try {
-                console.log(`[ENGINE] Evaluating script "${us.script.name}" for user ${us.user_id}`)
+                const isHA = us.script.candle_type === 'heikin_ashi'
+                const indicators = isHA ? haIndicators! : regularIndicators!
+                const candlesUsed = isHA ? haOhlcv! : ohlcv
+                console.log(`[ENGINE] Evaluating script "${us.script.name}" for user ${us.user_id} (candle: ${isHA ? 'Heikin Ashi' : 'Regular'})`)
                 const strategy = parsePineScript(us.script.script_content)
                 // Force USDT-M futures for futures-only symbols (XAU, XAG)
                 const rawMarketType = us.script.market_type || 'futures'
@@ -3184,16 +3224,16 @@ Deno.serve(async (req) => {
                     signal = { action: 'NONE', price: currentPrice, reason: `Position aligned with SuperTrend (${currentSTDir === 1 ? 'bullish' : 'bearish'})` }
                   } else if (!positionAction) {
                     // No position — immediately re-enter based on current SuperTrend direction
-                    signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
+                    signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, candlesUsed, candlesUsed.length - 1)
                     console.log(`[ENGINE] ST: Signal=${desiredAction} (new entry, no position)`)
                   } else {
                     // Opposite position → flip
-                    signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
+                    signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, candlesUsed, candlesUsed.length - 1)
                     console.log(`[ENGINE] ST: Signal=${desiredAction} (flip from ${positionAction})`)
                   }
                 } else {
                   // Standard event-based evaluation (for plain mode or non-SuperTrend)
-                  signal = evaluateStrategy(strategy, indicators, ohlcv, currentPrice, botStartedAt)
+                  signal = evaluateStrategy(strategy, indicators, candlesUsed, currentPrice, botStartedAt)
                 }
 
                 if (signal.action === 'NONE') {
