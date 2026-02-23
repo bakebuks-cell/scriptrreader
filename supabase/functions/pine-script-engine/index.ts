@@ -2465,6 +2465,10 @@ interface ScriptValidationResult {
   hasEntryConditions: boolean
   hasExitConditions: boolean
   usedDefaultFallback: boolean
+  detectedMechanism: 'flip' | 'plain' | 'unknown'
+  mechanismReason: string
+  canAutoConvertToFlip: boolean
+  flipConversionNotes: string[]
 }
 
 function validateScriptContent(scriptContent: string): ScriptValidationResult {
@@ -2476,6 +2480,10 @@ function validateScriptContent(scriptContent: string): ScriptValidationResult {
     hasEntryConditions: false,
     hasExitConditions: false,
     usedDefaultFallback: false,
+    detectedMechanism: 'unknown',
+    mechanismReason: '',
+    canAutoConvertToFlip: false,
+    flipConversionNotes: [],
   }
 
   if (!scriptContent || !scriptContent.trim()) {
@@ -2557,11 +2565,63 @@ function validateScriptContent(scriptContent: string): ScriptValidationResult {
     result.errors.push(`Script parsing failed: ${parseErr instanceof Error ? parseErr.message : 'Unknown error'}`)
   }
 
-  // Warn about missing stop loss / take profit
-  const hasSL = /stop_?loss|sl\s*[=:]/i.test(scriptContent)
-  const hasTP = /take_?profit|tp\s*[=:]/i.test(scriptContent)
-  if (!hasSL) result.warnings.push('No stop loss defined — engine will use defaults')
-  if (!hasTP) result.warnings.push('No take profit defined — engine will use defaults')
+  // ======= MECHANISM DETECTION (Flip vs Plain) =======
+  const contentLower = scriptContent.toLowerCase()
+  
+  // Flip Mechanism indicators: trend-following strategies that generate opposite signals
+  // SuperTrend, EMA/SMA crossover, MACD crossover are inherently flip strategies
+  const isTrendFollowing = hasSuperTrend || hasEMACross || hasSMACross || hasMACD
+  
+  // Check for explicit strategy.close + strategy.entry pairs (flip pattern)
+  const hasStrategyReverse = (contentLower.includes('strategy.entry') && contentLower.includes('strategy.close')) ||
+    (contentLower.includes('strategy.long') && contentLower.includes('strategy.short'))
+  
+  // Check for bidirectional signals (both buy and sell)
+  const hasBothDirections = (contentLower.includes('buysignal') && contentLower.includes('sellsignal')) ||
+    (contentLower.includes('buy_signal') && contentLower.includes('sell_signal')) ||
+    (contentLower.includes('longcondition') && contentLower.includes('shortcondition')) ||
+    (contentLower.includes('long_condition') && contentLower.includes('short_condition'))
+  
+  // Plain Trade indicators: one-directional or RSI overbought/oversold, BB bounce
+  const isOnlyRSI = hasRSI && !hasEMACross && !hasSMACross && !hasSuperTrend && !hasMACD
+  const isOnlyBB = hasBB && !hasEMACross && !hasSMACross && !hasSuperTrend && !hasMACD
+  const hasOnlyOneDirection = (contentLower.includes('buy') && !contentLower.includes('sell')) ||
+    (contentLower.includes('sell') && !contentLower.includes('buy'))
+  
+  if (isTrendFollowing || hasStrategyReverse || hasBothDirections) {
+    result.detectedMechanism = 'flip'
+    result.mechanismReason = isTrendFollowing 
+      ? `Trend-following indicators detected (${result.detectedIndicators.join(', ')}). These naturally generate opposite signals on trend reversal, making them ideal for the Flip Mechanism.`
+      : hasBothDirections
+        ? 'Script generates both BUY and SELL signals with bidirectional conditions, which is the Flip pattern.'
+        : 'Script uses strategy.entry + strategy.close pairs indicating position flipping.'
+  } else if (isOnlyRSI || isOnlyBB || hasOnlyOneDirection) {
+    result.detectedMechanism = 'plain'
+    result.mechanismReason = isOnlyRSI
+      ? 'RSI-only strategy typically generates independent BUY/SELL signals at overbought/oversold levels — Plain Trade mode.'
+      : isOnlyBB
+        ? 'Bollinger Bands bounce strategy generates independent signals — Plain Trade mode.'
+        : 'Script only generates one-directional signals (BUY or SELL, not both).'
+    
+    // Can we auto-convert to flip?
+    result.canAutoConvertToFlip = true
+    result.flipConversionNotes = [
+      'To run this as a Flip Mechanism script, the engine will:',
+      '1. Add inverse exit conditions — when a BUY entry triggers, the opposite (SELL) will auto-close the existing position first.',
+      '2. Enable bidirectional evaluation — both LONG and SHORT conditions will be evaluated simultaneously.',
+      '3. On trend reversal: Cancel existing orders → Close current position → Confirm flat → Open opposite position.',
+    ]
+    if (isOnlyRSI) {
+      result.flipConversionNotes.push('4. RSI will use crossover 30 for LONG entry and crossunder 70 for SHORT entry.')
+    }
+    if (isOnlyBB) {
+      result.flipConversionNotes.push('4. Bollinger Bands will use lower band touch for LONG and upper band touch for SHORT.')
+    }
+  } else {
+    result.detectedMechanism = 'unknown'
+    result.mechanismReason = 'Could not determine the trade mechanism. Please select manually in Bot Configuration.'
+    result.canAutoConvertToFlip = false
+  }
 
   return result
 }
