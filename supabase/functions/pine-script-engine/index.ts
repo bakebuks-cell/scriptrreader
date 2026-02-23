@@ -3072,49 +3072,9 @@ Deno.serve(async (req) => {
                     // Position already aligned with SuperTrend — hold
                     signal = { action: 'NONE', price: currentPrice, reason: `Position aligned with SuperTrend (${currentSTDir === 1 ? 'bullish' : 'bearish'})` }
                   } else if (!positionAction) {
-                    // No position — check if we recently closed the SAME direction (SL/TP hit)
-                    // to avoid re-entering immediately ("double trade" bug)
-                    const { data: lastClosed } = await supabase
-                      .from('trades')
-                      .select('id, signal_type, closed_at')
-                      .eq('user_id', us.user_id)
-                      .eq('script_id', us.script_id)
-                      .eq('symbol', symbol)
-                      .eq('status', 'CLOSED')
-                      .order('closed_at', { ascending: false })
-                      .limit(1)
-                      .maybeSingle()
-
-                    if (lastClosed && lastClosed.signal_type === desiredAction && lastClosed.closed_at) {
-                      const closedAgo = Date.now() - new Date(lastClosed.closed_at).getTime()
-                      const candleMs = getIntervalMs(timeframe)
-                      const suppressionWindow = candleMs * 2
-
-                      let lastSTChangeIdx = -1
-                      for (let di = stDirection.length - 1; di > 0; di--) {
-                        if (stDirection[di] !== stDirection[di - 1]) {
-                          lastSTChangeIdx = di
-                          break
-                        }
-                      }
-                      const atrOffset2 = 10
-                      const stChangeOhlcvIdx = lastSTChangeIdx >= 0 ? lastSTChangeIdx + atrOffset2 : -1
-                      const stChangeTime = stChangeOhlcvIdx >= 0 && stChangeOhlcvIdx < ohlcv.length
-                        ? ohlcv[stChangeOhlcvIdx].openTime : 0
-
-                      const freshChangeAfterClose = stChangeTime > new Date(lastClosed.closed_at).getTime()
-
-                      if (!freshChangeAfterClose && closedAgo < suppressionWindow) {
-                        console.log(`[ENGINE] ST: Suppressed re-entry ${desiredAction} — last ${desiredAction} trade closed ${(closedAgo / 1000).toFixed(0)}s ago (SL/TP hit), waiting for fresh direction change`)
-                        signal = { action: 'NONE', price: currentPrice, reason: `Suppressed re-entry: last ${desiredAction} closed recently by SL/TP, waiting for direction change` }
-                      } else {
-                        signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
-                        console.log(`[ENGINE] ST: Signal=${desiredAction} (new entry after close, fresh change=${freshChangeAfterClose})`)
-                      }
-                    } else {
-                      signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
-                      console.log(`[ENGINE] ST: Signal=${desiredAction} (new entry, no recent same-direction close)`)
-                    }
+                    // No position — immediately re-enter based on current SuperTrend direction
+                    signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
+                    console.log(`[ENGINE] ST: Signal=${desiredAction} (new entry, no position)`)
                   } else {
                     // Opposite position → flip
                     signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
