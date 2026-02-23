@@ -544,8 +544,8 @@ export default function UserDashboard() {
                         // Get script details for leverage/margin
                         const linkedScript = trade.script_id ? scripts.find(s => s.id === trade.script_id) : null;
                         const leverage = linkedScript?.leverage ?? 1;
-                        const positionSize = linkedScript?.position_size_value ?? 100;
-                        const margin = positionSize / leverage;
+                        const margin = linkedScript?.position_size_value ?? 10;
+                        const positionSize = margin * leverage;
                         const isOpen = trade.status === 'OPEN' || trade.status === 'PENDING';
                         const isClosingThis = closingSingleId === trade.id && isClosingSingle;
                         return (
