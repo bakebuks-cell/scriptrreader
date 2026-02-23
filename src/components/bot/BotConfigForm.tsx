@@ -487,9 +487,9 @@ export default function BotConfigForm({
               type="number"
               value={config.position_size_value}
               onChange={(e) => handleChange('position_size_value', parseFloat(e.target.value) || 0)}
-              min={config.position_size_type === 'percentage' ? 1 : 10}
+              min={1}
               max={adminLimits ? adminLimits.max_position_size : (config.position_size_type === 'percentage' ? 100 : 1000000)}
-              step={config.position_size_type === 'percentage' ? 1 : 10}
+              step={1}
               disabled={disabled}
             />
             {adminLimits && (
