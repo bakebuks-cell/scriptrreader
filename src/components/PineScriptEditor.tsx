@@ -126,6 +126,9 @@ export default function PineScriptEditor({
     mechanismReason: string;
     canAutoConvertToFlip: boolean;
     flipConversionNotes: string[];
+    detectedSymbols: string[];
+    symbolSource: 'script' | 'none';
+    isSymbolAgnostic: boolean;
   }
   const [validationResult, setValidationResult] = useState<ScriptValidation | null>(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -328,6 +331,9 @@ export default function PineScriptEditor({
         mechanismReason: '',
         canAutoConvertToFlip: false,
         flipConversionNotes: [],
+        detectedSymbols: [],
+        symbolSource: 'none',
+        isSymbolAgnostic: true,
       });
       toast({ title: 'Validation Error', description: err.message, variant: 'destructive' });
     } finally {
@@ -674,7 +680,73 @@ export default function PineScriptEditor({
                             </div>
                           </div>
 
-                          {/* Trade Mechanism Detection */}
+                          {/* Symbol Detection */}
+                          <div className="p-3 rounded-lg border border-border bg-accent/20">
+                            <p className="text-xs font-semibold text-muted-foreground mb-2">SYMBOL DETECTION</p>
+                            {validationResult.detectedSymbols.length > 0 ? (
+                              <div className="space-y-3">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs text-muted-foreground">Detected in script:</span>
+                                  {validationResult.detectedSymbols.map((sym, i) => (
+                                    <Badge key={i} variant="secondary" className="font-mono">{sym}</Badge>
+                                  ))}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  This script references specific trading pair(s). Choose how to proceed:
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant={formData.symbols.join(',') === validationResult.detectedSymbols.join(',') ? 'default' : 'outline'}
+                                    className="justify-start gap-2 h-auto py-2"
+                                    onClick={() => {
+                                      setFormData(prev => ({ ...prev, symbols: validationResult!.detectedSymbols }));
+                                      toast({ title: '✅ Using Script Symbols', description: `Set to ${validationResult!.detectedSymbols.join(', ')}` });
+                                    }}
+                                  >
+                                    <Check className="h-4 w-4 shrink-0" />
+                                    <div className="text-left">
+                                      <p className="text-xs font-medium">Continue with detected coin(s)</p>
+                                      <p className="text-[10px] text-muted-foreground">{validationResult.detectedSymbols.join(', ')}</p>
+                                    </div>
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant={formData.symbols.join(',') !== validationResult.detectedSymbols.join(',') ? 'default' : 'outline'}
+                                    className="justify-start gap-2 h-auto py-2"
+                                    onClick={() => {
+                                      toast({ title: 'Select Your Own Symbols', description: 'Choose symbols from the Trading Symbols selector above. The script logic (indicators, entry/exit) will apply to your selected symbols.' });
+                                    }}
+                                  >
+                                    <Settings2 className="h-4 w-4 shrink-0" />
+                                    <div className="text-left">
+                                      <p className="text-xs font-medium">Ignore — use my own symbols</p>
+                                      <p className="text-[10px] text-muted-foreground">Script logic runs on your selected pairs</p>
+                                    </div>
+                                  </Button>
+                                </div>
+                                {formData.symbols.join(',') !== validationResult.detectedSymbols.join(',') && (
+                                  <div className="p-2 rounded bg-accent/50 border border-border">
+                                    <p className="text-xs text-muted-foreground">
+                                      ℹ️ The script's indicator logic (SuperTrend, EMA, RSI, etc.) is <strong>symbol-agnostic</strong> — it calculates on OHLCV data from any symbol. 
+                                      Your selected symbols: <strong>{formData.symbols.join(', ')}</strong>
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <p className="text-xs text-muted-foreground">
+                                  ✅ No specific symbols detected in script — it is <strong>symbol-agnostic</strong>.
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  The script logic will run on your selected symbols: <strong>{formData.symbols.join(', ')}</strong>
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+
                           {validationResult.detectedMechanism && (
                             <div className={`p-3 rounded-lg border ${
                               validationResult.detectedMechanism === 'flip' ? 'border-blue-500/30 bg-blue-500/5' :
