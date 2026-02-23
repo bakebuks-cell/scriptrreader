@@ -3052,18 +3052,19 @@ Deno.serve(async (req) => {
                 //   direction=-1 (bearish) + position=NONE → SELL (open)
                 //   direction matches position             → NONE (hold)
                 // ================================================================
-                const isSuperTrendFlip = tradeMechanism === 'flip' &&
+                // State-based detection works for BOTH flip and plain mode SuperTrend strategies
+                const isSuperTrendStateBased =
                   strategy.direction === 'both' &&
                   strategy.entryConditions.some(c => c.type === 'direction_change_up' || c.type === 'direction_change_down') &&
                   indicators.supertrend?.direction && indicators.supertrend.direction.length > 0
 
-                if (isSuperTrendFlip) {
+                if (isSuperTrendStateBased) {
                   const stDirection = indicators.supertrend!.direction
                   const currentSTDir = stDirection[stDirection.length - 1] // 1=bull, -1=bear
                   const desiredAction: 'BUY' | 'SELL' = currentSTDir === 1 ? 'BUY' : 'SELL'
                   const positionAction = currentDirection // 'BUY' | 'SELL' | null
 
-                  console.log(`[ENGINE] FLIP+ST state-based: SuperTrend=${currentSTDir === 1 ? 'BULLISH' : 'BEARISH'}, position=${positionAction || 'NONE'}, desired=${desiredAction}`)
+                  console.log(`[ENGINE] ST state-based (${tradeMechanism}): SuperTrend=${currentSTDir === 1 ? 'BULLISH' : 'BEARISH'}, position=${positionAction || 'NONE'}, desired=${desiredAction}`)
 
                   // Bot start filter: if bot just started, require a direction change AFTER start
                   // to avoid opening into a pre-existing trend
