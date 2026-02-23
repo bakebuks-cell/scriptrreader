@@ -2680,7 +2680,9 @@ Deno.serve(async (req) => {
         
         console.log(`[ENGINE] Found ${createdScripts?.length || 0} active user-created scripts`)
         
-        // Combine all scripts to process
+        // Combine all scripts to process, deduplicating user-created scripts that also have user_scripts records
+        const userScriptIds = new Set((userScripts || []).filter((us: any) => us.script != null).map((us: any) => `${us.user_id}:${us.script_id}`))
+        
         const allScripts: any[] = [
           ...(userScripts || []).filter((us: any) => us.script != null).map((us: any) => {
             // Apply user-specific overrides from settings_json
@@ -2697,13 +2699,16 @@ Deno.serve(async (req) => {
               settings_json: us.settings_json || {},
             }
           }),
-          ...(createdScripts || []).map((s: any) => ({
-            script_id: s.id,
-            user_id: s.created_by,
-            script: s,
-            settings_json: {}, // Will be enriched below
-            _needsSettingsLookup: true,
-          })),
+          // Only include user-created scripts that DON'T already appear via user_scripts
+          ...(createdScripts || [])
+            .filter((s: any) => !userScriptIds.has(`${s.created_by}:${s.id}`))
+            .map((s: any) => ({
+              script_id: s.id,
+              user_id: s.created_by,
+              script: s,
+              settings_json: {}, // Will be enriched below
+              _needsSettingsLookup: true,
+            })),
         ]
 
         // Enrich user-created scripts with their user_scripts settings (if any)
