@@ -973,6 +973,74 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
 }
 
 // ============================================
+// PROFIT ANALYSIS GUARD
+// ============================================
+
+// Returns the analysis window in milliseconds, proportional to the timeframe.
+// 1m → 30s, 5m → 150s, 15m → 450s, 1h → 1800s, etc.
+// Capped at 45 seconds for edge function execution safety.
+function getAnalysisWindowMs(timeframe: string): number {
+  const tfMs = getIntervalMs(timeframe)
+  const proportionalMs = tfMs / 2 // half of the candle duration
+  const MAX_ANALYSIS_MS = 45_000 // 45 seconds max for edge function safety
+  return Math.min(proportionalMs, MAX_ANALYSIS_MS)
+}
+
+// Polls current price every 3 seconds during the analysis window.
+// Returns true if the trade is profitable (should KEEP the position).
+// Returns false if the trade is NOT profitable (safe to flip/close).
+async function analyzeTradeProfitability(
+  symbol: string,
+  entryPrice: number,
+  direction: 'BUY' | 'SELL',
+  timeframe: string,
+  minProfitPercent: number = 0.1 // 0.1% minimum profit to be considered "in profit"
+): Promise<{ isProfitable: boolean; avgPnlPercent: number; samples: number }> {
+  const windowMs = getAnalysisWindowMs(timeframe)
+  const pollIntervalMs = 3_000 // 3 seconds
+  const totalPolls = Math.max(1, Math.floor(windowMs / pollIntervalMs))
+  
+  console.log(`[PROFIT-GUARD] Starting analysis: ${symbol} ${direction} entry=${entryPrice}, window=${windowMs}ms, polls=${totalPolls}`)
+  
+  let profitableSamples = 0
+  let totalPnl = 0
+  let samplesCollected = 0
+  
+  for (let i = 0; i < totalPolls; i++) {
+    try {
+      const currentPrice = await getCurrentPrice(symbol)
+      const pnlPercent = direction === 'BUY'
+        ? ((currentPrice - entryPrice) / entryPrice) * 100
+        : ((entryPrice - currentPrice) / entryPrice) * 100
+      
+      totalPnl += pnlPercent
+      samplesCollected++
+      
+      if (pnlPercent > minProfitPercent) {
+        profitableSamples++
+      }
+      
+      console.log(`[PROFIT-GUARD] Poll ${i + 1}/${totalPolls}: price=${currentPrice.toFixed(4)}, PnL=${pnlPercent.toFixed(3)}%`)
+      
+      // If we still have more polls, wait 3 seconds
+      if (i < totalPolls - 1) {
+        await new Promise(r => setTimeout(r, pollIntervalMs))
+      }
+    } catch (err) {
+      console.log(`[PROFIT-GUARD] Poll ${i + 1} failed:`, err)
+    }
+  }
+  
+  const avgPnlPercent = samplesCollected > 0 ? totalPnl / samplesCollected : 0
+  // Trade is considered profitable if majority of samples show profit
+  const isProfitable = samplesCollected > 0 && (profitableSamples / samplesCollected) > 0.5 && avgPnlPercent > minProfitPercent
+  
+  console.log(`[PROFIT-GUARD] Result: isProfitable=${isProfitable}, avgPnL=${avgPnlPercent.toFixed(3)}%, profitableSamples=${profitableSamples}/${samplesCollected}`)
+  
+  return { isProfitable, avgPnlPercent, samples: samplesCollected }
+}
+
+// ============================================
 // SIGNAL EVALUATION
 // ============================================
 
@@ -2972,10 +3040,21 @@ Deno.serve(async (req) => {
             
             for (const us of groupedScripts) {
               try {
+                // ===== FRESH DATA PER SCRIPT =====
+                // Re-fetch OHLCV and price for each script to ensure real-time accuracy
+                // Data is NOT stored in DB — purely in-memory for analysis
+                const freshOhlcv = await fetchOHLCV(symbol, timeframe, 200)
+                const freshPrice = await getCurrentPrice(symbol)
+                const freshRegularIndicators = calculateAllIndicators(freshOhlcv)
+                const freshHaOhlcv = us.script.candle_type === 'heikin_ashi' ? convertToHeikinAshi(freshOhlcv) : null
+                const freshHaIndicators = freshHaOhlcv ? calculateAllIndicators(freshHaOhlcv) : null
+                
                 const isHA = us.script.candle_type === 'heikin_ashi'
-                const indicators = isHA ? haIndicators! : regularIndicators!
-                const candlesUsed = isHA ? haOhlcv! : ohlcv
-                console.log(`[ENGINE] Evaluating script "${us.script.name}" for user ${us.user_id} (candle: ${isHA ? 'Heikin Ashi' : 'Regular'})`)
+                const indicators = isHA ? freshHaIndicators! : freshRegularIndicators
+                const candlesUsed = isHA ? freshHaOhlcv! : freshOhlcv
+                // Update currentPrice to fresh value
+                const currentPrice = freshPrice
+                console.log(`[ENGINE] Evaluating script "${us.script.name}" for user ${us.user_id} (candle: ${isHA ? 'Heikin Ashi' : 'Regular'}, freshPrice=${currentPrice})`)
                 const strategy = parsePineScript(us.script.script_content)
                 // Force USDT-M futures for futures-only symbols (XAU, XAG)
                 const rawMarketType = us.script.market_type || 'futures'
@@ -3297,6 +3376,35 @@ Deno.serve(async (req) => {
                       reason: `Same direction: ${currentDirection} position already open, ignoring ${signal.action} signal`,
                     })
                     continue
+                  }
+
+                  // ===== PROFIT ANALYSIS GUARD =====
+                  // Before flipping or closing, check if current trade is profitable.
+                  // If in profit, HOLD the position — don't flip/close prematurely.
+                  // Analysis polls price every 3s for a timeframe-proportional window.
+                  if (currentPosition.entry_price && currentPosition.entry_price > 0) {
+                    const profitResult = await analyzeTradeProfitability(
+                      symbol,
+                      currentPosition.entry_price,
+                      currentDirection as 'BUY' | 'SELL',
+                      timeframe
+                    )
+                    
+                    if (profitResult.isProfitable) {
+                      console.log(`[ENGINE] PROFIT-GUARD: Current ${currentDirection} trade is profitable (avg PnL ${profitResult.avgPnlPercent.toFixed(3)}%) — HOLDING position, ignoring ${signal.action} signal`)
+                      results.push({
+                        scriptId: us.script_id,
+                        scriptName: us.script.name,
+                        userId: us.user_id,
+                        symbol,
+                        timeframe,
+                        signal,
+                        executed: false,
+                        reason: `Profit guard: current ${currentDirection} trade is profitable (${profitResult.avgPnlPercent.toFixed(3)}% avg over ${profitResult.samples} checks). Holding position.`,
+                      })
+                      continue
+                    }
+                    console.log(`[ENGINE] PROFIT-GUARD: Current trade NOT profitable (avg PnL ${profitResult.avgPnlPercent.toFixed(3)}%) — proceeding with ${tradeMechanism === 'flip' ? 'flip' : 'close'}`)
                   }
 
                   // Case: OPPOSITE direction signal → depends on trade mechanism
