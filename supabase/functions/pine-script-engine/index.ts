@@ -3110,7 +3110,7 @@ Deno.serve(async (req) => {
                   .eq('symbol', symbol)
                   .eq('signal_type', signal.action)
                   .gte('created_at', dedupWindowStart)
-                  .in('status', ['OPEN', 'PENDING', 'CLOSED'])
+                  .in('status', ['OPEN', 'PENDING'])
                   .order('created_at', { ascending: false })
                   .limit(1)
                   .maybeSingle()
