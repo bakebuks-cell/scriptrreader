@@ -3507,6 +3507,56 @@ Deno.serve(async (req) => {
         )
       }
 
+      case 'close-trade': {
+        // Close a single OPEN/PENDING trade by ID
+        const authHeader = req.headers.get('Authorization')
+        if (!authHeader) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+
+        const token = authHeader.replace('Bearer ', '')
+        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token)
+        if (authError || !authUser) {
+          return new Response(JSON.stringify({ error: 'Invalid token' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+
+        const closeBody = await req.json().catch(() => ({}))
+        const { tradeId } = closeBody
+        if (!tradeId) {
+          return new Response(JSON.stringify({ error: 'Missing tradeId' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+
+        console.log(`[CLOSE-TRADE] User ${authUser.id}, tradeId=${tradeId}`)
+
+        const { data: trade, error: tradeErr } = await supabase
+          .from('trades')
+          .select('id, user_id, script_id, symbol, signal_type, entry_price, timeframe')
+          .eq('id', tradeId)
+          .eq('user_id', authUser.id)
+          .in('status', ['OPEN', 'PENDING'])
+          .maybeSingle()
+
+        if (tradeErr || !trade) {
+          return new Response(JSON.stringify({ error: tradeErr?.message || 'Trade not found or already closed' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+
+        // Get market type from script
+        let marketType = 'futures'
+        if (trade.script_id) {
+          const { data: script } = await supabase.from('pine_scripts').select('market_type').eq('id', trade.script_id).maybeSingle()
+          if (script?.market_type) marketType = script.market_type
+        }
+
+        const currentPrice = await getCurrentPrice(trade.symbol).catch(() => 0)
+        const result = await closeOpenTrade(supabase, trade as any, currentPrice, marketType, 'Manual close by user (single)')
+        console.log(`[CLOSE-TRADE] Result: ${JSON.stringify(result)}`)
+
+        return new Response(
+          JSON.stringify({ tradeId: trade.id, symbol: trade.symbol, ...result }),
+          { status: result.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
       case 'parse': {
         const body = await req.json()
         const { scriptContent } = body
