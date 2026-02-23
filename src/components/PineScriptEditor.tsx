@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Shield, Power, AlertTriangle } from 'lucide-react';
+import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Shield, Power, AlertTriangle, Globe } from 'lucide-react';
 import { AVAILABLE_TIMEFRAMES, MAX_SYMBOLS_PER_SCRIPT } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { useEvaluateScript, useRunEngine } from '@/hooks/usePineScriptEngine';
@@ -112,6 +112,23 @@ export default function PineScriptEditor({
   const [isRunning, setIsRunning] = useState(false);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
+
+  // Validation state
+  interface ScriptValidation {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+    detectedIndicators: string[];
+    hasEntryConditions: boolean;
+    hasExitConditions: boolean;
+    usedDefaultFallback: boolean;
+  }
+  const [validationResult, setValidationResult] = useState<ScriptValidation | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [showValidationSummary, setShowValidationSummary] = useState(false);
+
+  const isScriptValidated = validationResult?.valid === true;
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -125,7 +142,6 @@ export default function PineScriptEditor({
 
   useEffect(() => {
     if (selectedScript) {
-      // Get symbols from trading_pairs or fall back to symbol
       const symbols = selectedScript.trading_pairs?.length 
         ? selectedScript.trading_pairs 
         : [selectedScript.symbol];
@@ -149,6 +165,9 @@ export default function PineScriptEditor({
         max_trades_per_day: selectedScript.max_trades_per_day || 10,
         trade_mechanism: (selectedScript as any).trade_mechanism || 'plain',
       });
+      // Reset validation when switching scripts
+      setValidationResult(null);
+      setShowValidationSummary(false);
     }
   }, [selectedScript]);
 
@@ -165,15 +184,17 @@ export default function PineScriptEditor({
     setSelectedScript(null);
     setIsCreating(false);
     setActiveTab('strategy');
+    setValidationResult(null);
+    setShowValidationSummary(false);
   };
 
   const handleSave = async () => {
-    if (!formData.name.trim()) {
-      toast({ title: 'Error', description: 'Script name is required', variant: 'destructive' });
+    if (!isScriptValidated) {
+      toast({ title: 'Validation Required', description: 'Test your script first before saving', variant: 'destructive' });
       return;
     }
-    if (!formData.script_content.trim()) {
-      toast({ title: 'Error', description: 'Script content is required', variant: 'destructive' });
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Script name is required', variant: 'destructive' });
       return;
     }
     if (formData.allowed_timeframes.length === 0) {
@@ -189,16 +210,15 @@ export default function PineScriptEditor({
       return;
     }
 
-    // Build the full data, using first symbol as primary and all symbols in trading_pairs
     const fullData = {
       name: formData.name,
       description: formData.description,
-      symbol: formData.symbols[0], // Primary symbol (first in list)
+      symbol: formData.symbols[0],
       script_content: formData.script_content,
       allowed_timeframes: formData.allowed_timeframes,
       is_active: formData.is_active,
       ...botConfig,
-      trading_pairs: formData.symbols, // All selected symbols
+      trading_pairs: formData.symbols,
       multi_pair_mode: formData.symbols.length > 1,
     };
 
@@ -248,34 +268,72 @@ export default function PineScriptEditor({
       toast({ title: 'Error', description: 'Script content is required', variant: 'destructive' });
       return;
     }
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Script name is required', variant: 'destructive' });
+      return;
+    }
     if (formData.symbols.length === 0) {
       toast({ title: 'Error', description: 'At least one symbol is required', variant: 'destructive' });
       return;
     }
-    
-    setShowSignalPreview(true);
-    // Test with the first symbol
-    evaluateScript.mutate(
-      {
-        scriptContent: formData.script_content,
-        symbol: formData.symbols[0],
-        timeframe: formData.allowed_timeframes[0] || '1h',
-      },
-      {
-        onSuccess: () => {
-          // Auto-activate bot on successful test (item #8 from requirements)
-          if (selectedScript && onToggleActivation) {
-            const currentActive = usePerUserActivation && 'user_is_active' in selectedScript
-              ? selectedScript.user_is_active
-              : selectedScript.is_active;
-            if (!currentActive) {
-              onToggleActivation(selectedScript.id, true);
-              toast({ title: 'Bot Activated', description: 'Script tested successfully — bot is now running' });
-            }
-          }
+    if (formData.allowed_timeframes.length === 0) {
+      toast({ title: 'Error', description: 'Select at least one timeframe', variant: 'destructive' });
+      return;
+    }
+
+    setIsValidating(true);
+    setShowValidationSummary(true);
+    setValidationResult(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pine-script-engine?action=validate-script`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
         },
+        body: JSON.stringify({ scriptContent: formData.script_content }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        throw new Error(err.error || `Validation request failed (${response.status})`);
       }
-    );
+
+      const result = await response.json();
+      setValidationResult(result);
+
+      if (result.valid) {
+        toast({ title: '✅ Script Valid', description: 'All checks passed. You can now save.' });
+      } else {
+        toast({ title: '❌ Script Invalid', description: `${result.errors.length} error(s) found. Fix them before saving.`, variant: 'destructive' });
+      }
+    } catch (err: any) {
+      setValidationResult({
+        valid: false,
+        errors: [err.message || 'Validation request failed'],
+        warnings: [],
+        detectedIndicators: [],
+        hasEntryConditions: false,
+        hasExitConditions: false,
+        usedDefaultFallback: false,
+      });
+      toast({ title: 'Validation Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Reset validation when script content changes
+  const handleScriptContentChange = (value: string) => {
+    setFormData(prev => ({ ...prev, script_content: value }));
+    if (validationResult) {
+      setValidationResult(null);
+      setShowValidationSummary(false);
+    }
   };
 
   const isAttached = selectedScript ? attachedScriptIds.includes(selectedScript.id) : false;
@@ -537,43 +595,124 @@ export default function PineScriptEditor({
                     <Textarea
                       id="script"
                       value={formData.script_content}
-                      onChange={(e) => setFormData(prev => ({ ...prev, script_content: e.target.value }))}
+                      onChange={(e) => handleScriptContentChange(e.target.value)}
                       className="font-mono text-sm min-h-[300px] bg-accent/30"
                       placeholder="Enter your Pine Script code here..."
                       disabled={readOnly || companyMode}
                     />
                   </div>
 
-                  {/* Signal Preview Panel */}
-                  {showSignalPreview && (
+                  {/* Validation Summary Panel */}
+                  {showValidationSummary && (
                     <div className="mt-6 pt-6 border-t">
                       <div className="flex items-center justify-between mb-4">
-                        <h4 className="text-sm font-medium text-muted-foreground">SIGNAL EVALUATION RESULT</h4>
+                        <h4 className="text-sm font-medium text-muted-foreground">SCRIPT VALIDATION SUMMARY</h4>
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          onClick={() => setShowSignalPreview(false)}
+                          onClick={() => setShowValidationSummary(false)}
                         >
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
-                      {evaluateScript.isPending ? (
+
+                      {/* API Endpoint */}
+                      <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground bg-accent/30 rounded px-3 py-2 font-mono">
+                        <Globe className="h-3 w-3 shrink-0" />
+                        <span className="truncate">POST {import.meta.env.VITE_SUPABASE_URL}/functions/v1/pine-script-engine?action=validate-script</span>
+                      </div>
+
+                      {isValidating ? (
                         <div className="flex items-center justify-center py-8">
                           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                          <span className="ml-3 text-muted-foreground">Evaluating script against live market data...</span>
+                          <span className="ml-3 text-muted-foreground">Validating script...</span>
                         </div>
-                      ) : evaluateScript.isError ? (
-                        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive">
-                          <p className="font-medium">Evaluation failed</p>
-                          <p className="text-sm mt-1">{evaluateScript.error?.message || 'Unknown error'}</p>
+                      ) : validationResult ? (
+                        <div className="space-y-3">
+                          {/* Status */}
+                          <div className={`p-3 rounded-lg border ${validationResult.valid ? 'border-green-500/30 bg-green-500/5' : 'border-destructive/30 bg-destructive/5'}`}>
+                            <p className={`font-semibold text-sm ${validationResult.valid ? 'text-green-600' : 'text-destructive'}`}>
+                              {validationResult.valid ? '✅ Script is Valid — Ready to Save' : '❌ Script is Invalid — Fix Errors Below'}
+                            </p>
+                          </div>
+
+                          {/* Detected Indicators */}
+                          <div className="p-3 rounded-lg border border-border bg-accent/20">
+                            <p className="text-xs font-semibold text-muted-foreground mb-2">DETECTED INDICATORS</p>
+                            {validationResult.detectedIndicators.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                {validationResult.detectedIndicators.map((ind, i) => (
+                                  <Badge key={i} variant="secondary">{ind}</Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-destructive">None detected — script must use supported indicators</p>
+                            )}
+                          </div>
+
+                          {/* Entry/Exit Conditions */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className={`p-3 rounded-lg border ${validationResult.hasEntryConditions ? 'border-green-500/30 bg-green-500/5' : 'border-destructive/30 bg-destructive/5'}`}>
+                              <p className="text-xs font-semibold text-muted-foreground">ENTRY CONDITIONS</p>
+                              <p className={`text-sm font-medium mt-1 ${validationResult.hasEntryConditions ? 'text-green-600' : 'text-destructive'}`}>
+                                {validationResult.hasEntryConditions ? '✅ Found' : '❌ Missing'}
+                              </p>
+                            </div>
+                            <div className={`p-3 rounded-lg border ${validationResult.hasExitConditions ? 'border-green-500/30 bg-green-500/5' : 'border-destructive/30 bg-destructive/5'}`}>
+                              <p className="text-xs font-semibold text-muted-foreground">EXIT CONDITIONS</p>
+                              <p className={`text-sm font-medium mt-1 ${validationResult.hasExitConditions ? 'text-green-600' : 'text-destructive'}`}>
+                                {validationResult.hasExitConditions ? '✅ Found' : '❌ Missing'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Errors */}
+                          {validationResult.errors.length > 0 && (
+                            <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5">
+                              <p className="text-xs font-semibold text-destructive mb-2">ERRORS ({validationResult.errors.length})</p>
+                              <ul className="text-sm text-destructive list-disc pl-4 space-y-1">
+                                {validationResult.errors.map((err, i) => (
+                                  <li key={i}>{err}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Warnings */}
+                          {validationResult.warnings.length > 0 && (
+                            <div className="p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/5">
+                              <p className="text-xs font-semibold text-yellow-600 mb-2">WARNINGS ({validationResult.warnings.length})</p>
+                              <ul className="text-sm text-yellow-600 list-disc pl-4 space-y-1">
+                                {validationResult.warnings.map((w, i) => (
+                                  <li key={i}>{w}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Missing Fields Check */}
+                          <div className="p-3 rounded-lg border border-border bg-accent/20">
+                            <p className="text-xs font-semibold text-muted-foreground mb-2">FIELD VALIDATION</p>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div className="flex items-center gap-1.5">
+                                {formData.name.trim() ? <Check className="h-3.5 w-3.5 text-green-600" /> : <X className="h-3.5 w-3.5 text-destructive" />}
+                                <span>Script Name</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {formData.symbols.length > 0 ? <Check className="h-3.5 w-3.5 text-green-600" /> : <X className="h-3.5 w-3.5 text-destructive" />}
+                                <span>Symbols ({formData.symbols.length})</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {formData.allowed_timeframes.length > 0 ? <Check className="h-3.5 w-3.5 text-green-600" /> : <X className="h-3.5 w-3.5 text-destructive" />}
+                                <span>Timeframe</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {formData.script_content.trim() ? <Check className="h-3.5 w-3.5 text-green-600" /> : <X className="h-3.5 w-3.5 text-destructive" />}
+                                <span>Script Content</span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                      ) : evaluateScript.data ? (
-                        <SignalPreview
-                          signal={evaluateScript.data.signal}
-                          currentPrice={evaluateScript.data.currentPrice}
-                          indicators={evaluateScript.data.indicators}
-                          symbol={formData.symbols[0] || 'BTCUSDT'}
-                        />
                       ) : null}
                     </div>
                   )}
@@ -623,28 +762,31 @@ export default function PineScriptEditor({
             {(isCreating || selectedScript) && (
               <div className="flex items-center justify-between pt-4 border-t">
                 <div className="flex items-center gap-2">
-                  {(!readOnly || companyMode) && (
-                    <>
-                      <Button onClick={handleSave} disabled={isSaving}>
-                        <Save className="h-4 w-4 mr-2" />
-                        {isSaving ? 'Saving...' : companyMode ? 'Save Settings' : 'Save'}
-                      </Button>
-                    </>
-                  )}
-
-                  {/* Test Script - available for own scripts and company mode */}
+                  {/* Test Script FIRST - must validate before save */}
                   <Button 
                     variant="secondary" 
                     onClick={handleTestScript}
-                    disabled={evaluateScript.isPending}
+                    disabled={isValidating || !formData.script_content.trim()}
                   >
-                    {evaluateScript.isPending ? (
+                    {isValidating ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
                       <FlaskConical className="h-4 w-4 mr-2" />
                     )}
-                    Test Script
+                    {isValidating ? 'Validating...' : 'Test Script'}
                   </Button>
+
+                  {/* Save - only enabled after validation passes */}
+                  {(!readOnly || companyMode) && (
+                    <Button 
+                      onClick={handleSave} 
+                      disabled={isSaving || !isScriptValidated}
+                      title={!isScriptValidated ? 'Test your script first to enable saving' : ''}
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {isSaving ? 'Saving...' : companyMode ? 'Save Settings' : 'Save'}
+                    </Button>
+                  )}
 
 
 
@@ -727,7 +869,7 @@ export default function PineScriptEditor({
                             setIsRunning(false);
                           }
                         }}
-                        disabled={isToggling || isRunning}
+                        disabled={isToggling || isRunning || (!isScriptValidated && selectedScript?.validation_status !== 'valid')}
                         className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
                       >
                         {(isToggling || isRunning) ? (
