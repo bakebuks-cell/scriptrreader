@@ -23,7 +23,6 @@ export interface PineScript {
   multi_pair_mode: boolean;
   position_size_type: string;
   position_size_value: number;
-  max_capital: number;
   leverage: number;
   max_trades_per_day: number;
   // Validation fields
@@ -50,7 +49,6 @@ export interface CreatePineScriptInput {
   multi_pair_mode?: boolean;
   position_size_type?: string;
   position_size_value?: number;
-  max_capital?: number;
   leverage?: number;
   max_trades_per_day?: number;
 }
@@ -111,7 +109,6 @@ export function usePineScripts() {
         ...(userSettings.allowed_timeframes !== undefined && { allowed_timeframes: userSettings.allowed_timeframes }),
         ...(userSettings.market_type !== undefined && { market_type: userSettings.market_type }),
         ...(userSettings.position_size_value !== undefined && { position_size_value: userSettings.position_size_value }),
-        ...(userSettings.max_capital !== undefined && { max_capital: userSettings.max_capital }),
         ...(userSettings.max_trades_per_day !== undefined && { max_trades_per_day: userSettings.max_trades_per_day }),
         ...(userSettings.trade_mechanism !== undefined && { trade_mechanism: userSettings.trade_mechanism }),
         user_is_active: userRecord?.is_active ?? false,
@@ -153,7 +150,6 @@ export function usePineScripts() {
         multi_pair_mode: input.multi_pair_mode ?? false,
         position_size_type: input.position_size_type || 'fixed',
         position_size_value: input.position_size_value || 100,
-        max_capital: input.max_capital || 1000,
         leverage: input.leverage || 1,
         max_trades_per_day: input.max_trades_per_day || 10,
         created_by: user.id,
@@ -211,7 +207,6 @@ export function usePineScripts() {
         if (updates.allowed_timeframes !== undefined) userSettings.allowed_timeframes = updates.allowed_timeframes;
         if (updates.market_type !== undefined) userSettings.market_type = updates.market_type;
         if (updates.position_size_value !== undefined) userSettings.position_size_value = updates.position_size_value;
-        if (updates.max_capital !== undefined) userSettings.max_capital = updates.max_capital;
         if (updates.max_trades_per_day !== undefined) userSettings.max_trades_per_day = updates.max_trades_per_day;
         if ((updates as any).trade_mechanism !== undefined) userSettings.trade_mechanism = (updates as any).trade_mechanism;
 
@@ -248,7 +243,6 @@ export function usePineScripts() {
       if (updates.multi_pair_mode !== undefined) cleanUpdates.multi_pair_mode = updates.multi_pair_mode;
       if (updates.position_size_type !== undefined) cleanUpdates.position_size_type = updates.position_size_type;
       if (updates.position_size_value !== undefined) cleanUpdates.position_size_value = updates.position_size_value;
-      if (updates.max_capital !== undefined) cleanUpdates.max_capital = updates.max_capital;
       if (updates.leverage !== undefined) cleanUpdates.leverage = updates.leverage;
       if (updates.max_trades_per_day !== undefined) cleanUpdates.max_trades_per_day = updates.max_trades_per_day;
 
@@ -494,7 +488,6 @@ export function useAdminPineScripts() {
         multi_pair_mode: input.multi_pair_mode ?? false,
         position_size_type: input.position_size_type || 'fixed',
         position_size_value: input.position_size_value || 100,
-        max_capital: input.max_capital || 1000,
         leverage: input.leverage || 1,
         max_trades_per_day: input.max_trades_per_day || 10,
         created_by: user.id,
@@ -537,7 +530,6 @@ export function useAdminPineScripts() {
       if (updates.multi_pair_mode !== undefined) cleanUpdates.multi_pair_mode = updates.multi_pair_mode;
       if (updates.position_size_type !== undefined) cleanUpdates.position_size_type = updates.position_size_type;
       if (updates.position_size_value !== undefined) cleanUpdates.position_size_value = updates.position_size_value;
-      if (updates.max_capital !== undefined) cleanUpdates.max_capital = updates.max_capital;
       if (updates.leverage !== undefined) cleanUpdates.leverage = updates.leverage;
       if (updates.max_trades_per_day !== undefined) cleanUpdates.max_trades_per_day = updates.max_trades_per_day;
 

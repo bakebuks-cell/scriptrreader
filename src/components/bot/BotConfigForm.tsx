@@ -48,7 +48,6 @@ export interface BotConfig {
   multi_pair_mode: boolean;
   position_size_type: string;
   position_size_value: number;
-  max_capital: number;
   leverage: number;
   max_trades_per_day: number;
   trade_mechanism?: TradeMechanism;
@@ -65,7 +64,6 @@ export interface StrategyConfig {
 }
 
 export interface AdminLimits {
-  max_capital: number;
   max_position_size: number;
   max_trades_per_day: number;
   max_leverage: number;
@@ -146,9 +144,6 @@ export default function BotConfigForm({
     // Enforce admin limits when in company mode
     let clampedValue = value;
     if (adminLimits) {
-      if (key === 'max_capital' && typeof value === 'number') {
-        clampedValue = Math.min(value, adminLimits.max_capital) as BotConfig[K];
-      }
       if (key === 'position_size_value' && typeof value === 'number') {
         clampedValue = Math.min(value, adminLimits.max_position_size) as BotConfig[K];
       }
@@ -622,7 +617,7 @@ export default function BotConfigForm({
             </CardTitle>
           </div>
           <CardDescription className="text-xs">
-            Configure position size and maximum capital limits
+            Configure margin amount for position sizing
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -645,52 +640,30 @@ export default function BotConfigForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="position_size" className="text-xs text-muted-foreground">
-                {config.position_size_type === 'fixed' ? 'Margin Amount (USDT)' : 'Percentage of Wallet (%)'}
-              </Label>
-              <Input
-                id="position_size"
-                type="number"
-                value={config.position_size_value}
-                onChange={(e) => handleChange('position_size_value', parseFloat(e.target.value) || 0)}
-                min={config.position_size_type === 'percentage' ? 1 : 10}
-                max={adminLimits ? adminLimits.max_position_size : (config.position_size_type === 'percentage' ? 100 : 1000000)}
-                step={config.position_size_type === 'percentage' ? 1 : 10}
-                disabled={disabled}
-              />
-              {adminLimits && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Max: {adminLimits.max_position_size} {config.position_size_type === 'percentage' ? '%' : 'USDT'}
-                </p>
-              )}
-              {config.position_size_type === 'fixed' && isFutures && config.leverage > 1 && (
-                <p className="text-xs text-primary mt-1 font-medium">
-                  Actual trade amount: {(config.position_size_value * config.leverage).toLocaleString()} USDT ({config.position_size_value} × {config.leverage}x)
-                </p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="max_capital" className="text-xs text-muted-foreground">
-                Maximum Capital Limit (USDT)
-              </Label>
-              <Input
-                id="max_capital"
-                type="number"
-                value={config.max_capital}
-                onChange={(e) => handleChange('max_capital', parseFloat(e.target.value) || 0)}
-                min={100}
-                max={adminLimits ? adminLimits.max_capital : 10000000}
-                step={100}
-                disabled={disabled}
-              />
-              {adminLimits && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Max: {adminLimits.max_capital} USDT
-                </p>
-              )}
-            </div>
+          <div>
+            <Label htmlFor="position_size" className="text-xs text-muted-foreground">
+              {config.position_size_type === 'fixed' ? 'Margin Amount (USDT)' : 'Percentage of Wallet (%)'}
+            </Label>
+            <Input
+              id="position_size"
+              type="number"
+              value={config.position_size_value}
+              onChange={(e) => handleChange('position_size_value', parseFloat(e.target.value) || 0)}
+              min={config.position_size_type === 'percentage' ? 1 : 10}
+              max={adminLimits ? adminLimits.max_position_size : (config.position_size_type === 'percentage' ? 100 : 1000000)}
+              step={config.position_size_type === 'percentage' ? 1 : 10}
+              disabled={disabled}
+            />
+            {adminLimits && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Max: {adminLimits.max_position_size} {config.position_size_type === 'percentage' ? '%' : 'USDT'}
+              </p>
+            )}
+            {config.position_size_type === 'fixed' && isFutures && config.leverage > 1 && (
+              <p className="text-xs text-primary mt-1 font-medium">
+                Actual trade amount: {(config.position_size_value * config.leverage).toLocaleString()} USDT ({config.position_size_value} × {config.leverage}x)
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

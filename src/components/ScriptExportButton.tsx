@@ -29,7 +29,6 @@ interface PineScript {
   multi_pair_mode?: boolean;
   position_size_type?: string;
   position_size_value?: number;
-  max_capital?: number;
   leverage?: number;
   max_trades_per_day?: number;
 }
@@ -96,7 +95,6 @@ export default function ScriptExportButton({
         multi_pair_mode: script.multi_pair_mode,
         position_size_type: script.position_size_type,
         position_size_value: script.position_size_value,
-        max_capital: script.max_capital,
         leverage: script.leverage,
         max_trades_per_day: script.max_trades_per_day,
       },
