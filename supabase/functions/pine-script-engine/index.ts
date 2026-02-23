@@ -3066,32 +3066,9 @@ Deno.serve(async (req) => {
 
                   console.log(`[ENGINE] ST state-based (${tradeMechanism}): SuperTrend=${currentSTDir === 1 ? 'BULLISH' : 'BEARISH'}, position=${positionAction || 'NONE'}, desired=${desiredAction}`)
 
-                  // Bot start filter: if bot just started, require a direction change AFTER start
-                  // to avoid opening into a pre-existing trend
-                  if (botStartedAt && !currentPosition) {
-                    const minCandleOpenTime = new Date(botStartedAt).getTime()
-                    // Find last direction change
-                    let lastChangeIdx = -1
-                    for (let di = stDirection.length - 1; di > 0; di--) {
-                      if (stDirection[di] !== stDirection[di - 1]) {
-                        lastChangeIdx = di
-                        break
-                      }
-                    }
-                    // Map supertrend index to ohlcv index
-                    const atrOffset = 10 // default SuperTrend ATR period
-                    const ohlcvChangeIdx = lastChangeIdx >= 0 ? lastChangeIdx + atrOffset : -1
-                    const changeCandleTime = ohlcvChangeIdx >= 0 && ohlcvChangeIdx < ohlcv.length
-                      ? ohlcv[ohlcvChangeIdx].openTime : 0
-
-                    if (changeCandleTime < minCandleOpenTime) {
-                      console.log(`[ENGINE] FLIP+ST: Last direction change (${new Date(changeCandleTime).toISOString()}) predates bot start (${botStartedAt}) — waiting for fresh signal`)
-                      signal = { action: 'NONE', price: currentPrice, reason: 'Waiting for fresh SuperTrend direction change after bot start' }
-                    } else {
-                      console.log(`[ENGINE] FLIP+ST: Direction change after bot start — proceeding with ${desiredAction}`)
-                      signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
-                    }
-                  } else if (positionAction === desiredAction) {
+                  // State-based: immediately enter based on current SuperTrend direction
+                  // No bot_started_at filter — the user wants to trade the current trend
+                  if (positionAction === desiredAction) {
                     // Position already aligned with SuperTrend — hold
                     signal = { action: 'NONE', price: currentPrice, reason: `Position aligned with SuperTrend (${currentSTDir === 1 ? 'bullish' : 'bearish'})` }
                   } else if (!positionAction) {
@@ -3109,13 +3086,10 @@ Deno.serve(async (req) => {
                       .maybeSingle()
 
                     if (lastClosed && lastClosed.signal_type === desiredAction && lastClosed.closed_at) {
-                      // If the last closed trade was the same direction AND closed within the last 2 candle intervals,
-                      // do NOT re-enter — wait for a SuperTrend direction change first
                       const closedAgo = Date.now() - new Date(lastClosed.closed_at).getTime()
                       const candleMs = getIntervalMs(timeframe)
                       const suppressionWindow = candleMs * 2
 
-                      // Find last direction change index in SuperTrend
                       let lastSTChangeIdx = -1
                       for (let di = stDirection.length - 1; di > 0; di--) {
                         if (stDirection[di] !== stDirection[di - 1]) {
@@ -3128,24 +3102,23 @@ Deno.serve(async (req) => {
                       const stChangeTime = stChangeOhlcvIdx >= 0 && stChangeOhlcvIdx < ohlcv.length
                         ? ohlcv[stChangeOhlcvIdx].openTime : 0
 
-                      // Only suppress if there was NO fresh direction change after the trade closed
                       const freshChangeAfterClose = stChangeTime > new Date(lastClosed.closed_at).getTime()
 
                       if (!freshChangeAfterClose && closedAgo < suppressionWindow) {
-                        console.log(`[ENGINE] FLIP+ST: Suppressed re-entry ${desiredAction} — last ${desiredAction} trade closed ${(closedAgo / 1000).toFixed(0)}s ago (SL/TP hit), waiting for fresh direction change`)
+                        console.log(`[ENGINE] ST: Suppressed re-entry ${desiredAction} — last ${desiredAction} trade closed ${(closedAgo / 1000).toFixed(0)}s ago (SL/TP hit), waiting for fresh direction change`)
                         signal = { action: 'NONE', price: currentPrice, reason: `Suppressed re-entry: last ${desiredAction} closed recently by SL/TP, waiting for direction change` }
                       } else {
                         signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
-                        console.log(`[ENGINE] FLIP+ST: Signal=${desiredAction} (new entry after close, fresh change=${freshChangeAfterClose})`)
+                        console.log(`[ENGINE] ST: Signal=${desiredAction} (new entry after close, fresh change=${freshChangeAfterClose})`)
                       }
                     } else {
                       signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
-                      console.log(`[ENGINE] FLIP+ST: Signal=${desiredAction} (new entry, no recent same-direction close)`)
+                      console.log(`[ENGINE] ST: Signal=${desiredAction} (new entry, no recent same-direction close)`)
                     }
                   } else {
                     // Opposite position → flip
                     signal = buildTradeSignal(desiredAction, currentPrice, strategy, indicators, ohlcv, ohlcv.length - 1)
-                    console.log(`[ENGINE] FLIP+ST: Signal=${desiredAction} (flip from ${positionAction})`)
+                    console.log(`[ENGINE] ST: Signal=${desiredAction} (flip from ${positionAction})`)
                   }
                 } else {
                   // Standard event-based evaluation (for plain mode or non-SuperTrend)
