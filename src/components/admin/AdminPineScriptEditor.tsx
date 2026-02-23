@@ -82,7 +82,6 @@ const DEFAULT_BOT_CONFIG: BotConfig = {
   multi_pair_mode: false,
   position_size_type: 'fixed',
   position_size_value: 100,
-  max_capital: 1000,
   leverage: 1,
   max_trades_per_day: 10,
 };
@@ -230,7 +229,6 @@ export default function AdminPineScriptEditor() {
       multi_pair_mode: script.multi_pair_mode || false,
       position_size_type: script.position_size_type || 'fixed',
       position_size_value: script.position_size_value || 100,
-      max_capital: script.max_capital || 1000,
       leverage: script.leverage || 1,
       max_trades_per_day: script.max_trades_per_day || 10,
     });
@@ -343,10 +341,6 @@ export default function AdminPineScriptEditor() {
           <div className="bg-muted/50 rounded p-2">
             <span className="text-muted-foreground">Size:</span>{' '}
             {script.position_size_value} {script.position_size_type === 'percentage' ? '%' : 'USDT'}
-          </div>
-          <div className="bg-muted/50 rounded p-2">
-            <span className="text-muted-foreground">Max Cap:</span>{' '}
-            {script.max_capital} USDT
           </div>
           <div className="bg-muted/50 rounded p-2">
             <span className="text-muted-foreground">Max Trades:</span>{' '}
@@ -609,10 +603,6 @@ export default function AdminPineScriptEditor() {
                     <div className="bg-muted/50 rounded p-2">
                       <span className="text-muted-foreground">Size:</span>{' '}
                       {script.position_size_value} {script.position_size_type === 'percentage' ? '%' : 'USDT'}
-                    </div>
-                    <div className="bg-muted/50 rounded p-2">
-                      <span className="text-muted-foreground">Max Cap:</span>{' '}
-                      {script.max_capital} USDT
                     </div>
                     <div className="bg-muted/50 rounded p-2">
                       <span className="text-muted-foreground">Max Trades:</span>{' '}

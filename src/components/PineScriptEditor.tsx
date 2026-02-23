@@ -41,7 +41,6 @@ interface PineScript {
   multi_pair_mode?: boolean;
   position_size_type?: string;
   position_size_value?: number;
-  max_capital?: number;
   leverage?: number;
   max_trades_per_day?: number;
   // Validation fields
@@ -76,7 +75,6 @@ const DEFAULT_BOT_CONFIG: BotConfig = {
   multi_pair_mode: false,
   position_size_type: 'fixed',
   position_size_value: 100,
-  max_capital: 1000,
   leverage: 1,
   max_trades_per_day: 10,
   trade_mechanism: 'plain',
@@ -147,7 +145,6 @@ export default function PineScriptEditor({
         multi_pair_mode: symbols.length > 1,
         position_size_type: selectedScript.position_size_type || 'fixed',
         position_size_value: selectedScript.position_size_value || 100,
-        max_capital: selectedScript.max_capital || 1000,
         leverage: selectedScript.leverage || 1,
         max_trades_per_day: selectedScript.max_trades_per_day || 10,
         trade_mechanism: (selectedScript as any).trade_mechanism || 'plain',
