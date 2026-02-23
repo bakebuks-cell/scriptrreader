@@ -2793,7 +2793,8 @@ Deno.serve(async (req) => {
               leverage,
               position_size_type,
               position_size_value,
-              validation_status
+              validation_status,
+              candle_type
             )
           `)
           .eq('is_active', true)
