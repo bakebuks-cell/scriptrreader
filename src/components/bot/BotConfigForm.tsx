@@ -534,12 +534,10 @@ export default function BotConfigForm({
                 </Badge>
               </div>
               <Slider
-                value={[LEVERAGE_OPTIONS.indexOf(config.leverage as typeof LEVERAGE_OPTIONS[number]) !== -1 
-                  ? LEVERAGE_OPTIONS.indexOf(config.leverage as typeof LEVERAGE_OPTIONS[number])
-                  : 0]}
-                onValueChange={([index]) => handleChange('leverage', LEVERAGE_OPTIONS[index] ?? 1)}
-                min={0}
-                max={LEVERAGE_OPTIONS.length - 1}
+                value={[config.leverage]}
+                onValueChange={([val]) => handleChange('leverage', val ?? 1)}
+                min={1}
+                max={125}
                 step={1}
                 disabled={disabled}
                 className="w-full"

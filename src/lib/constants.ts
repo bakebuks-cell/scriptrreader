@@ -51,9 +51,7 @@ export const POSITION_SIZE_TYPES = [
 ] as const;
 
 // Leverage options
-export const LEVERAGE_OPTIONS = [
-  1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125
-] as const;
+export const LEVERAGE_OPTIONS = Array.from({ length: 125 }, (_, i) => i + 1) as unknown as readonly number[];
 
 // Popular trading pairs (including precious metals)
 export const POPULAR_TRADING_PAIRS = [
