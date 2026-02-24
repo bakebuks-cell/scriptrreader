@@ -46,9 +46,10 @@ function calculateScriptAnalytics(trades: Trade[], script: PineScript): ScriptAn
   const tradesWithPnL = closedTrades.map(trade => {
     if (!trade.entry_price || !trade.exit_price) return { ...trade, pnl: 0 };
     
-    const pnl = trade.signal_type === 'BUY' 
+    const priceDiff = trade.signal_type === 'BUY' 
       ? trade.exit_price - trade.entry_price 
       : trade.entry_price - trade.exit_price;
+    const pnl = trade.quantity ? priceDiff * trade.quantity : priceDiff;
     
     return { ...trade, pnl };
   });

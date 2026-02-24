@@ -468,7 +468,9 @@ export type Database = {
           error_message: string | null
           exit_price: number | null
           id: string
+          leverage: number | null
           opened_at: string | null
+          quantity: number | null
           script_id: string | null
           signal_id: string | null
           signal_type: Database["public"]["Enums"]["signal_type"]
@@ -489,7 +491,9 @@ export type Database = {
           error_message?: string | null
           exit_price?: number | null
           id?: string
+          leverage?: number | null
           opened_at?: string | null
+          quantity?: number | null
           script_id?: string | null
           signal_id?: string | null
           signal_type: Database["public"]["Enums"]["signal_type"]
@@ -510,7 +514,9 @@ export type Database = {
           error_message?: string | null
           exit_price?: number | null
           id?: string
+          leverage?: number | null
           opened_at?: string | null
+          quantity?: number | null
           script_id?: string | null
           signal_id?: string | null
           signal_type?: Database["public"]["Enums"]["signal_type"]

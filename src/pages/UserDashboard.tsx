@@ -142,12 +142,13 @@ export default function UserDashboard() {
   const coinsRemaining = profile?.coins ?? 0;
   const recentTrades = trades.slice(0, 5);
 
-  // Calculate P&L for a single trade
+  // Calculate P&L for a single trade (USDT profit/loss)
   const calcPnL = (trade: typeof trades[0]): number | null => {
     if (!trade.entry_price || !trade.exit_price) return null;
-    return trade.signal_type === 'BUY'
+    const priceDiff = trade.signal_type === 'BUY'
       ? trade.exit_price - trade.entry_price
       : trade.entry_price - trade.exit_price;
+    return trade.quantity ? priceDiff * trade.quantity : priceDiff;
   };
 
   // Total P&L from closed trades
