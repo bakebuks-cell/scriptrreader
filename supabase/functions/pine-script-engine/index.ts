@@ -2206,6 +2206,8 @@ async function executeTrade(
           take_profit: actualTP,
           opened_at: new Date().toISOString(),
           coin_consumed: true,
+          quantity: parseFloat(actualQty),
+          leverage: effectiveLeverage,
         })
         .eq('id', trade.id)
       

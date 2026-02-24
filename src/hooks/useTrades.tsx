@@ -22,6 +22,8 @@ export interface Trade {
   closed_at: string | null;
   created_at: string;
   updated_at: string;
+  quantity: number | null;
+  leverage: number | null;
 }
 
 export function useTrades() {
