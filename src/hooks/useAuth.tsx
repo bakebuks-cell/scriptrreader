@@ -114,33 +114,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cleanEmail = email.trim();
     const cleanPassword = password?.trim() ?? '';
 
+    const isNetworkFetchError = (value: unknown) => {
+      const message = value instanceof Error ? value.message : String(value ?? '');
+      return message.toLowerCase().includes('failed to fetch');
+    };
+
     if (cleanPassword) {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password: cleanPassword,
-      });
+      try {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: cleanPassword,
+        });
 
-      if (!error) {
-        return { error: null };
-      }
+        if (!error) {
+          return { error: null };
+        }
 
-      // Fallback to magic-link sign-in when password flow fails with network errors
-      if (!error.message.toLowerCase().includes('failed to fetch')) {
-        return { error: error as Error };
+        // Only fallback when this is a network fetch issue.
+        if (!isNetworkFetchError(error)) {
+          return { error: error as Error };
+        }
+      } catch (error) {
+        // signInWithPassword can throw TypeError("Failed to fetch") in preview environments.
+        if (!isNetworkFetchError(error)) {
+          return {
+            error: error instanceof Error ? error : new Error('Sign in failed'),
+          };
+        }
       }
     }
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email: cleanEmail,
-      options: {
-        emailRedirectTo: `${getAuthRedirectBaseUrl()}/auth`,
-      },
-    });
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: cleanEmail,
+        options: {
+          emailRedirectTo: `${getAuthRedirectBaseUrl()}/auth`,
+        },
+      });
 
-    return {
-      error: error as Error | null,
-      requiresEmailVerification: !error,
-    };
+      return {
+        error: error as Error | null,
+        requiresEmailVerification: !error,
+      };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error : new Error('Failed to send magic link'),
+      };
+    }
   };
 
   const signUp = async (email: string, password: string) => {
