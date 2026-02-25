@@ -9,7 +9,7 @@ interface AuthContextType {
   session: Session | null;
   role: AppRole | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password?: string) => Promise<{ error: Error | null; requiresEmailVerification?: boolean }>;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   isAdmin: boolean;
@@ -99,26 +99,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error as Error | null };
+  const getAuthRedirectBaseUrl = () => {
+    const origin = window.location.origin;
+    const hostname = window.location.hostname;
+
+    const isPreviewHost =
+      hostname.endsWith('lovableproject.com') || hostname.startsWith('id-preview--');
+
+    // Keep auth redirects stable when running on preview hosts
+    return isPreviewHost ? 'https://scriptrreader.lovable.app' : origin;
+  };
+
+  const signIn = async (email: string, password?: string) => {
+    const cleanEmail = email.trim();
+    const cleanPassword = password?.trim() ?? '';
+
+    if (cleanPassword) {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: cleanPassword,
+      });
+
+      if (!error) {
+        return { error: null };
+      }
+
+      // Fallback to magic-link sign-in when password flow fails with network errors
+      if (!error.message.toLowerCase().includes('failed to fetch')) {
+        return { error: error as Error };
+      }
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: cleanEmail,
+      options: {
+        emailRedirectTo: `${getAuthRedirectBaseUrl()}/auth`,
+      },
+    });
+
+    return {
+      error: error as Error | null,
+      requiresEmailVerification: !error,
+    };
   };
 
   const signUp = async (email: string, password: string) => {
-    // Ensure verification links never point to the preview host.
-    // Preview-host links can route through a Lovable auth-bridge and show "Access Denied".
-    const getAuthRedirectBaseUrl = () => {
-      const origin = window.location.origin;
-      const hostname = window.location.hostname;
-
-      const isPreviewHost =
-        hostname.endsWith('lovableproject.com') || hostname.startsWith('id-preview--');
-
-      return isPreviewHost ? 'https://pine-scribe-flow.lovable.app' : origin;
-    };
-
     const baseUrl = getAuthRedirectBaseUrl();
-    
+
     const { error } = await supabase.auth.signUp({
       email,
       password,

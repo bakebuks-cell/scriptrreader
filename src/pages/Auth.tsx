@@ -61,23 +61,32 @@ export default function Auth() {
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    const { error } = await signIn(email, password);
-    setIsLoading(false);
-    
-    if (error) {
-      // Check for unverified email error
-      if (error.message.includes('Email not confirmed')) {
+
+    try {
+      const { error, requiresEmailVerification } = await signIn(email, password);
+
+      if (error) {
+        // Check for unverified email error
+        if (error.message.includes('Email not confirmed')) {
+          toast({
+            title: 'Email Not Verified',
+            description: 'Please check your inbox and verify your email before signing in.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({ title: 'Error', description: error.message, variant: 'destructive' });
+        }
+      } else if (requiresEmailVerification) {
         toast({
-          title: 'Email Not Verified',
-          description: 'Please check your inbox and verify your email before signing in.',
-          variant: 'destructive',
+          title: 'Magic Link Sent',
+          description: 'Check your email and click the sign-in link to continue.',
         });
       } else {
-        toast({ title: 'Error', description: error.message, variant: 'destructive' });
+        const targetRoute = isAdminEmail(email) ? '/admin' : '/dashboard';
+        navigate(targetRoute);
       }
-    } else {
-      const targetRoute = isAdminEmail(email) ? '/admin' : '/dashboard';
-      navigate(targetRoute);
+    } finally {
+      setIsLoading(false);
     }
   };
 
