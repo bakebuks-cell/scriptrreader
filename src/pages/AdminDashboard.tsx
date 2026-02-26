@@ -33,10 +33,7 @@ import CoinManagement from '@/components/admin/CoinManagement';
 import AdminProfile from '@/components/profile/AdminProfile';
 import AdminPineScriptEditor from '@/components/admin/AdminPineScriptEditor';
 import DeleteUserButton from '@/components/admin/DeleteUserButton';
-import AdminReportsSection from '@/components/admin/AdminReportsSection';
 import AdminMarketMakerControl from '@/components/admin/AdminMarketMakerControl';
-import TradingChart from '@/components/TradingChart';
-import PreciousMetalsRates from '@/components/PreciousMetalsRates';
 import SubscriptionSettingsPanel from '@/components/admin/SubscriptionSettingsPanel';
 import PaymentRequestsPanel from '@/components/admin/PaymentRequestsPanel';
 import LifetimeFreeEmailsPanel from '@/components/admin/LifetimeFreeEmailsPanel';
@@ -212,16 +209,6 @@ export default function AdminDashboard() {
       case 'scripts':
         return <AdminPineScriptEditor />;
 
-      case 'reports':
-        return <AdminReportsSection />;
-
-      case 'charts':
-        return (
-          <div className="space-y-6">
-            <PreciousMetalsRates />
-            <TradingChart className="dashboard-card" showIndicators={true} />
-          </div>
-        );
 
       case 'trades':
         return (
@@ -289,16 +276,27 @@ export default function AdminDashboard() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b text-left text-sm text-muted-foreground">
+                          <th className="pb-3 font-medium">Email</th>
                           <th className="pb-3 font-medium">Side</th>
                           <th className="pb-3 font-medium">Symbol</th>
+                          <th className="pb-3 font-medium">Entry $</th>
+                          <th className="pb-3 font-medium">Exit $</th>
+                          <th className="pb-3 font-medium">Qty</th>
+                          <th className="pb-3 font-medium">Leverage</th>
+                          <th className="pb-3 font-medium">Trade Amt</th>
                           <th className="pb-3 font-medium">Status</th>
                           <th className="pb-3 font-medium">Coin Used</th>
                           <th className="pb-3 font-medium">Date</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {trades.slice(0, 20).map((trade) => (
+                        {trades.slice(0, 20).map((trade) => {
+                          const tradeUser = users.find(u => u.user_id === trade.user_id);
+                          const leverage = trade.leverage ?? 1;
+                          const tradeAmount = trade.quantity && trade.entry_price ? (trade.quantity * trade.entry_price) : null;
+                          return (
                           <tr key={trade.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                            <td className="py-3 text-sm">{tradeUser?.email || trade.user_id.slice(0, 8) + '...'}</td>
                             <td className="py-3">
                               <Badge variant={trade.signal_type === 'BUY' ? 'default' : 'destructive'} className="gap-1">
                                 {trade.signal_type === 'BUY' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
@@ -306,6 +304,11 @@ export default function AdminDashboard() {
                               </Badge>
                             </td>
                             <td className="py-3 font-medium">{trade.symbol}</td>
+                            <td className="py-3 font-mono text-sm">{trade.entry_price?.toFixed(2) || '-'}</td>
+                            <td className="py-3 font-mono text-sm">{trade.exit_price?.toFixed(2) || '-'}</td>
+                            <td className="py-3 font-mono text-sm">{trade.quantity ?? '-'}</td>
+                            <td className="py-3 font-mono text-sm">{leverage}x</td>
+                            <td className="py-3 font-mono text-sm">{tradeAmount !== null ? `$${tradeAmount.toFixed(2)}` : '-'}</td>
                             <td className="py-3">
                               <Badge variant={
                                 trade.status === 'OPEN' ? 'default' :
@@ -326,7 +329,8 @@ export default function AdminDashboard() {
                               {new Date(trade.created_at).toLocaleDateString()}
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -357,14 +361,16 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {wallets.map((wallet) => (
+                  {wallets.map((wallet) => {
+                    const walletUser = users.find(u => u.user_id === wallet.user_id);
+                    return (
                     <div key={wallet.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                           <Wallet className="h-5 w-5 text-primary" />
                         </div>
                         <div>
-                          <p className="font-medium">User ID: {wallet.user_id.slice(0, 8)}...</p>
+                          <p className="font-medium">{walletUser?.email || wallet.user_id?.slice(0, 8) + '...'}</p>
                           <p className="text-sm text-muted-foreground">
                             Connected: {new Date(wallet.created_at).toLocaleDateString()}
                           </p>
@@ -374,7 +380,8 @@ export default function AdminDashboard() {
                         {wallet.is_active ? 'Active' : 'Inactive'}
                       </Badge>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

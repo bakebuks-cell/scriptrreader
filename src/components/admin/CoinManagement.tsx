@@ -106,6 +106,52 @@ export default function CoinManagement() {
 
   return (
     <div className="space-y-6">
+      {/* User Coins Overview */}
+      <Card className="dashboard-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            User Coins Overview
+          </CardTitle>
+          <CardDescription>Coins balance for each user by email</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {users.filter(u => u.role !== 'admin').length === 0 ? (
+            <div className="empty-state py-8">
+              <Users className="empty-state-icon" />
+              <p className="empty-state-title">No users yet</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b text-left text-sm text-muted-foreground">
+                    <th className="pb-3 font-medium">Email</th>
+                    <th className="pb-3 font-medium">Coins</th>
+                    <th className="pb-3 font-medium">Bot Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.filter(u => u.role !== 'admin').map((u) => (
+                    <tr key={u.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                      <td className="py-3 font-medium">{u.email}</td>
+                      <td className="py-3">
+                        <span className={u.coins === 0 ? 'text-destructive font-semibold' : ''}>{u.coins}</span>
+                      </td>
+                      <td className="py-3">
+                        <Badge variant={u.bot_enabled ? 'default' : 'secondary'}>
+                          {u.bot_enabled ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Quick Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="stat-card">
