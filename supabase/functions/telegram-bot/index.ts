@@ -137,8 +137,8 @@ serve(async (req) => {
 
   // GET request = set webhook
   if (req.method === "GET") {
-    const url = new URL(req.url);
-    const webhookUrl = `${url.origin}/telegram-bot`;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const webhookUrl = `${supabaseUrl}/functions/v1/telegram-bot`;
     const res = await fetch(`${TELEGRAM_API}/setWebhook`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
