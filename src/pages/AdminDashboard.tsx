@@ -37,6 +37,10 @@ import AdminReportsSection from '@/components/admin/AdminReportsSection';
 import AdminMarketMakerControl from '@/components/admin/AdminMarketMakerControl';
 import TradingChart from '@/components/TradingChart';
 import PreciousMetalsRates from '@/components/PreciousMetalsRates';
+import SubscriptionSettingsPanel from '@/components/admin/SubscriptionSettingsPanel';
+import PaymentRequestsPanel from '@/components/admin/PaymentRequestsPanel';
+import LifetimeFreeEmailsPanel from '@/components/admin/LifetimeFreeEmailsPanel';
+import UserAccessControls from '@/components/admin/UserAccessControls';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -411,6 +415,20 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         );
+
+      case 'subscription':
+        return (
+          <div className="space-y-6">
+            <SubscriptionSettingsPanel />
+            <LifetimeFreeEmailsPanel />
+          </div>
+        );
+
+      case 'payments':
+        return <PaymentRequestsPanel />;
+
+      case 'access-control':
+        return <UserAccessControls />;
 
       default:
         return null;

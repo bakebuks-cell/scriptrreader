@@ -10,6 +10,8 @@ import Auth from "./pages/Auth";
 import UserDashboard from "./pages/UserDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import MarketMakerPage from "./pages/MarketMakerPage";
+import PaymentPage from "./pages/PaymentPage";
+import SuspendedPage from "./pages/SuspendedPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +29,8 @@ const App = () => (
               <Route path="/auth" element={<Auth />} />
               <Route path="/dashboard" element={<UserDashboard />} />
               <Route path="/market-maker" element={<MarketMakerPage />} />
+              <Route path="/payment" element={<PaymentPage />} />
+              <Route path="/suspended" element={<SuspendedPage />} />
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

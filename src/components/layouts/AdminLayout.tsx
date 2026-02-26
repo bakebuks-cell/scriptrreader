@@ -46,6 +46,9 @@ const navItems = [
   { title: 'Trades', icon: BarChart3, tab: 'trades' },
   { title: 'Wallets', icon: Wallet, tab: 'wallets' },
   // { title: 'Market Maker', icon: Bot, tab: 'market-maker' }, // TODO: Hidden temporarily — unhide when ready
+  { title: 'Subscription', icon: Coins, tab: 'subscription' },
+  { title: 'Payments', icon: Wallet, tab: 'payments' },
+  { title: 'Access Control', icon: Shield, tab: 'access-control' },
   { title: 'Settings', icon: Settings, tab: 'settings' },
   { title: 'Profile', icon: User, tab: 'profile' },
 ];
@@ -143,6 +146,9 @@ function AdminTopBar({ activeTab }: { activeTab: string }) {
     trades: 'Trade Monitor',
     wallets: 'Wallet Overview',
     'market-maker': 'Market Maker Control',
+    subscription: 'Subscription Settings',
+    payments: 'Payment Requests',
+    'access-control': 'Access Control',
     settings: 'Settings',
     profile: 'Admin Profile',
   };

@@ -202,6 +202,24 @@ export type Database = {
         }
         Relationships: []
       }
+      lifetime_free_emails: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+        }
+        Relationships: []
+      }
       market_maker_bots: {
         Row: {
           auto_stop_at: string | null
@@ -229,6 +247,57 @@ export type Database = {
           name?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      payment_requests: {
+        Row: {
+          admin_notes: string | null
+          amount: number
+          created_at: string
+          crypto_symbol: string
+          id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          subscription_ends_at: string | null
+          subscription_starts_at: string | null
+          tx_hash: string
+          updated_at: string
+          user_id: string
+          wallet_address: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          amount: number
+          created_at?: string
+          crypto_symbol?: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          subscription_ends_at?: string | null
+          subscription_starts_at?: string | null
+          tx_hash: string
+          updated_at?: string
+          user_id: string
+          wallet_address?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          amount?: number
+          created_at?: string
+          crypto_symbol?: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          subscription_ends_at?: string | null
+          subscription_starts_at?: string | null
+          tx_hash?: string
+          updated_at?: string
+          user_id?: string
+          wallet_address?: string
         }
         Relationships: []
       }
@@ -320,8 +389,10 @@ export type Database = {
           created_at: string
           display_name: string | null
           email: string | null
+          feature_access: boolean
           free_trades_remaining: number
           id: string
+          login_access: boolean
           selected_timeframes: string[] | null
           strategy_opposite_policy: string
           subscription_active: boolean
@@ -335,8 +406,10 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          feature_access?: boolean
           free_trades_remaining?: number
           id?: string
+          login_access?: boolean
           selected_timeframes?: string[] | null
           strategy_opposite_policy?: string
           subscription_active?: boolean
@@ -350,8 +423,10 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          feature_access?: boolean
           free_trades_remaining?: number
           id?: string
+          login_access?: boolean
           selected_timeframes?: string[] | null
           strategy_opposite_policy?: string
           subscription_active?: boolean
@@ -460,6 +535,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      subscription_settings: {
+        Row: {
+          created_at: string
+          crypto_decimals: number
+          crypto_name: string
+          crypto_symbol: string
+          id: string
+          monthly_amount: number
+          receiver_wallet_address: string
+          subscription_mode_enabled: boolean
+          trial_days: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          crypto_decimals?: number
+          crypto_name?: string
+          crypto_symbol?: string
+          id?: string
+          monthly_amount?: number
+          receiver_wallet_address?: string
+          subscription_mode_enabled?: boolean
+          trial_days?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          crypto_decimals?: number
+          crypto_name?: string
+          crypto_symbol?: string
+          id?: string
+          monthly_amount?: number
+          receiver_wallet_address?: string
+          subscription_mode_enabled?: boolean
+          trial_days?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       trades: {
         Row: {
