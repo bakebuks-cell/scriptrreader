@@ -586,7 +586,6 @@ export type Database = {
           exit_price: number | null
           id: string
           leverage: number | null
-          margin_amount: number | null
           opened_at: string | null
           quantity: number | null
           script_id: string | null
@@ -610,7 +609,6 @@ export type Database = {
           exit_price?: number | null
           id?: string
           leverage?: number | null
-          margin_amount?: number | null
           opened_at?: string | null
           quantity?: number | null
           script_id?: string | null
@@ -634,7 +632,6 @@ export type Database = {
           exit_price?: number | null
           id?: string
           leverage?: number | null
-          margin_amount?: number | null
           opened_at?: string | null
           quantity?: number | null
           script_id?: string | null

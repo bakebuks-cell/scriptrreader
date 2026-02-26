@@ -565,10 +565,11 @@ export default function UserDashboard() {
                             </span>
                           );
                         };
-                        // Use margin_amount stored with the trade (snapshot at execution time)
-                        const leverage = trade.leverage ?? 1;
-                        const margin = trade.margin_amount ?? (trade.quantity && trade.entry_price ? (trade.quantity * trade.entry_price) / leverage : null);
-                        const positionSize = margin !== null ? margin * leverage : null;
+                        // Get script details for leverage/margin
+                        const linkedScript = trade.script_id ? scripts.find(s => s.id === trade.script_id) : null;
+                        const leverage = linkedScript?.leverage ?? 1;
+                        const margin = linkedScript?.position_size_value ?? 10;
+                        const positionSize = margin * leverage;
                         const isOpen = trade.status === 'OPEN' || trade.status === 'PENDING';
                         const isClosingThis = closingSingleId === trade.id && isClosingSingle;
                         return (
@@ -590,8 +591,8 @@ export default function UserDashboard() {
                             ) : '-'}
                           </td>
                           <td className="py-3 font-mono">{leverage}x</td>
-                          <td className="py-3 font-mono">{margin !== null ? `$${Number(margin).toFixed(2)}` : '-'}</td>
-                          <td className="py-3 font-mono">{positionSize !== null ? `$${Number(positionSize).toFixed(2)}` : '-'}</td>
+                          <td className="py-3 font-mono">${margin.toFixed(2)}</td>
+                          <td className="py-3 font-mono">${positionSize.toFixed(2)}</td>
                           <td className="py-3">
                             <Badge variant={
                               trade.status === 'OPEN' ? 'default' :

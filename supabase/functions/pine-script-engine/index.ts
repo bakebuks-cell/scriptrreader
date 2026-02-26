@@ -2208,7 +2208,6 @@ async function executeTrade(
           coin_consumed: true,
           quantity: parseFloat(actualQty),
           leverage: effectiveLeverage,
-          margin_amount: marginAmount,
         })
         .eq('id', trade.id)
       
