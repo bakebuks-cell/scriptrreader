@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.binance-websocket-proxy]
 verify_jwt = false
+
+[functions.telegram-bot]
+verify_jwt = false
