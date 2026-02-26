@@ -13,7 +13,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
-  TrendingUp, 
   Copy, 
   CheckCircle2, 
   Clock, 
@@ -22,6 +21,7 @@ import {
   Wallet,
   Send
 } from 'lucide-react';
+import logo from '@/assets/logo.png';
 
 export default function PaymentPage() {
   const { user, signOut } = useAuth();
@@ -81,8 +81,8 @@ export default function PaymentPage() {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <TrendingUp className="h-8 w-8 text-primary" />
-          <span className="text-xl font-bold">PineTrader</span>
+          <img src={logo} alt="Love With Trade" className="h-10 w-auto" />
+          <span className="text-xl font-bold">Love With Trade</span>
         </Link>
         <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-2">
           <LogOut className="h-4 w-4" />
