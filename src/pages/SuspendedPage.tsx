@@ -16,7 +16,7 @@ export default function SuspendedPage() {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <img src={logo} alt="Love With Trade" className="h-10 w-auto" />
+          <img src={logo} alt="Love With Trade" className="h-14 w-auto" />
           <span className="text-xl font-bold">Love With Trade</span>
         </Link>
         <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-2">
