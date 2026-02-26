@@ -8,6 +8,7 @@ export interface MarketMakerBot {
   user_id: string;
   name: string;
   is_active: boolean;
+  auto_stop_at: string | null;
   created_at: string;
   updated_at: string;
 }

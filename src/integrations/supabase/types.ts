@@ -204,6 +204,7 @@ export type Database = {
       }
       market_maker_bots: {
         Row: {
+          auto_stop_at: string | null
           created_at: string
           id: string
           is_active: boolean
@@ -212,6 +213,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          auto_stop_at?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
@@ -220,6 +222,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          auto_stop_at?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
