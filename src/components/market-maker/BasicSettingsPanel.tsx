@@ -3,11 +3,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Save, X } from 'lucide-react';
-import { useBotConfiguration, ModuleType } from '@/hooks/useMarketMakerBots';
+import { Save, X, Timer } from 'lucide-react';
+import { useMarketMakerBots, useBotConfiguration, ModuleType } from '@/hooks/useMarketMakerBots';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { HelpCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { format, addDays, isPast } from 'date-fns';
 
 interface BasicSettingsPanelProps {
   botId: string;
@@ -29,7 +32,12 @@ const defaultSettings: BasicSettings = {
 
 export function BasicSettingsPanel({ botId, onSave, onCancel }: BasicSettingsPanelProps) {
   const { getModuleConfig, saveConfig, configLoading } = useBotConfiguration(botId);
+  const { bots, updateBot } = useMarketMakerBots();
   const [settings, setSettings] = useState<BasicSettings>(defaultSettings);
+  const [autoStopEnabled, setAutoStopEnabled] = useState(false);
+  const [autoStopDays, setAutoStopDays] = useState(7);
+
+  const currentBot = bots.find(b => b.id === botId);
 
   useEffect(() => {
     const saved = getModuleConfig('basic_settings') as Partial<BasicSettings>;
@@ -38,11 +46,26 @@ export function BasicSettingsPanel({ botId, onSave, onCancel }: BasicSettingsPan
     }
   }, [configLoading]);
 
+  useEffect(() => {
+    if (currentBot?.auto_stop_at) {
+      setAutoStopEnabled(true);
+      const diff = Math.max(1, Math.round((new Date(currentBot.auto_stop_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+      setAutoStopDays(diff);
+    } else {
+      setAutoStopEnabled(false);
+    }
+  }, [currentBot?.auto_stop_at]);
+
   const handleSave = async () => {
     await saveConfig.mutateAsync({
       moduleType: 'basic_settings',
       settings: settings as unknown as Record<string, unknown>,
     });
+
+    // Save auto-stop setting to the bot record
+    const autoStopAt = autoStopEnabled ? addDays(new Date(), autoStopDays).toISOString() : null;
+    await updateBot.mutateAsync({ id: botId, auto_stop_at: autoStopAt } as any);
+
     onSave?.();
   };
 
@@ -125,6 +148,62 @@ export function BasicSettingsPanel({ botId, onSave, onCancel }: BasicSettingsPan
               </Select>
             </div>
           </div>
+        </div>
+
+        {/* Auto-Stop Timer */}
+        <div className="border-t border-border pt-4 mt-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-4">
+            <Label className="sm:w-40 flex items-center gap-2">
+              <Timer className="h-4 w-4 text-primary" />
+              Auto-Stop Timer
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-primary" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Automatically deactivate this bot after a set number of days</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </Label>
+            <Switch
+              checked={autoStopEnabled}
+              onCheckedChange={setAutoStopEnabled}
+            />
+          </div>
+
+          {autoStopEnabled && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <Label htmlFor="autoStopDays" className="sm:w-40">Stop after (days)</Label>
+              <div className="flex flex-1 items-center gap-3">
+                <Input
+                  id="autoStopDays"
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={autoStopDays}
+                  onChange={(e) => setAutoStopDays(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-24 bg-muted/50"
+                />
+                <span className="text-sm text-muted-foreground">
+                  Bot will stop on {format(addDays(new Date(), autoStopDays), 'MMM d, yyyy')}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {currentBot?.auto_stop_at && (
+            <div className="mt-2">
+              {isPast(new Date(currentBot.auto_stop_at)) ? (
+                <Badge variant="destructive">Auto-stopped</Badge>
+              ) : (
+                <Badge variant="secondary">
+                  Auto-stop: {format(new Date(currentBot.auto_stop_at), 'MMM d, yyyy HH:mm')}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
