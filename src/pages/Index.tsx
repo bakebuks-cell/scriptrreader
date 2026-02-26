@@ -3,15 +3,16 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { 
-  TrendingUp, 
   Code, 
   Shield, 
   Zap, 
   Wallet, 
   Bot,
   ArrowRight,
-  CheckCircle2
+  CheckCircle2,
+  TrendingUp
 } from 'lucide-react';
+import logo from '@/assets/logo.png';
 
 const features = [
   {
@@ -64,8 +65,8 @@ export default function Index() {
       <header className="border-b border-border">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <TrendingUp className="h-8 w-8 text-primary" />
-            <span className="text-xl font-bold">PineTrader</span>
+            <img src={logo} alt="Love With Trade" className="h-10 w-auto" />
+            <span className="text-xl font-bold">Love With Trade</span>
           </div>
           <div className="flex items-center gap-4">
             {loading ? null : user ? (
@@ -203,11 +204,14 @@ export default function Index() {
       <footer className="border-t border-border py-8 px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <TrendingUp className="h-6 w-6 text-primary" />
-            <span className="font-semibold">PineTrader</span>
+            <img src={logo} alt="Love With Trade" className="h-8 w-auto" />
+            <span className="font-semibold">Love With Trade</span>
           </div>
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} PineTrader. All rights reserved.
+            © {new Date().getFullYear()} Love With Trade. All rights reserved. Developed by{' '}
+            <a href="https://www.arenaitech.com/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              Arenaitech
+            </a>
           </p>
         </div>
       </footer>

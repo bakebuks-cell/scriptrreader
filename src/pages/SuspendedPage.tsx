@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, ShieldOff, LogOut } from 'lucide-react';
+import { ShieldOff, LogOut } from 'lucide-react';
+import logo from '@/assets/logo.png';
 
 export default function SuspendedPage() {
   const { signOut } = useAuth();
@@ -15,8 +16,8 @@ export default function SuspendedPage() {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <TrendingUp className="h-8 w-8 text-primary" />
-          <span className="text-xl font-bold">PineTrader</span>
+          <img src={logo} alt="Love With Trade" className="h-10 w-auto" />
+          <span className="text-xl font-bold">Love With Trade</span>
         </Link>
         <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-2">
           <LogOut className="h-4 w-4" />

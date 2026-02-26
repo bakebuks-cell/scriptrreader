@@ -7,15 +7,16 @@ import {
   Wallet,
   Settings, 
   LogOut,
-  TrendingUp,
   Menu,
   Shield,
   Coins,
   User,
   LineChart,
   Flag,
-  Bot
+  Bot,
+  TrendingUp
 } from 'lucide-react';
+import logo from '@/assets/logo.png';
 import {
   Sidebar,
   SidebarContent,
@@ -72,13 +73,11 @@ function AdminSidebarNav({ activeTab, onTabChange }: { activeTab: string; onTabC
     <>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <TrendingUp className="h-5 w-5 text-primary-foreground" />
-          </div>
+          <img src={logo} alt="Love With Trade" className="h-9 w-9 object-contain" />
           {!isCollapsed && (
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-sidebar-foreground">PineTrader</span>
+                <span className="font-semibold text-sidebar-foreground">Love With Trade</span>
                 <Badge variant="secondary" className="text-xs">Admin</Badge>
               </div>
               <span className="text-xs text-muted-foreground">Control Panel</span>

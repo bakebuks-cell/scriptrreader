@@ -7,9 +7,10 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { TrendingUp, Lock, Zap, Mail, CheckCircle2 } from 'lucide-react';
+import { Lock, Zap, Mail, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { isAdminEmail } from '@/lib/constants';
+import logo from '@/assets/logo.png';
 
 export default function Auth() {
   const [email, setEmail] = useState('');
@@ -112,8 +113,8 @@ export default function Auth() {
       <div className="min-h-screen bg-background flex flex-col">
         <header className="border-b border-border px-6 py-4">
           <Link to="/" className="flex items-center gap-2">
-            <TrendingUp className="h-8 w-8 text-primary" />
-            <span className="text-xl font-bold">PineTrader</span>
+            <img src={logo} alt="Love With Trade" className="h-10 w-auto" />
+            <span className="text-xl font-bold">Love With Trade</span>
           </Link>
         </header>
 
@@ -158,8 +159,8 @@ export default function Auth() {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border px-6 py-4">
         <Link to="/" className="flex items-center gap-2">
-          <TrendingUp className="h-8 w-8 text-primary" />
-          <span className="text-xl font-bold">PineTrader</span>
+          <img src={logo} alt="Love With Trade" className="h-10 w-auto" />
+          <span className="text-xl font-bold">Love With Trade</span>
         </Link>
       </header>
 

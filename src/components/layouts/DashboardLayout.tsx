@@ -7,12 +7,13 @@ import {
   BarChart3, 
   Settings, 
   LogOut,
-  TrendingUp,
   Menu,
   User,
   LineChart,
-  Bot
+  Bot,
+  TrendingUp
 } from 'lucide-react';
+import logo from '@/assets/logo.png';
 import {
   Sidebar,
   SidebarContent,
@@ -88,12 +89,10 @@ function SidebarNav({ activeTab, onTabChange }: { activeTab: string; onTabChange
     <>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <TrendingUp className="h-5 w-5 text-primary-foreground" />
-          </div>
+          <img src={logo} alt="Love With Trade" className="h-9 w-9 object-contain" />
           {!isCollapsed && (
             <div className="flex flex-col">
-              <span className="font-semibold text-sidebar-foreground">PineTrader</span>
+              <span className="font-semibold text-sidebar-foreground">Love With Trade</span>
               <span className="text-xs text-muted-foreground">Trading Platform</span>
             </div>
           )}
