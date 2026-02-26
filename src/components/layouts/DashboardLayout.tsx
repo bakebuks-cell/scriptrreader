@@ -89,7 +89,7 @@ function SidebarNav({ activeTab, onTabChange }: { activeTab: string; onTabChange
     <>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <div className="flex items-center gap-3">
-          <img src={logo} alt="Love With Trade" className="h-12 w-12 object-contain" />
+          <img src={logo} alt="Love With Trade" className="h-16 w-16 object-contain" />
           {!isCollapsed && (
             <div className="flex flex-col">
               <span className="font-semibold text-sidebar-foreground">Love With Trade</span>
