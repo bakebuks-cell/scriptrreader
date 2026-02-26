@@ -48,9 +48,31 @@ async function callBinanceApi(
   body?: any,
   exchange?: string
 ) {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Not authenticated');
+  // Try to refresh the session first to ensure a fresh token
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  
+  if (sessionError || !session) {
+    // Session is invalid/expired — force a refresh attempt
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshData.session) {
+      // Refresh failed — sign out to clear stale state
+      await supabase.auth.signOut();
+      throw new Error('Session expired. Please sign in again.');
+    }
+    // Use the refreshed session
+    return callBinanceApiWithToken(action, method, refreshData.session.access_token, body, exchange);
+  }
 
+  return callBinanceApiWithToken(action, method, session.access_token, body, exchange);
+}
+
+async function callBinanceApiWithToken(
+  action: string,
+  method: string,
+  accessToken: string,
+  body?: any,
+  exchange?: string
+) {
   const url = new URL(BINANCE_FUNCTION_URL);
   url.searchParams.set('action', action);
   if (exchange) url.searchParams.set('exchange', exchange);
@@ -58,13 +80,35 @@ async function callBinanceApi(
   const response = await fetch(url.toString(), {
     method,
     headers: {
-      'Authorization': `Bearer ${session.access_token}`,
+      'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
     body: body ? JSON.stringify(body) : undefined,
   });
 
   const data = await response.json();
+  
+  if (response.status === 401) {
+    // Token was rejected — try one refresh cycle
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshData.session) {
+      await supabase.auth.signOut();
+      throw new Error('Session expired. Please sign in again.');
+    }
+    // Retry with refreshed token
+    const retryResponse = await fetch(url.toString(), {
+      method,
+      headers: {
+        'Authorization': `Bearer ${refreshData.session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const retryData = await retryResponse.json();
+    if (!retryResponse.ok) throw new Error(retryData.error || 'API request failed');
+    return retryData;
+  }
+  
   if (!response.ok) throw new Error(data.error || 'API request failed');
   return data;
 }
