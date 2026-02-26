@@ -478,13 +478,6 @@ export default function UserDashboard() {
           </div>
         );
 
-      case 'charts':
-        return (
-          <div className="space-y-6">
-            <PreciousMetalsRates />
-            <TradingChart className="dashboard-card" showIndicators={true} />
-          </div>
-        );
 
       case 'scripts':
         return (
@@ -709,8 +702,6 @@ export default function UserDashboard() {
       case 'profile':
         return <UserProfile />;
 
-      case 'analytics':
-        return null;
 
       default:
         return null;

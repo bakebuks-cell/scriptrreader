@@ -41,8 +41,6 @@ const navItems = [
   { title: 'Users', icon: Users, tab: 'users' },
   { title: 'Coins', icon: Coins, tab: 'coins' },
   { title: 'Library', icon: Code, tab: 'scripts' },
-  { title: 'Reports', icon: Flag, tab: 'reports' },
-  { title: 'Charts', icon: LineChart, tab: 'charts' },
   { title: 'Trades', icon: BarChart3, tab: 'trades' },
   { title: 'Wallets', icon: Wallet, tab: 'wallets' },
   // { title: 'Market Maker', icon: Bot, tab: 'market-maker' }, // TODO: Hidden temporarily — unhide when ready
@@ -141,8 +139,6 @@ function AdminTopBar({ activeTab }: { activeTab: string }) {
     users: 'User Management',
     coins: 'Coin Management',
     scripts: 'Library',
-    reports: 'Script Reports',
-    charts: 'Price Charts',
     trades: 'Trade Monitor',
     wallets: 'Wallet Overview',
     'market-maker': 'Market Maker Control',

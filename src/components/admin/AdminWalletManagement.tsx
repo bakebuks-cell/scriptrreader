@@ -19,6 +19,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { useAdminWallets, Wallet as WalletType } from '@/hooks/useWallets';
+import { useAdminUsers } from '@/hooks/useAdminUsers';
 import { useToast } from '@/hooks/use-toast';
 
 export default function AdminWalletManagement() {
@@ -32,6 +33,7 @@ export default function AdminWalletManagement() {
     isCreating,
     isDeleting
   } = useAdminWallets();
+  const { users } = useAdminUsers();
   const { toast } = useToast();
   
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -104,7 +106,10 @@ export default function AdminWalletManagement() {
           </p>
           {wallet.user_id && wallet.role === 'USER' && (
             <p className="text-xs text-muted-foreground mt-1">
-              User ID: {wallet.user_id.slice(0, 8)}...
+              {(() => {
+                const walletUser = users.find(u => u.user_id === wallet.user_id);
+                return walletUser?.email || wallet.user_id.slice(0, 8) + '...';
+              })()}
             </p>
           )}
         </div>
