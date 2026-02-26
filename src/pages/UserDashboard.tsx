@@ -39,6 +39,7 @@ import UserOnboarding from '@/components/onboarding/UserOnboarding';
 import LibraryView from '@/components/library/LibraryView';
 import ManualCloseTradesButton from '@/components/ManualCloseTradesButton';
 import { useApiKeyStatus } from '@/hooks/useApiKeyStatus';
+import { useSubscriptionAccess } from '@/hooks/useSubscriptionAccess';
 
 export default function UserDashboard() {
   const navigate = useNavigate();
@@ -66,6 +67,7 @@ export default function UserDashboard() {
   } = usePineScripts();
   const { isPaidModeEnabled } = useFeatureFlags();
   const { hasPermissionError, errorType } = useApiKeyStatus();
+  const { access, isLoading: accessLoading } = useSubscriptionAccess();
   
   // Check if user has API keys configured
   // TODO: Temporarily bypassed for testing — restore with: const hasApiKeys = hasWallets && activeWallet?.api_key_encrypted;
@@ -86,6 +88,16 @@ export default function UserDashboard() {
       navigate('/admin');
     }
   }, [user, role, authLoading, navigate]);
+
+  // Subscription access control redirects
+  useEffect(() => {
+    if (accessLoading || authLoading) return;
+    if (access === 'suspended') {
+      navigate('/suspended', { replace: true });
+    } else if (access === 'payment_required') {
+      navigate('/payment', { replace: true });
+    }
+  }, [access, accessLoading, authLoading, navigate]);
 
   const handleOnboardingComplete = (choice: 'preinstalled' | 'custom') => {
     setShowOnboarding(false);
@@ -110,7 +122,7 @@ export default function UserDashboard() {
     await toggleActivation({ id, is_active });
   };
 
-  if (authLoading || profileLoading) {
+  if (authLoading || profileLoading || accessLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="space-y-4 w-full max-w-md px-6">
@@ -119,6 +131,24 @@ export default function UserDashboard() {
           <Skeleton className="h-32 w-full" />
         </div>
       </div>
+    );
+  }
+
+  // Feature blocked - show message but don't redirect
+  if (access === 'feature_blocked') {
+    return (
+      <DashboardLayout activeTab={activeTab} onTabChange={setActiveTab}>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Card className="max-w-md w-full">
+            <CardHeader className="text-center">
+              <CardTitle className="text-xl">Features Disabled</CardTitle>
+              <CardDescription>
+                Your feature access has been restricted by an administrator. Please contact support for assistance.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </DashboardLayout>
     );
   }
 

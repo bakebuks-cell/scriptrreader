@@ -10,6 +10,8 @@ export interface AdminUser {
   coins: number;
   bot_enabled: boolean;
   selected_timeframes: string[];
+  feature_access: boolean;
+  login_access: boolean;
   created_at: string;
   updated_at: string;
   role?: 'admin' | 'user';
