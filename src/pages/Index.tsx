@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Hero115 } from '@/components/ui/hero115';
 import { 
   Code, 
   Shield, 
@@ -13,6 +14,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
+import heroImage from '@/assets/hero-trading.jpg';
 
 const features = [
   {
@@ -88,45 +90,20 @@ export default function Index() {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="py-20 px-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-6">
-            <Zap className="h-4 w-4" />
-            <span className="text-sm font-medium">Pine Script-Powered Trading</span>
-          </div>
-          <h1 className="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-            Automate Your Crypto Trading with Pine Script
-          </h1>
-          <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Write your own trading strategies, connect your Binance wallet, and let PineTrader execute trades automatically. 
-            Full control. Zero manual intervention.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" className="text-lg px-8" onClick={handleGetStarted}>
-              Start Trading Free
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-            <Button size="lg" variant="outline" className="text-lg px-8" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
-              Learn More
-            </Button>
-          </div>
-          <div className="flex items-center justify-center gap-6 mt-8 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-              <span>5 Free Trades</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-              <span>No Credit Card</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-              <span>Secure API</span>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Hero Section - Hero115 */}
+      <Hero115
+        icon={<Bot className="size-6" />}
+        heading="Automate Your Crypto Trading with Pine Script"
+        description="Write your own trading strategies, connect your Binance wallet, and let Love With Trade execute trades automatically. Full control. Zero manual intervention."
+        button={{
+          text: "Start Trading Free",
+          icon: <ArrowRight className="ml-2 size-5" />,
+          onClick: handleGetStarted,
+        }}
+        trustText="5 Free Trades · No Credit Card · Secure API"
+        imageSrc={heroImage}
+        imageAlt="Love With Trade - Automated crypto trading dashboard"
+      />
 
       {/* Features Section */}
       <section id="features" className="py-20 px-6 bg-accent/30">
@@ -134,7 +111,7 @@ export default function Index() {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold mb-4">Everything You Need to Trade Smarter</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              PineTrader gives you the tools to automate your trading with your own custom Pine Script strategies.
+              Love With Trade gives you the tools to automate your trading with your own custom Pine Script strategies.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
