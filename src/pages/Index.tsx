@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   TrendingUp
 } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import logo from '@/assets/logo.png';
 import heroImage from '@/assets/hero-trading.jpg';
 
@@ -70,7 +71,8 @@ export default function Index() {
             <img src={logo} alt="Love With Trade" className="h-14 w-auto" />
             <span className="text-xl font-bold">Love With Trade</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
             {loading ? null : user ? (
               <Button onClick={() => navigate('/dashboard')}>
                 Dashboard
