@@ -9,10 +9,10 @@ import {
   Wallet, 
   Bot,
   ArrowRight,
-  CheckCircle2,
   TrendingUp
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
+import HeroSection from '@/components/ui/glassmorphism-trust-hero';
 
 const features = [
   {
@@ -52,17 +52,17 @@ export default function Index() {
   const { user, loading } = useAuth();
 
   const handleGetStarted = () => {
-    if (user) {
-      navigate('/dashboard');
-    } else {
-      navigate('/auth');
-    }
+    navigate(user ? '/dashboard' : '/auth');
+  };
+
+  const handleLearnMore = () => {
+    document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border">
+      <header className="absolute top-0 left-0 right-0 z-20 border-b border-border/50 backdrop-blur-sm bg-background/60">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img src={logo} alt="Love With Trade" className="h-14 w-auto" />
@@ -88,45 +88,12 @@ export default function Index() {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="py-20 px-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-6">
-            <Zap className="h-4 w-4" />
-            <span className="text-sm font-medium">Pine Script-Powered Trading</span>
-          </div>
-          <h1 className="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-            Automate Your Crypto Trading with Pine Script
-          </h1>
-          <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Write your own trading strategies, connect your Binance wallet, and let PineTrader execute trades automatically. 
-            Full control. Zero manual intervention.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" className="text-lg px-8" onClick={handleGetStarted}>
-              Start Trading Free
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-            <Button size="lg" variant="outline" className="text-lg px-8" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
-              Learn More
-            </Button>
-          </div>
-          <div className="flex items-center justify-center gap-6 mt-8 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-              <span>5 Free Trades</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-              <span>No Credit Card</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-              <span>Secure API</span>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Glassmorphism Hero */}
+      <HeroSection
+        onGetStarted={handleGetStarted}
+        onLearnMore={handleLearnMore}
+        isLoggedIn={!!user}
+      />
 
       {/* Features Section */}
       <section id="features" className="py-20 px-6 bg-accent/30">
@@ -161,27 +128,19 @@ export default function Index() {
             <p className="text-muted-foreground">Get started in three simple steps</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-primary">1</span>
+            {[
+              { step: '1', title: 'Write Your Strategy', desc: 'Create your Pine Script trading strategy with custom entry, exit, SL, and TP rules.' },
+              { step: '2', title: 'Connect Binance', desc: 'Securely connect your Binance API keys. Your keys are encrypted and never exposed.' },
+              { step: '3', title: 'Enable & Trade', desc: 'Turn on your bot and watch it execute trades automatically based on your strategy.' },
+            ].map((item) => (
+              <div key={item.step} className="text-center">
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                  <span className="text-2xl font-bold text-primary">{item.step}</span>
+                </div>
+                <h3 className="text-lg font-semibold mb-2">{item.title}</h3>
+                <p className="text-muted-foreground">{item.desc}</p>
               </div>
-              <h3 className="text-lg font-semibold mb-2">Write Your Strategy</h3>
-              <p className="text-muted-foreground">Create your Pine Script trading strategy with custom entry, exit, SL, and TP rules.</p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-primary">2</span>
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Connect Binance</h3>
-              <p className="text-muted-foreground">Securely connect your Binance API keys. Your keys are encrypted and never exposed.</p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-primary">3</span>
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Enable & Trade</h3>
-              <p className="text-muted-foreground">Turn on your bot and watch it execute trades automatically based on your strategy.</p>
-            </div>
+            ))}
           </div>
         </div>
       </section>
