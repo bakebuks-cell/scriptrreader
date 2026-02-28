@@ -68,8 +68,8 @@ export default function Index() {
       <header className="border-b border-border">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src={logo} alt="LovewithTrade" className="h-20 w-auto" />
-            <span className="text-xl font-bold">LovewithTrade</span>
+            <img src={logo} alt="LoveWithTrade" className="h-20 w-auto" />
+            <span className="text-xl font-bold">LoveWithTrade</span>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
@@ -96,7 +96,7 @@ export default function Index() {
       <Hero115
         icon={<Bot className="size-6" />}
         heading="Automate Your Crypto Trading with Pine Script"
-        description="Write your own trading strategies, connect your Binance wallet, and let LovewithTrade execute trades automatically. Full control. Zero manual intervention."
+        description="Write your own trading strategies, connect your Binance wallet, and let LoveWithTrade execute trades automatically. Full control. Zero manual intervention."
         button={{
           text: "Start Trading Free",
           icon: <ArrowRight className="ml-2 size-5" />,
@@ -104,7 +104,7 @@ export default function Index() {
         }}
         trustText="5 Free Trades · No Credit Card · Secure API"
         imageSrc={heroImage}
-        imageAlt="LovewithTrade - Automated crypto trading dashboard"
+        imageAlt="LoveWithTrade - Automated crypto trading dashboard"
       />
 
       {/* Features Section */}
@@ -113,7 +113,7 @@ export default function Index() {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold mb-4">Everything You Need to Trade Smarter</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              LovewithTrade gives you the tools to automate your trading with your own custom Pine Script strategies.
+              LoveWithTrade gives you the tools to automate your trading with your own custom Pine Script strategies.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -183,11 +183,11 @@ export default function Index() {
       <footer className="border-t border-border py-8 px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <img src={logo} alt="LovewithTrade" className="h-16 w-auto" />
-            <span className="font-semibold">LovewithTrade</span>
+            <img src={logo} alt="LoveWithTrade" className="h-16 w-auto" />
+            <span className="font-semibold">LoveWithTrade</span>
           </div>
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} LovewithTrade. All rights reserved. Developed by{' '}
+            © {new Date().getFullYear()} LoveWithTrade. All rights reserved. Developed by{' '}
             <a href="https://www.arenaitech.com/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
               Arenaitech
             </a>

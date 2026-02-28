@@ -73,11 +73,11 @@ function AdminSidebarNav({ activeTab, onTabChange }: { activeTab: string; onTabC
     <>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <div className="flex items-center gap-3">
-          <img src={logo} alt="LovewithTrade" className="h-20 w-20 object-contain" />
+          <img src={logo} alt="LoveWithTrade" className="h-20 w-20 object-contain" />
           {!isCollapsed && (
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-sidebar-foreground">LovewithTrade</span>
+                <span className="font-semibold text-sidebar-foreground">LoveWithTrade</span>
                 <Badge variant="secondary" className="text-xs">Admin</Badge>
               </div>
               <span className="text-xs text-muted-foreground">Control Panel</span>
