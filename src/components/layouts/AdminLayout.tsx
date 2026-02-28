@@ -73,7 +73,7 @@ function AdminSidebarNav({ activeTab, onTabChange }: { activeTab: string; onTabC
     <>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <div className="flex items-center gap-3">
-          <img src={logo} alt="Love With Trade" className="h-16 w-16 object-contain" />
+          <img src={logo} alt="Love With Trade" className="h-20 w-20 object-contain" />
           {!isCollapsed && (
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
