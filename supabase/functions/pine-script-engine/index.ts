@@ -2796,7 +2796,9 @@ Deno.serve(async (req) => {
               position_size_type,
               position_size_value,
               validation_status,
-              candle_type
+              candle_type,
+              trading_pairs,
+              multi_pair_mode
             )
           `)
           .eq('is_active', true)
@@ -2826,26 +2828,48 @@ Deno.serve(async (req) => {
         // Combine all scripts to process, deduplicating user-created scripts that also have user_scripts records
         const userScriptIds = new Set((userScripts || []).filter((us: any) => us.script != null).map((us: any) => `${us.user_id}:${us.script_id}`))
         
+        // Helper: expand a script entry into one entry per trading pair
+        function expandMultiPair(entry: any): any[] {
+          const script = entry.script
+          const userSettings = entry.settings_json || {}
+          const tradingPairs = userSettings.trading_pairs || script.trading_pairs || [script.symbol]
+          const isMultiPair = tradingPairs.length > 1
+
+          if (!isMultiPair) {
+            // Single pair — use first available
+            const sym = tradingPairs[0] || script.symbol
+            return [{ ...entry, script: { ...script, symbol: sym } }]
+          }
+
+          // Multi-pair: create one entry per symbol
+          console.log(`[ENGINE] Expanding multi-pair script "${script.name}" into ${tradingPairs.length} symbols: ${tradingPairs.join(', ')}`)
+          return tradingPairs.map((sym: string) => ({
+            ...entry,
+            script: { ...script, symbol: sym },
+            settings_json: { ...entry.settings_json },
+          }))
+        }
+
         const allScripts: any[] = [
-          ...(userScripts || []).filter((us: any) => us.script != null).map((us: any) => {
+          ...(userScripts || []).filter((us: any) => us.script != null).flatMap((us: any) => {
             // Apply user-specific overrides from settings_json
             const userSettings = us.settings_json || {}
             const mergedScript = { ...us.script }
             if (userSettings.leverage !== undefined) mergedScript.leverage = userSettings.leverage
             if (userSettings.market_type !== undefined) mergedScript.market_type = userSettings.market_type
             if (userSettings.allowed_timeframes !== undefined) mergedScript.allowed_timeframes = userSettings.allowed_timeframes
-            if (userSettings.trading_pairs !== undefined) mergedScript.symbol = userSettings.trading_pairs[0] || mergedScript.symbol
-            return {
+            // Don't set symbol here — let expandMultiPair handle it
+            return expandMultiPair({
               script_id: us.script_id,
               user_id: us.user_id,
               script: mergedScript,
               settings_json: us.settings_json || {},
-            }
+            })
           }),
           // Only include user-created scripts that DON'T already appear via user_scripts
           ...(createdScripts || [])
             .filter((s: any) => !userScriptIds.has(`${s.created_by}:${s.id}`))
-            .map((s: any) => ({
+            .flatMap((s: any) => expandMultiPair({
               script_id: s.id,
               user_id: s.created_by,
               script: s,

@@ -484,15 +484,23 @@ export default function BotConfigForm({
             </Label>
             <Input
               id="position_size"
-              type="number"
-              value={config.position_size_value}
+              type="text"
+              inputMode="decimal"
+              value={config.position_size_value === 0 ? '' : config.position_size_value.toString()}
               onChange={(e) => {
-                const val = e.target.value;
-                handleChange('position_size_value', val === '' ? 0 : parseFloat(val));
+                const raw = e.target.value.replace(/[^0-9.]/g, '');
+                if (raw === '' || raw === '.') {
+                  handleChange('position_size_value', 0);
+                  return;
+                }
+                const parsed = parseFloat(raw);
+                if (!isNaN(parsed)) {
+                  handleChange('position_size_value', parsed);
+                }
               }}
+              placeholder="Enter amount"
               min={1}
               max={adminLimits ? adminLimits.max_position_size : (config.position_size_type === 'percentage' ? 100 : 1000000)}
-              step={1}
               disabled={disabled}
             />
             {adminLimits && (
