@@ -411,9 +411,9 @@ Deno.serve(async (req) => {
 
     // AUTHENTICATED ENDPOINTS
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
+    if (!authHeader || !/^Bearer\s+/i.test(authHeader)) {
       return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
+        JSON.stringify({ error: 'Missing or invalid authorization header' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -422,23 +422,52 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    
+
     // Use service role client for DB queries
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
-    
-    // Validate JWT via getUser with token
-    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
-    })
 
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await authClient.auth.getUser(token)
-    
-    if (authError || !user) {
-      console.error('[BINANCE-API] Auth failed:', authError?.message || 'No user')
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim()
+    if (!token) {
       return new Response(
         JSON.stringify({ error: 'Invalid or expired token' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Validate JWT via getUser(token).
+    // Retry once for transient auth endpoint parsing/network issues.
+    const authClient = createClient(supabaseUrl, supabaseAnonKey)
+
+    let user: any = null
+    let authError: any = null
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const { data, error } = await authClient.auth.getUser(token)
+
+      if (!error && data?.user) {
+        user = data.user
+        authError = null
+        break
+      }
+
+      authError = error
+      const msg = (error?.message || '').toLowerCase()
+      const isTransientAuthFailure = msg.includes("unexpected token '<'") || msg.includes('failed to fetch')
+
+      if (!isTransientAuthFailure || attempt === 2) break
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+
+    if (!user) {
+      const authMessage = authError?.message || 'No user'
+      const lower = authMessage.toLowerCase()
+      const isTransientAuthFailure = lower.includes("unexpected token '<'") || lower.includes('failed to fetch')
+
+      console.error('[BINANCE-API] Auth failed:', authMessage)
+
+      return new Response(
+        JSON.stringify({ error: isTransientAuthFailure ? 'Authentication service temporary error. Please retry.' : 'Invalid or expired token' }),
+        { status: isTransientAuthFailure ? 503 : 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
