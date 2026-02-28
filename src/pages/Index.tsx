@@ -68,7 +68,7 @@ export default function Index() {
       <header className="border-b border-border">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src={logo} alt="Love With Trade" className="h-14 w-auto" />
+            <img src={logo} alt="Love With Trade" className="h-20 w-auto" />
             <span className="text-xl font-bold">Love With Trade</span>
           </div>
           <div className="flex items-center gap-2">
@@ -183,7 +183,7 @@ export default function Index() {
       <footer className="border-t border-border py-8 px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <img src={logo} alt="Love With Trade" className="h-12 w-auto" />
+            <img src={logo} alt="Love With Trade" className="h-16 w-auto" />
             <span className="font-semibold">Love With Trade</span>
           </div>
           <p className="text-sm text-muted-foreground">

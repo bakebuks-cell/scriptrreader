@@ -113,7 +113,7 @@ export default function Auth() {
       <div className="min-h-screen bg-background flex flex-col">
         <header className="border-b border-border px-6 py-4">
           <Link to="/" className="flex items-center gap-2">
-            <img src={logo} alt="Love With Trade" className="h-14 w-auto" />
+            <img src={logo} alt="Love With Trade" className="h-20 w-auto" />
             <span className="text-xl font-bold">Love With Trade</span>
           </Link>
         </header>
@@ -159,7 +159,7 @@ export default function Auth() {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border px-6 py-4">
         <Link to="/" className="flex items-center gap-2">
-          <img src={logo} alt="Love With Trade" className="h-14 w-auto" />
+          <img src={logo} alt="Love With Trade" className="h-20 w-auto" />
           <span className="text-xl font-bold">Love With Trade</span>
         </Link>
       </header>
