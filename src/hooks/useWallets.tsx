@@ -435,6 +435,7 @@ export function useOpenPositions() {
     },
     enabled: !!activeWallet?.api_key_encrypted && !!activeWallet?.api_secret_encrypted,
     staleTime: 10000,
+    refetchInterval: 10000,
     retry: 1,
   });
 
