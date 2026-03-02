@@ -434,36 +434,41 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Validate JWT via getUser(token).
-    // Retry once for transient auth endpoint parsing/network issues.
-    const authClient = createClient(supabaseUrl, supabaseAnonKey)
+    // Validate JWT (preferred path: signing-key claims verification)
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    })
 
-    let user: any = null
-    let authError: any = null
+    let userId: string | null = null
+    let authErrorMessage = ''
 
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const { data, error } = await authClient.auth.getUser(token)
-
-      if (!error && data?.user) {
-        user = data.user
-        authError = null
-        break
+    // 1) Try stateless claim validation first
+    try {
+      const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token)
+      if (!claimsError && claimsData?.claims?.sub) {
+        userId = claimsData.claims.sub
+      } else {
+        authErrorMessage = claimsError?.message || 'Missing JWT claims'
       }
-
-      authError = error
-      const msg = (error?.message || '').toLowerCase()
-      const isTransientAuthFailure = msg.includes("unexpected token '<'") || msg.includes('failed to fetch')
-
-      if (!isTransientAuthFailure || attempt === 2) break
-      await new Promise((resolve) => setTimeout(resolve, 200))
+    } catch (err) {
+      authErrorMessage = err instanceof Error ? err.message : 'Failed to validate token claims'
     }
 
-    if (!user) {
-      const authMessage = authError?.message || 'No user'
-      const lower = authMessage.toLowerCase()
+    // 2) Fallback to getUser(token) for compatibility
+    if (!userId) {
+      const { data, error } = await authClient.auth.getUser(token)
+      if (!error && data?.user?.id) {
+        userId = data.user.id
+      } else {
+        authErrorMessage = error?.message || authErrorMessage || 'No user'
+      }
+    }
+
+    if (!userId) {
+      const lower = authErrorMessage.toLowerCase()
       const isTransientAuthFailure = lower.includes("unexpected token '<'") || lower.includes('failed to fetch')
 
-      console.error('[BINANCE-API] Auth failed:', authMessage)
+      console.error('[BINANCE-API] Auth failed:', authErrorMessage)
 
       return new Response(
         JSON.stringify({ error: isTransientAuthFailure ? 'Authentication service temporary error. Please retry.' : 'Invalid or expired token' }),
@@ -472,7 +477,7 @@ Deno.serve(async (req) => {
     }
 
     // Get user's API keys
-    const { apiKey, apiSecret } = await getUserApiKeys(supabase, user.id, exchange)
+    const { apiKey, apiSecret } = await getUserApiKeys(supabase, userId, exchange)
 
     let result: any
 
