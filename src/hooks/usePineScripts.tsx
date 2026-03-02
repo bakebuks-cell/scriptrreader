@@ -261,6 +261,8 @@ export function usePineScripts() {
         throw new Error('Script not found or update failed');
       }
 
+      const persistedScript = data[0] as PineScript;
+
       // Also save trade_mechanism to user_scripts.settings_json for user-created scripts
       const tradeMechanism = (updates as any).trade_mechanism;
       if (tradeMechanism !== undefined) {
@@ -269,7 +271,7 @@ export function usePineScripts() {
           const mergedSettings = { ...((existingRecord as any).settings_json || {}), trade_mechanism: tradeMechanism };
           const { error: updateErr } = await supabase
             .from('user_scripts')
-            .update({ settings_json: mergedSettings })
+            .update({ settings_json: mergedSettings, is_active: persistedScript.is_active })
             .eq('id', existingRecord.id);
           if (updateErr) {
             console.error('[SAVE] Failed to update trade_mechanism in user_scripts:', updateErr);
@@ -277,10 +279,10 @@ export function usePineScripts() {
             console.log(`[SAVE] Updated trade_mechanism=${tradeMechanism} for script ${id}`);
           }
         } else {
-          // Create user_scripts record to store settings
+          // Create user_scripts record to store settings, mirroring actual script activation state
           const { error: insertErr } = await supabase
             .from('user_scripts')
-            .insert({ user_id: user.id, script_id: id, is_active: true, settings_json: { trade_mechanism: tradeMechanism } });
+            .insert({ user_id: user.id, script_id: id, is_active: persistedScript.is_active, settings_json: { trade_mechanism: tradeMechanism } });
           if (insertErr) {
             console.error('[SAVE] Failed to insert trade_mechanism in user_scripts:', insertErr);
           } else {
@@ -307,7 +309,7 @@ export function usePineScripts() {
         }
       }
       
-      return data[0] as PineScript;
+      return persistedScript;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pine-scripts', user?.id] });
@@ -403,6 +405,22 @@ export function usePineScripts() {
         .select();
 
       if (error) throw error;
+
+      // Keep any existing user_scripts row in sync so the engine doesn't run stale disabled scripts
+      const existingRecord = userScriptRecords?.find(us => us.script_id === id);
+      if (existingRecord) {
+        const { error: userScriptUpdateError } = await supabase
+          .from('user_scripts')
+          .update({ is_active })
+          .eq('id', existingRecord.id);
+        if (userScriptUpdateError) throw userScriptUpdateError;
+      } else {
+        const { error: userScriptInsertError } = await supabase
+          .from('user_scripts')
+          .insert({ user_id: user.id, script_id: id, is_active, settings_json: {} });
+        if (userScriptInsertError) throw userScriptInsertError;
+      }
+
       return { id, is_active };
     },
     onSuccess: () => {

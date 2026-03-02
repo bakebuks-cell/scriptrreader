@@ -2775,8 +2775,8 @@ Deno.serve(async (req) => {
         console.log(`[ENGINE] Starting run${targetTimeframe ? ` for timeframe=${targetTimeframe}` : ' for all active scripts'}...`)
         const results: any[] = []
         
-        // Get all active user_scripts (users who clicked "Run")
-        const { data: userScripts, error: scriptsError } = await supabase
+        // Get user_scripts records (for per-user settings and admin-script activation)
+        const { data: userScriptsRaw, error: scriptsError } = await supabase
           .from('user_scripts')
           .select(`
             id,
@@ -2798,17 +2798,34 @@ Deno.serve(async (req) => {
               validation_status,
               candle_type,
               trading_pairs,
-              multi_pair_mode
+              multi_pair_mode,
+              created_by,
+              admin_tag
             )
           `)
-          .eq('is_active', true)
         
         if (scriptsError) {
           console.error('[ENGINE] Failed to fetch user_scripts:', scriptsError)
           throw new Error(`Failed to fetch scripts: ${scriptsError.message}`)
         }
+
+        const userScripts = (userScriptsRaw || []).filter((us: any) => {
+          if (!us.script) return false
+
+          const isOwnScript = us.script.admin_tag === null && us.script.created_by === us.user_id
+          if (isOwnScript) {
+            if (!us.script.is_active) {
+              console.log(`[ENGINE] Skipping disabled own script from user_scripts: "${us.script.name}" (${us.script_id})`)
+              return false
+            }
+            return true
+          }
+
+          // Admin/common scripts remain controlled by user_scripts.is_active
+          return us.is_active === true
+        })
         
-        console.log(`[ENGINE] Found ${userScripts?.length || 0} active user_scripts`)
+        console.log(`[ENGINE] Found ${userScripts.length} runnable user_scripts (${userScriptsRaw?.length || 0} total records)`)
         
         // Also get user-created scripts that are active (exclude admin scripts - they're handled via user_scripts)
         const { data: createdScripts, error: createdError } = await supabase
