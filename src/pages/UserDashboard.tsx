@@ -50,7 +50,7 @@ export default function UserDashboard() {
   const { profile, isLoading: profileLoading, toggleBot, toggleSubscription, isUpdating } = useProfile();
   const { trades, activeTrades, isLoading: tradesLoading, closeSingleTrade, isClosingSingle, closingSingleId } = useTrades();
   const { hasWallets, activeWallet } = useUserWallets();
-  const { positions: livePositions, isLoading: livePositionsLoading } = useOpenPositions();
+  const { positions: livePositions } = useOpenPositions();
   const { 
     scripts, 
     ownScripts,
@@ -172,9 +172,7 @@ export default function UserDashboard() {
 
   const coinsRemaining = profile?.coins ?? 0;
   const recentTrades = trades.slice(0, 5);
-  const openTradesCount = livePositionsLoading
-    ? activeTrades.length
-    : (hasWallets ? livePositions.length : activeTrades.length);
+  const openTradesCount = livePositions.length > 0 ? livePositions.length : activeTrades.length;
 
   // Calculate P&L for a single trade (USDT profit/loss)
   const calcPnL = (trade: typeof trades[0]): number | null => {

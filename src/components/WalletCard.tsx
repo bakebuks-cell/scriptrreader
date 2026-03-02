@@ -166,52 +166,15 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
                   );
                 })}
               </div>
-            ) : openTradesCount > 0 ? (
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground font-medium">{openTradesCount} open position{openTradesCount !== 1 ? 's' : ''}</p>
-                {activeTrades.map((trade) => {
-                  const isClosing = closingSingleId === trade.id;
-                  const isConfirming = confirmingId === trade.id;
-                  return (
-                    <div
-                      key={trade.id}
-                      className="flex items-center justify-between p-2 rounded-lg bg-muted/50 border border-border/50"
-                    >
-                      <div>
-                        <p className="text-sm font-medium">{trade.symbol}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {trade.signal_type} · {trade.entry_price ? `$${trade.entry_price.toFixed(2)}` : 'Pending'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
-                          trade.status === 'OPEN' ? 'bg-buy/10 text-buy' : 'bg-yellow-500/10 text-yellow-600'
-                        }`}>
-                          {trade.status}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant={isConfirming ? 'destructive' : 'outline'}
-                          className="h-6 text-xs px-2"
-                          disabled={isClosing}
-                          onClick={() => handleCloseTrade(trade.id)}
-                          onBlur={() => { if (confirmingId === trade.id) setConfirmingId(null); }}
-                        >
-                          {isClosing ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : isConfirming ? (
-                            'Confirm'
-                          ) : (
-                            <><X className="h-3 w-3 mr-0.5" />Close</>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No open positions</p>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">No live open positions</p>
+                {openTradesCount > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {openTradesCount} trade record{openTradesCount !== 1 ? 's' : ''} pending sync
+                  </p>
+                )}
+              </div>
             )}
           </>
         )}
@@ -304,93 +267,55 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
               </div>
             )}
 
-            {/* Open Positions - show live Binance positions OR DB open trades as fallback */}
-            {(positions.length > 0 || activeTrades.length > 0) && (
-              <div className="space-y-2 pt-4 border-t border-border">
-                <p className="text-sm font-medium">Open Positions</p>
-                {positions.length > 0 ? (
-                  positions.map((position, idx) => {
-                    const pnl = parseFloat(position.unrealizedProfit);
-                    const isProfit = pnl >= 0;
-                    return (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                      >
-                        <div>
-                          <p className="font-medium">{position.symbol}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {position.leverage}x • Entry: ${parseFloat(position.entryPrice).toFixed(2)}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {isProfit ? (
-                              <TrendingUp className="h-4 w-4 text-buy" />
-                            ) : (
-                              <TrendingDown className="h-4 w-4 text-sell" />
-                            )}
-                            <span className={`font-medium ${isProfit ? 'text-buy' : 'text-sell'}`}>
-                              ${Math.abs(pnl).toFixed(2)}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Size: {position.positionAmt}
-                          </p>
-                        </div>
+            {/* Open Positions - live exchange data only */}
+            <div className="space-y-2 pt-4 border-t border-border">
+              <p className="text-sm font-medium">Open Positions</p>
+              {positions.length > 0 ? (
+                positions.map((position, idx) => {
+                  const pnl = parseFloat(position.unrealizedProfit);
+                  const isProfit = pnl >= 0;
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                    >
+                      <div>
+                        <p className="font-medium">{position.symbol}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {position.leverage}x • Entry: ${parseFloat(position.entryPrice).toFixed(2)}
+                        </p>
                       </div>
-                    );
-                  })
-                ) : (
-                  // Fallback: show DB open trades with Close buttons
-                  activeTrades.map((trade) => {
-                    const isClosing = closingSingleId === trade.id;
-                    const isConfirming = confirmingId === trade.id;
-                    return (
-                      <div
-                        key={trade.id}
-                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                      >
-                        <div>
-                          <p className="font-medium">{trade.symbol}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {trade.signal_type} • Entry: {trade.entry_price ? `$${trade.entry_price.toFixed(2)}` : 'Pending'}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{trade.timeframe}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                            trade.status === 'OPEN'
-                              ? 'bg-buy/10 text-buy'
-                              : 'bg-yellow-500/10 text-yellow-600'
-                          }`}>
-                            {trade.status}
+                      <div className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {isProfit ? (
+                            <TrendingUp className="h-4 w-4 text-buy" />
+                          ) : (
+                            <TrendingDown className="h-4 w-4 text-sell" />
+                          )}
+                          <span className={`font-medium ${isProfit ? 'text-buy' : 'text-sell'}`}>
+                            ${Math.abs(pnl).toFixed(2)}
                           </span>
-                          <Button
-                            size="sm"
-                            variant={isConfirming ? 'destructive' : 'outline'}
-                            className="h-7 text-xs px-2"
-                            disabled={isClosing}
-                            onClick={() => handleCloseTrade(trade.id)}
-                            onBlur={() => { if (confirmingId === trade.id) setConfirmingId(null); }}
-                          >
-                            {isClosing ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : isConfirming ? (
-                              'Confirm?'
-                            ) : (
-                              <><X className="h-3 w-3 mr-0.5" />Close</>
-                            )}
-                          </Button>
                         </div>
+                        <p className="text-xs text-muted-foreground">
+                          Size: {position.positionAmt}
+                        </p>
                       </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-muted-foreground">
+                  <p className="text-sm">No live open positions</p>
+                  {activeTrades.length > 0 && (
+                    <p className="text-xs mt-1">
+                      {activeTrades.length} trade record{activeTrades.length !== 1 ? 's' : ''} pending sync
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
 
-            {positions.length === 0 && activeTrades.length === 0 && balances.length === 0 && (
+            {positions.length === 0 && balances.length === 0 && (
               <div className="text-center py-4 text-muted-foreground">
                 <p className="text-sm">No assets or positions found</p>
               </div>

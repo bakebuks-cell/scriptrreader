@@ -46,7 +46,7 @@ interface EntryCondition {
 }
 
 interface ExitCondition {
-  type: 'crossover' | 'crossunder' | 'above' | 'below' | 'equals'
+  type: 'crossover' | 'crossunder' | 'above' | 'below' | 'equals' | 'direction_change_up' | 'direction_change_down'
   indicator1: IndicatorRef
   indicator2: IndicatorRef | number
   logic: 'and' | 'or'
@@ -3154,7 +3154,7 @@ Deno.serve(async (req) => {
                 } else {
                   const botStartedAt = (settings.bot_started_at as string | undefined) || undefined
                   const evalResult = evaluateStrategy(strategy, indicators, candlesUsed, currentPrice, botStartedAt)
-                  rawSignalAction = evalResult.action === 'NONE' ? 'NONE' : evalResult.action
+                  rawSignalAction = evalResult.action === 'BUY' || evalResult.action === 'SELL' ? evalResult.action : 'NONE'
                   console.log(`[ENGINE] Standard eval → rawSignal=${rawSignalAction}`)
                 }
 
