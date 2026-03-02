@@ -17,8 +17,7 @@ interface WalletCardProps {
 
 export default function WalletCard({ compact = false, wallet, showRoleBadge = false }: WalletCardProps) {
   const { balances, totalUSDT, isLoading, isRefreshing, refresh, hasWallets, wallet: activeWallet, error } = useWalletBalance(wallet?.id);
-  const { positions: rawPositions } = useOpenPositions();
-  const positions = rawPositions.filter(p => Math.abs(parseFloat(p.positionAmt)) > 0.1);
+  const { positions } = useOpenPositions();
   const { activeTrades, closeSingleTrade, closingSingleId } = useTrades();
   const openTradesCount = activeTrades.length;
   const { toast } = useToast();
