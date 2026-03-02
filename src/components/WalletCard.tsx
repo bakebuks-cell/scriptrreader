@@ -117,7 +117,57 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
                 ${totalUSDT.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
-            {openTradesCount > 0 ? (
+            {positions.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground font-medium">{positions.length} open position{positions.length !== 1 ? 's' : ''}</p>
+                {positions.map((position, idx) => {
+                  const pnl = parseFloat(position.unrealizedProfit);
+                  const isProfit = pnl >= 0;
+                  // Find matching DB trade for close functionality
+                  const matchingTrade = activeTrades.find(t => t.symbol === position.symbol && t.status === 'OPEN');
+                  const isClosing = matchingTrade ? closingSingleId === matchingTrade.id : false;
+                  const isConfirming = matchingTrade ? confirmingId === matchingTrade.id : false;
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-2 rounded-lg bg-muted/50 border border-border/50"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{position.symbol}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {parseFloat(position.positionAmt) >= 0 ? 'BUY' : 'SELL'} · ${parseFloat(position.entryPrice).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+                          isProfit ? 'bg-buy/10 text-buy' : 'bg-sell/10 text-sell'
+                        }`}>
+                          {isProfit ? '+' : ''}${pnl.toFixed(2)}
+                        </span>
+                        {matchingTrade && (
+                          <Button
+                            size="sm"
+                            variant={isConfirming ? 'destructive' : 'outline'}
+                            className="h-6 text-xs px-2"
+                            disabled={isClosing}
+                            onClick={() => handleCloseTrade(matchingTrade.id)}
+                            onBlur={() => { if (confirmingId === matchingTrade.id) setConfirmingId(null); }}
+                          >
+                            {isClosing ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : isConfirming ? (
+                              'Confirm'
+                            ) : (
+                              <><X className="h-3 w-3 mr-0.5" />Close</>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : openTradesCount > 0 ? (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground font-medium">{openTradesCount} open position{openTradesCount !== 1 ? 's' : ''}</p>
                 {activeTrades.map((trade) => {
