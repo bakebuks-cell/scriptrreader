@@ -421,17 +421,7 @@ export function useOpenPositions() {
     queryKey: ['open-positions', activeWallet?.id],
     queryFn: async () => {
       const result = await callBinanceApi('positions', 'GET', undefined, activeWallet?.exchange);
-      const rawPositions = (result.positions ?? []) as Array<Record<string, unknown>>;
-
-      return rawPositions
-        .map((position) => ({
-          symbol: String(position.symbol ?? ''),
-          positionAmt: String(position.positionAmt ?? '0'),
-          entryPrice: String(position.entryPrice ?? '0'),
-          unrealizedProfit: String(position.unrealizedProfit ?? position.unRealizedProfit ?? '0'),
-          leverage: String(position.leverage ?? '1'),
-        }))
-        .filter((position) => Number.isFinite(parseFloat(position.positionAmt)) && Math.abs(parseFloat(position.positionAmt)) > 0.000001) as OpenPosition[];
+      return result.positions as OpenPosition[];
     },
     enabled: !!activeWallet?.api_key_encrypted && !!activeWallet?.api_secret_encrypted,
     staleTime: 10000,

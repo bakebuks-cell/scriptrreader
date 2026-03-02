@@ -6,7 +6,7 @@ import { Crown } from 'lucide-react';
 import { useTrades } from '@/hooks/useTrades';
 import { usePineScripts } from '@/hooks/usePineScripts';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
-import { useUserWallets, useOpenPositions } from '@/hooks/useWallets';
+import { useUserWallets } from '@/hooks/useWallets';
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -50,7 +50,6 @@ export default function UserDashboard() {
   const { profile, isLoading: profileLoading, toggleBot, toggleSubscription, isUpdating } = useProfile();
   const { trades, activeTrades, isLoading: tradesLoading, closeSingleTrade, isClosingSingle, closingSingleId } = useTrades();
   const { hasWallets, activeWallet } = useUserWallets();
-  const { positions: livePositions, isLoading: livePositionsLoading } = useOpenPositions();
   const { 
     scripts, 
     ownScripts,
@@ -172,9 +171,6 @@ export default function UserDashboard() {
 
   const coinsRemaining = profile?.coins ?? 0;
   const recentTrades = trades.slice(0, 5);
-  const openTradesCount = livePositionsLoading
-    ? activeTrades.length
-    : (hasWallets ? livePositions.length : activeTrades.length);
 
   // Calculate P&L for a single trade (USDT profit/loss)
   const calcPnL = (trade: typeof trades[0]): number | null => {
@@ -283,7 +279,7 @@ export default function UserDashboard() {
                   <Activity className="h-5 w-5 text-primary" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold">{openTradesCount}</div>
+                  <div className="text-3xl font-bold">{activeTrades.length}</div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {trades.length} total executed
                   </p>
