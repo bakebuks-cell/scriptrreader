@@ -3389,6 +3389,7 @@ Deno.serve(async (req) => {
 
                 // ----- DAILY PROFIT TARGET GUARD -----
                 // Check if user has hit their daily profit target (% of margin used)
+                // Includes both CLOSED trades P&L + unrealized P&L from OPEN trades
                 const { data: userProfile } = await supabase
                   .from('profiles')
                   .select('daily_profit_target, daily_target_reset_at')
@@ -3399,10 +3400,10 @@ Deno.serve(async (req) => {
                 if (dailyTarget > 0) {
                   const todayStart = new Date()
                   todayStart.setUTCHours(0, 0, 0, 0)
-                  // If user reset today, only count trades after the reset
                   const resetAt = userProfile?.daily_target_reset_at ? new Date(userProfile.daily_target_reset_at) : null
                   const cutoff = (resetAt && resetAt >= todayStart) ? resetAt : todayStart
 
+                  // 1) Realized P&L from closed trades today
                   const { data: todayClosedTrades } = await supabase
                     .from('trades')
                     .select('entry_price, exit_price, quantity, signal_type, margin_amount')
@@ -3410,9 +3411,9 @@ Deno.serve(async (req) => {
                     .eq('status', 'CLOSED')
                     .gte('closed_at', cutoff.toISOString())
 
-                  if (todayClosedTrades && todayClosedTrades.length > 0) {
-                    let totalPnl = 0
-                    let totalMargin = 0
+                  let totalPnl = 0
+                  let totalMargin = 0
+                  if (todayClosedTrades) {
                     for (const t of todayClosedTrades) {
                       if (t.entry_price && t.exit_price && t.quantity) {
                         const diff = t.signal_type === 'BUY'
@@ -3422,18 +3423,48 @@ Deno.serve(async (req) => {
                       }
                       totalMargin += parseFloat(t.margin_amount || '0')
                     }
+                  }
 
-                    const pnlPercent = totalMargin > 0 ? (totalPnl / totalMargin) * 100 : 0
+                  // 2) Unrealized P&L from open trades (using current market price)
+                  const { data: openTrades } = await supabase
+                    .from('trades')
+                    .select('entry_price, quantity, signal_type, margin_amount, symbol')
+                    .eq('user_id', us.user_id)
+                    .in('status', ['OPEN', 'PENDING'])
+
+                  if (openTrades && openTrades.length > 0) {
+                    // Group by symbol to minimize price lookups
+                    const symbolPrices: Record<string, number> = {}
+                    for (const t of openTrades) {
+                      if (!t.entry_price || !t.quantity) continue
+                      if (!symbolPrices[t.symbol]) {
+                        try {
+                          symbolPrices[t.symbol] = await getCurrentPrice(t.symbol)
+                        } catch {
+                          continue // skip if price fetch fails
+                        }
+                      }
+                      const markPrice = symbolPrices[t.symbol]
+                      const diff = t.signal_type === 'BUY'
+                        ? (markPrice - t.entry_price) * t.quantity
+                        : (t.entry_price - markPrice) * t.quantity
+                      totalPnl += diff
+                      totalMargin += parseFloat(t.margin_amount || '0')
+                    }
+                  }
+
+                  if (totalMargin > 0) {
+                    const pnlPercent = (totalPnl / totalMargin) * 100
                     if (pnlPercent >= dailyTarget) {
-                      console.log(`[ENGINE] DAILY TARGET REACHED: User ${us.user_id} earned ${pnlPercent.toFixed(2)}% (target: ${dailyTarget}%). No more trades today.`)
+                      console.log(`[ENGINE] DAILY TARGET REACHED: User ${us.user_id} earned ${pnlPercent.toFixed(2)}% (target: ${dailyTarget}%). Includes unrealized P&L. No more trades today.`)
                       results.push({
                         scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                         symbol, timeframe, executed: false,
-                        reason: `Daily profit target reached: ${pnlPercent.toFixed(2)}% of ${dailyTarget}% target`,
+                        reason: `Daily profit target reached: ${pnlPercent.toFixed(2)}% of ${dailyTarget}% target (includes unrealized)`,
                       })
                       continue
                     }
-                    console.log(`[ENGINE] Daily P&L check: ${pnlPercent.toFixed(2)}% of ${dailyTarget}% target — continuing`)
+                    console.log(`[ENGINE] Daily P&L check: ${pnlPercent.toFixed(2)}% of ${dailyTarget}% target (includes unrealized) — continuing`)
                   }
                 }
 
