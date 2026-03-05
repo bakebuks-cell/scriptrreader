@@ -29,7 +29,6 @@ import {
   Clock,
   Send,
   Loader2,
-  Target,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -40,7 +39,6 @@ export default function UserProfile() {
   const { toast } = useToast();
 
   const [displayName, setDisplayName] = useState(profile?.display_name || '');
-  const [dailyProfitTarget, setDailyProfitTarget] = useState(String(profile?.daily_profit_target || 0));
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -51,8 +49,7 @@ export default function UserProfile() {
 
   const handleUpdateProfile = async () => {
     try {
-      const target = parseFloat(dailyProfitTarget) || 0;
-      await updateProfile({ display_name: displayName, daily_profit_target: target });
+      await updateProfile({ display_name: displayName });
       toast({
         title: 'Profile Updated',
         description: 'Your profile has been updated successfully.',
@@ -181,28 +178,6 @@ export default function UserProfile() {
             <Badge variant={role === 'admin' ? 'default' : 'secondary'}>
               {role === 'admin' ? 'Admin' : 'User'}
             </Badge>
-          </div>
-
-          {/* Daily Profit Target */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Target className="h-4 w-4 text-muted-foreground" />
-              Daily Profit Target (%)
-            </Label>
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              step={0.5}
-              value={dailyProfitTarget}
-              onChange={(e) => setDailyProfitTarget(e.target.value)}
-              placeholder="e.g. 5 for 5%"
-            />
-            <p className="text-xs text-muted-foreground">
-              {parseFloat(dailyProfitTarget) > 0
-                ? `Bot will stop trading after earning ${dailyProfitTarget}% profit (of margin used) in a day`
-                : 'Set to 0 to disable — bot will trade without a daily limit'}
-            </p>
           </div>
 
           {/* Coin Balance */}

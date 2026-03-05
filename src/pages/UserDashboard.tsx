@@ -159,6 +159,7 @@ export default function UserDashboard() {
   const dailyTargetVal = profile?.daily_profit_target ?? 0;
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetInput, setTargetInput] = useState(String(dailyTargetVal));
+  useEffect(() => { setTargetInput(String(dailyTargetVal)); }, [dailyTargetVal]);
   const dailyProgress = dailyTargetVal > 0 ? Math.min((todayStats.pnlPercent / dailyTargetVal) * 100, 100) : 0;
   const targetReached = dailyTargetVal > 0 && todayStats.pnlPercent >= dailyTargetVal;
 
