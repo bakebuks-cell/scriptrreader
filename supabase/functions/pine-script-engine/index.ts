@@ -3391,7 +3391,7 @@ Deno.serve(async (req) => {
                 // Check if user has hit their daily profit target (% of margin used)
                 const { data: userProfile } = await supabase
                   .from('profiles')
-                  .select('daily_profit_target')
+                  .select('daily_profit_target, daily_target_reset_at')
                   .eq('user_id', us.user_id)
                   .maybeSingle()
 
@@ -3399,13 +3399,16 @@ Deno.serve(async (req) => {
                 if (dailyTarget > 0) {
                   const todayStart = new Date()
                   todayStart.setUTCHours(0, 0, 0, 0)
+                  // If user reset today, only count trades after the reset
+                  const resetAt = userProfile?.daily_target_reset_at ? new Date(userProfile.daily_target_reset_at) : null
+                  const cutoff = (resetAt && resetAt >= todayStart) ? resetAt : todayStart
 
                   const { data: todayClosedTrades } = await supabase
                     .from('trades')
                     .select('entry_price, exit_price, quantity, signal_type, margin_amount')
                     .eq('user_id', us.user_id)
                     .eq('status', 'CLOSED')
-                    .gte('closed_at', todayStart.toISOString())
+                    .gte('closed_at', cutoff.toISOString())
 
                   if (todayClosedTrades && todayClosedTrades.length > 0) {
                     let totalPnl = 0

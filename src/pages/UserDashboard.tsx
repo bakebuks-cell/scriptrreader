@@ -141,11 +141,13 @@ export default function UserDashboard() {
   const winCount = closedTrades.filter(t => (calcPnL(t) ?? 0) > 0).length;
   const winRate = closedTrades.length > 0 ? ((winCount / closedTrades.length) * 100).toFixed(1) : '0';
 
-  // Today's P&L calculation
+  // Today's P&L calculation (respects daily_target_reset_at)
   const todayStats = useMemo(() => {
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
-    const todayClosed = closedTrades.filter(t => t.closed_at && new Date(t.closed_at) >= todayStart);
+    const resetAt = profile?.daily_target_reset_at ? new Date(profile.daily_target_reset_at) : null;
+    const cutoff = (resetAt && resetAt >= todayStart) ? resetAt : todayStart;
+    const todayClosed = closedTrades.filter(t => t.closed_at && new Date(t.closed_at) >= cutoff);
     let todayPnl = 0;
     let todayMargin = 0;
     for (const t of todayClosed) {
@@ -154,7 +156,7 @@ export default function UserDashboard() {
     }
     const pnlPercent = todayMargin > 0 ? (todayPnl / todayMargin) * 100 : 0;
     return { todayPnl, todayMargin, pnlPercent, tradeCount: todayClosed.length };
-  }, [closedTrades]);
+  }, [closedTrades, profile?.daily_target_reset_at]);
 
   const dailyTargetVal = profile?.daily_profit_target ?? 0;
   const [editingTarget, setEditingTarget] = useState(false);
@@ -167,6 +169,10 @@ export default function UserDashboard() {
     const val = parseFloat(targetInput) || 0;
     await updateProfile({ daily_profit_target: val });
     setEditingTarget(false);
+  };
+
+  const handleResetDailyTarget = async () => {
+    await updateProfile({ daily_target_reset_at: new Date().toISOString() });
   };
 
   if (authLoading || profileLoading || accessLoading) {
@@ -343,10 +349,15 @@ export default function UserDashboard() {
                   Daily Profit Target
                 </CardTitle>
                 {targetReached && (
-                  <Badge variant="default" className="bg-green-600 text-white">
-                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                    Target Reached
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default" className="bg-green-600 text-white">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Reached
+                    </Badge>
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={handleResetDailyTarget}>
+                      Reset
+                    </Button>
+                  </div>
                 )}
               </CardHeader>
               <CardContent className="space-y-3">

@@ -388,6 +388,7 @@ export type Database = {
           coins: number
           created_at: string
           daily_profit_target: number | null
+          daily_target_reset_at: string | null
           display_name: string | null
           email: string | null
           feature_access: boolean
@@ -406,6 +407,7 @@ export type Database = {
           coins?: number
           created_at?: string
           daily_profit_target?: number | null
+          daily_target_reset_at?: string | null
           display_name?: string | null
           email?: string | null
           feature_access?: boolean
@@ -424,6 +426,7 @@ export type Database = {
           coins?: number
           created_at?: string
           daily_profit_target?: number | null
+          daily_target_reset_at?: string | null
           display_name?: string | null
           email?: string | null
           feature_access?: boolean
