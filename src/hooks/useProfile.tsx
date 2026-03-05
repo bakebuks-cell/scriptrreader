@@ -17,6 +17,7 @@ export interface Profile {
   subscription_active: boolean;
   trade_mode: TradeMode;
   strategy_opposite_policy: StrategyOppositePolicy;
+  daily_profit_target: number;
   created_at: string;
   updated_at: string;
 }
@@ -43,7 +44,7 @@ export function useProfile() {
   });
 
   const updateProfile = useMutation({
-    mutationFn: async (updates: Partial<Pick<Profile, 'display_name' | 'bot_enabled' | 'selected_timeframes' | 'subscription_active' | 'trade_mode' | 'strategy_opposite_policy'>>) => {
+    mutationFn: async (updates: Partial<Pick<Profile, 'display_name' | 'bot_enabled' | 'selected_timeframes' | 'subscription_active' | 'trade_mode' | 'strategy_opposite_policy' | 'daily_profit_target'>>) => {
       if (!user?.id) throw new Error('Not authenticated');
 
       // Validate timeframes limit

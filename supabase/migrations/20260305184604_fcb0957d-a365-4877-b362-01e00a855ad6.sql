@@ -1,0 +1,2 @@
+ALTER TABLE public.profiles ADD COLUMN daily_profit_target numeric DEFAULT 0;
+COMMENT ON COLUMN public.profiles.daily_profit_target IS 'Daily profit target as percentage of margin used. 0 means disabled.';
