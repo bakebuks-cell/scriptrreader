@@ -142,6 +142,7 @@ export default function UserDashboard() {
   const winRate = closedTrades.length > 0 ? ((winCount / closedTrades.length) * 100).toFixed(1) : '0';
 
   // Today's P&L calculation (respects daily_target_reset_at)
+  // Includes both closed trades + unrealized P&L from open trades
   const todayStats = useMemo(() => {
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
@@ -154,9 +155,21 @@ export default function UserDashboard() {
       todayPnl += calcPnL(t) ?? 0;
       todayMargin += t.margin_amount ? Number(t.margin_amount) : 0;
     }
+
+    // Add unrealized P&L from open/pending trades
+    for (const t of activeTrades) {
+      if (t.entry_price && t.margin_amount) {
+        const livePos = livePositions.find(p => p.symbol === t.symbol);
+        if (livePos) {
+          todayPnl += parseFloat(livePos.unrealizedProfit || '0');
+        }
+        todayMargin += Number(t.margin_amount);
+      }
+    }
+
     const pnlPercent = todayMargin > 0 ? (todayPnl / todayMargin) * 100 : 0;
-    return { todayPnl, todayMargin, pnlPercent, tradeCount: todayClosed.length };
-  }, [closedTrades, profile?.daily_target_reset_at]);
+    return { todayPnl, todayMargin, pnlPercent, tradeCount: todayClosed.length + activeTrades.length };
+  }, [closedTrades, activeTrades, livePositions, profile?.daily_target_reset_at]);
 
   const dailyTargetVal = profile?.daily_profit_target ?? 0;
   const [editingTarget, setEditingTarget] = useState(false);
