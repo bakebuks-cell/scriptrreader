@@ -1,0 +1,1 @@
+ALTER TABLE public.profiles ADD COLUMN daily_target_reset_at timestamp with time zone DEFAULT NULL;
