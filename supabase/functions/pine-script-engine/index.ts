@@ -3387,6 +3387,53 @@ Deno.serve(async (req) => {
                   await new Promise(r => setTimeout(r, 500))
                 }
 
+                // ----- DAILY PROFIT TARGET GUARD -----
+                // Check if user has hit their daily profit target (% of margin used)
+                const { data: userProfile } = await supabase
+                  .from('profiles')
+                  .select('daily_profit_target')
+                  .eq('user_id', us.user_id)
+                  .maybeSingle()
+
+                const dailyTarget = parseFloat(userProfile?.daily_profit_target || '0')
+                if (dailyTarget > 0) {
+                  const todayStart = new Date()
+                  todayStart.setUTCHours(0, 0, 0, 0)
+
+                  const { data: todayClosedTrades } = await supabase
+                    .from('trades')
+                    .select('entry_price, exit_price, quantity, signal_type, margin_amount')
+                    .eq('user_id', us.user_id)
+                    .eq('status', 'CLOSED')
+                    .gte('closed_at', todayStart.toISOString())
+
+                  if (todayClosedTrades && todayClosedTrades.length > 0) {
+                    let totalPnl = 0
+                    let totalMargin = 0
+                    for (const t of todayClosedTrades) {
+                      if (t.entry_price && t.exit_price && t.quantity) {
+                        const diff = t.signal_type === 'BUY'
+                          ? (t.exit_price - t.entry_price) * t.quantity
+                          : (t.entry_price - t.exit_price) * t.quantity
+                        totalPnl += diff
+                      }
+                      totalMargin += parseFloat(t.margin_amount || '0')
+                    }
+
+                    const pnlPercent = totalMargin > 0 ? (totalPnl / totalMargin) * 100 : 0
+                    if (pnlPercent >= dailyTarget) {
+                      console.log(`[ENGINE] DAILY TARGET REACHED: User ${us.user_id} earned ${pnlPercent.toFixed(2)}% (target: ${dailyTarget}%). No more trades today.`)
+                      results.push({
+                        scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                        symbol, timeframe, executed: false,
+                        reason: `Daily profit target reached: ${pnlPercent.toFixed(2)}% of ${dailyTarget}% target`,
+                      })
+                      continue
+                    }
+                    console.log(`[ENGINE] Daily P&L check: ${pnlPercent.toFixed(2)}% of ${dailyTarget}% target — continuing`)
+                  }
+                }
+
                 // ----- Pre-flight: no open position should exist -----
                 const { data: existingOpen } = await supabase
                   .from('trades')

@@ -387,6 +387,7 @@ export type Database = {
           bot_enabled: boolean
           coins: number
           created_at: string
+          daily_profit_target: number | null
           display_name: string | null
           email: string | null
           feature_access: boolean
@@ -404,6 +405,7 @@ export type Database = {
           bot_enabled?: boolean
           coins?: number
           created_at?: string
+          daily_profit_target?: number | null
           display_name?: string | null
           email?: string | null
           feature_access?: boolean
@@ -421,6 +423,7 @@ export type Database = {
           bot_enabled?: boolean
           coins?: number
           created_at?: string
+          daily_profit_target?: number | null
           display_name?: string | null
           email?: string | null
           feature_access?: boolean
