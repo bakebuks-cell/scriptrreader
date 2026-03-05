@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
@@ -28,8 +28,11 @@ import {
   XCircle,
   BarChart3,
   Key,
-  Loader2
+  Loader2,
+  Target
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import WalletCard from '@/components/WalletCard';
 import BinanceApiKeyForm from '@/components/BinanceApiKeyForm';
 import UserProfile from '@/components/profile/UserProfile';
@@ -47,7 +50,7 @@ export default function UserDashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [dismissedOnboarding, setDismissedOnboarding] = useState(false);
   const { user, role, loading: authLoading } = useAuth();
-  const { profile, isLoading: profileLoading, toggleBot, toggleSubscription, isUpdating } = useProfile();
+  const { profile, isLoading: profileLoading, toggleBot, toggleSubscription, updateProfile, isUpdating } = useProfile();
   const { trades, activeTrades, isLoading: tradesLoading, closeSingleTrade, isClosingSingle, closingSingleId } = useTrades();
   const { hasWallets, activeWallet } = useUserWallets();
   const { positions: livePositions } = useOpenPositions();
@@ -123,6 +126,48 @@ export default function UserDashboard() {
     await toggleActivation({ id, is_active });
   };
 
+  // Calculate P&L for a single trade (USDT profit/loss)
+  const calcPnL = (trade: typeof trades[0]): number | null => {
+    if (!trade.entry_price || !trade.exit_price) return null;
+    const priceDiff = trade.signal_type === 'BUY'
+      ? trade.exit_price - trade.entry_price
+      : trade.entry_price - trade.exit_price;
+    return trade.quantity ? priceDiff * trade.quantity : priceDiff;
+  };
+
+  // Total P&L from closed trades
+  const closedTrades = trades.filter(t => t.status === 'CLOSED' && t.entry_price && t.exit_price);
+  const totalPnL = closedTrades.reduce((sum, t) => sum + (calcPnL(t) ?? 0), 0);
+  const winCount = closedTrades.filter(t => (calcPnL(t) ?? 0) > 0).length;
+  const winRate = closedTrades.length > 0 ? ((winCount / closedTrades.length) * 100).toFixed(1) : '0';
+
+  // Today's P&L calculation
+  const todayStats = useMemo(() => {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const todayClosed = closedTrades.filter(t => t.closed_at && new Date(t.closed_at) >= todayStart);
+    let todayPnl = 0;
+    let todayMargin = 0;
+    for (const t of todayClosed) {
+      todayPnl += calcPnL(t) ?? 0;
+      todayMargin += t.margin_amount ? Number(t.margin_amount) : 0;
+    }
+    const pnlPercent = todayMargin > 0 ? (todayPnl / todayMargin) * 100 : 0;
+    return { todayPnl, todayMargin, pnlPercent, tradeCount: todayClosed.length };
+  }, [closedTrades]);
+
+  const dailyTargetVal = profile?.daily_profit_target ?? 0;
+  const [editingTarget, setEditingTarget] = useState(false);
+  const [targetInput, setTargetInput] = useState(String(dailyTargetVal));
+  const dailyProgress = dailyTargetVal > 0 ? Math.min((todayStats.pnlPercent / dailyTargetVal) * 100, 100) : 0;
+  const targetReached = dailyTargetVal > 0 && todayStats.pnlPercent >= dailyTargetVal;
+
+  const handleSaveTarget = async () => {
+    const val = parseFloat(targetInput) || 0;
+    await updateProfile({ daily_profit_target: val });
+    setEditingTarget(false);
+  };
+
   if (authLoading || profileLoading || accessLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -173,21 +218,6 @@ export default function UserDashboard() {
   const coinsRemaining = profile?.coins ?? 0;
   const recentTrades = trades.slice(0, 5);
   const openTradesCount = livePositions.length > 0 ? livePositions.length : activeTrades.length;
-
-  // Calculate P&L for a single trade (USDT profit/loss)
-  const calcPnL = (trade: typeof trades[0]): number | null => {
-    if (!trade.entry_price || !trade.exit_price) return null;
-    const priceDiff = trade.signal_type === 'BUY'
-      ? trade.exit_price - trade.entry_price
-      : trade.entry_price - trade.exit_price;
-    return trade.quantity ? priceDiff * trade.quantity : priceDiff;
-  };
-
-  // Total P&L from closed trades
-  const closedTrades = trades.filter(t => t.status === 'CLOSED' && t.entry_price && t.exit_price);
-  const totalPnL = closedTrades.reduce((sum, t) => sum + (calcPnL(t) ?? 0), 0);
-  const winCount = closedTrades.filter(t => (calcPnL(t) ?? 0) > 0).length;
-  const winRate = closedTrades.length > 0 ? ((winCount / closedTrades.length) * 100).toFixed(1) : '0';
 
   const renderContent = () => {
     switch (activeTab) {
@@ -303,6 +333,76 @@ export default function UserDashboard() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Daily Profit Target Card */}
+            <Card className={`stat-card ${targetReached ? 'border-green-500/50 bg-green-500/5' : ''}`}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Target className="h-4 w-4" />
+                  Daily Profit Target
+                </CardTitle>
+                {targetReached && (
+                  <Badge variant="default" className="bg-green-600 text-white">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Target Reached
+                  </Badge>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className={`text-2xl font-bold ${todayStats.todayPnl >= 0 ? 'text-buy' : 'text-sell'}`}>
+                      {todayStats.todayPnl >= 0 ? '+' : ''}{todayStats.todayPnl.toFixed(2)} USDT
+                    </span>
+                    <p className="text-xs text-muted-foreground">
+                      {todayStats.pnlPercent.toFixed(2)}% of margin · {todayStats.tradeCount} trades today
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    {editingTarget ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          value={targetInput}
+                          onChange={(e) => setTargetInput(e.target.value)}
+                          className="w-20 h-8 text-sm"
+                          onKeyDown={(e) => e.key === 'Enter' && handleSaveTarget()}
+                        />
+                        <span className="text-sm text-muted-foreground">%</span>
+                        <Button size="sm" variant="ghost" className="h-8 px-2" onClick={handleSaveTarget}>
+                          <CheckCircle2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setTargetInput(String(dailyTargetVal)); setEditingTarget(true); }}
+                        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Target: <span className="font-semibold">{dailyTargetVal > 0 ? `${dailyTargetVal}%` : 'Not set'}</span>
+                        <span className="text-xs ml-1">✎</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {dailyTargetVal > 0 && (
+                  <div className="space-y-1">
+                    <Progress value={dailyProgress} className="h-2" />
+                    <p className="text-xs text-muted-foreground text-right">
+                      {todayStats.pnlPercent.toFixed(1)}% / {dailyTargetVal}%
+                      {targetReached && ' — Trading paused for today'}
+                    </p>
+                  </div>
+                )}
+                {dailyTargetVal === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Set a target to auto-pause trading after reaching your daily profit goal
+                  </p>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Stats row 2 - smaller cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
