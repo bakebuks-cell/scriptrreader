@@ -3456,11 +3456,33 @@ Deno.serve(async (req) => {
                   if (totalMargin > 0) {
                     const pnlPercent = (totalPnl / totalMargin) * 100
                     if (pnlPercent >= dailyTarget) {
-                      console.log(`[ENGINE] DAILY TARGET REACHED: User ${us.user_id} earned ${pnlPercent.toFixed(2)}% (target: ${dailyTarget}%). Includes unrealized P&L. No more trades today.`)
+                      console.log(`[ENGINE] DAILY TARGET REACHED: User ${us.user_id} earned ${pnlPercent.toFixed(2)}% (target: ${dailyTarget}%). Auto-closing all open trades.`)
+
+                      // AUTO-CLOSE all open trades for this user
+                      if (openTrades && openTrades.length > 0) {
+                        for (const ot of openTrades) {
+                          try {
+                            const rawMT = us.script.market_type || 'futures'
+                            const mt = isFuturesOnlySymbol(ot.symbol) ? 'usdt_futures' : rawMT
+                            const otPrice = symbolPrices[ot.symbol] || await getCurrentPrice(ot.symbol).catch(() => ot.entry_price || 0)
+                            const closeRes = await closeOpenTrade(
+                              supabase,
+                              { id: (ot as any).id || '', user_id: us.user_id, script_id: us.script_id, symbol: ot.symbol, signal_type: ot.signal_type, entry_price: ot.entry_price! },
+                              otPrice,
+                              mt,
+                              `Daily profit target reached (${pnlPercent.toFixed(2)}% >= ${dailyTarget}%)`
+                            )
+                            console.log(`[ENGINE] Auto-closed trade for ${ot.symbol}: ${closeRes.success ? 'OK' : closeRes.error}`)
+                          } catch (closeErr) {
+                            console.error(`[ENGINE] Failed to auto-close trade for ${ot.symbol}:`, closeErr)
+                          }
+                        }
+                      }
+
                       results.push({
                         scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                         symbol, timeframe, executed: false,
-                        reason: `Daily profit target reached: ${pnlPercent.toFixed(2)}% of ${dailyTarget}% target (includes unrealized)`,
+                        reason: `Daily profit target reached: ${pnlPercent.toFixed(2)}% of ${dailyTarget}% — all open trades auto-closed`,
                       })
                       continue
                     }
