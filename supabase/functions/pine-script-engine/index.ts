@@ -3428,7 +3428,7 @@ Deno.serve(async (req) => {
                   // 2) Unrealized P&L from open trades (using current market price)
                   const { data: openTrades } = await supabase
                     .from('trades')
-                    .select('entry_price, quantity, signal_type, margin_amount, symbol')
+                    .select('id, entry_price, quantity, signal_type, margin_amount, symbol, script_id')
                     .eq('user_id', us.user_id)
                     .in('status', ['OPEN', 'PENDING'])
 
