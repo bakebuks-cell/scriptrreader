@@ -3491,20 +3491,73 @@ Deno.serve(async (req) => {
                 }
 
                 // ----- Pre-flight: no open position should exist -----
+                // Also reconcile stale DB records: if DB says OPEN but no Binance position, auto-close
                 const { data: existingOpen } = await supabase
                   .from('trades')
-                  .select('id, signal_type, status')
+                  .select('id, signal_type, status, entry_price, symbol')
                   .eq('user_id', us.user_id).eq('symbol', symbol)
                   .in('status', ['OPEN', 'PENDING']).limit(1).maybeSingle()
 
                 if (existingOpen) {
-                  console.log(`[ENGINE] BLOCKED: ${existingOpen.status} trade ${existingOpen.id} still exists`)
-                  results.push({
-                    scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
-                    symbol, timeframe, executed: false,
-                    reason: `Blocked: existing ${existingOpen.status} trade for ${symbol}`,
-                  })
-                  continue
+                  // RECONCILIATION: Verify position actually exists on Binance
+                  let positionStillOpen = true
+                  try {
+                    const { data: reconKeys } = await supabase
+                      .from('wallets')
+                      .select('api_key_encrypted, api_secret_encrypted')
+                      .eq('user_id', us.user_id).eq('is_active', true)
+                      .not('api_key_encrypted', 'is', null).limit(1).maybeSingle()
+
+                    if (reconKeys) {
+                      const rawMT = us.script.market_type || 'futures'
+                      const mt = isFuturesOnlySymbol(symbol) ? 'usdt_futures' : rawMT
+                      const isCM = mt === 'coin_margin'
+                      const isSpotMT = mt === 'spot'
+
+                      if (!isSpotMT) {
+                        const positions = isCM
+                          ? await binanceCoinMRequest('/dapi/v1/positionRisk', reconKeys.api_key_encrypted.trim(), reconKeys.api_secret_encrypted.trim())
+                          : await binanceRequest('/fapi/v2/positionRisk', reconKeys.api_key_encrypted.trim(), reconKeys.api_secret_encrypted.trim(), 'GET', { recvWindow: '10000' }, true)
+
+                        const hedgeMode = await isHedgeMode(reconKeys.api_key_encrypted.trim(), reconKeys.api_secret_encrypted.trim(), isCM)
+                        let pos: any
+                        if (hedgeMode) {
+                          const expectedSide = existingOpen.signal_type === 'BUY' ? 'LONG' : 'SHORT'
+                          pos = positions.find((p: any) => p.symbol === symbol && p.positionSide === expectedSide && Math.abs(parseFloat(p.positionAmt)) > 0.001)
+                        } else {
+                          pos = existingOpen.signal_type === 'BUY'
+                            ? positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) > 0.001)
+                            : positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) < -0.001)
+                        }
+
+                        if (!pos) {
+                          positionStillOpen = false
+                          console.log(`[RECONCILE] Trade ${existingOpen.id} (${symbol}) is OPEN in DB but NO position on Binance — auto-closing stale record`)
+                          const exitP = await getCurrentPrice(symbol).catch(() => existingOpen.entry_price || 0)
+                          await supabase.from('trades').update({
+                            status: 'CLOSED',
+                            exit_price: exitP,
+                            closed_at: new Date().toISOString(),
+                            error_message: 'Auto-reconciled: position closed on exchange (TP/SL hit or manual)',
+                          }).eq('id', existingOpen.id)
+                        }
+                      }
+                    }
+                  } catch (reconErr) {
+                    console.log(`[RECONCILE] Could not verify position on Binance:`, reconErr)
+                  }
+
+                  if (positionStillOpen) {
+                    console.log(`[ENGINE] BLOCKED: ${existingOpen.status} trade ${existingOpen.id} still exists`)
+                    results.push({
+                      scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                      symbol, timeframe, executed: false,
+                      reason: `Blocked: existing ${existingOpen.status} trade for ${symbol}`,
+                    })
+                    continue
+                  }
+                  // Position was reconciled — proceed to open new trade
+                  console.log(`[RECONCILE] Stale record cleared — proceeding with new signal`)
                 }
 
                 // ----- BUILD SIGNAL WITH FAR TP, NO SL -----
