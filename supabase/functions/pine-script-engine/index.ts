@@ -3432,9 +3432,9 @@ Deno.serve(async (req) => {
                     .eq('user_id', us.user_id)
                     .in('status', ['OPEN', 'PENDING'])
 
+                  const symbolPrices: Record<string, number> = {}
                   if (openTrades && openTrades.length > 0) {
                     // Group by symbol to minimize price lookups
-                    const symbolPrices: Record<string, number> = {}
                     for (const t of openTrades) {
                       if (!t.entry_price || !t.quantity) continue
                       if (!symbolPrices[t.symbol]) {
@@ -3464,10 +3464,10 @@ Deno.serve(async (req) => {
                           try {
                             const rawMT = us.script.market_type || 'futures'
                             const mt = isFuturesOnlySymbol(ot.symbol) ? 'usdt_futures' : rawMT
-                            const otPrice = symbolPrices[ot.symbol] || await getCurrentPrice(ot.symbol).catch(() => ot.entry_price || 0)
+                            const otPrice = symbolPrices[ot.symbol] || await getCurrentPrice(ot.symbol).catch(() => Number(ot.entry_price || 0))
                             const closeRes = await closeOpenTrade(
                               supabase,
-                              { id: (ot as any).id || '', user_id: us.user_id, script_id: us.script_id, symbol: ot.symbol, signal_type: ot.signal_type, entry_price: ot.entry_price! },
+                              { id: ot.id, user_id: us.user_id, script_id: (ot.script_id || us.script_id), symbol: ot.symbol, signal_type: ot.signal_type, entry_price: Number(ot.entry_price || 0) },
                               otPrice,
                               mt,
                               `Daily profit target reached (${pnlPercent.toFixed(2)}% >= ${dailyTarget}%)`
