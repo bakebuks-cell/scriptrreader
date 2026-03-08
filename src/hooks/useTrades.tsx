@@ -47,8 +47,25 @@ export function useTrades() {
       return data as Trade[];
     },
     enabled: !!user?.id,
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    refetchInterval: 10000,
   });
+
+  // Realtime: instantly reflect trade status changes
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`trades:${user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'trades',
+        filter: `user_id=eq.${user.id}`,
+      }, () => {
+        queryClient.invalidateQueries({ queryKey: ['trades', user.id] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, queryClient]);
 
   const activeTrades = trades?.filter(t => t.status === 'OPEN' || t.status === 'PENDING') ?? [];
   const completedTrades = trades?.filter(t => t.status === 'CLOSED' || t.status === 'FAILED' || t.status === 'CANCELLED') ?? [];
