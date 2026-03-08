@@ -1,0 +1,1 @@
+UPDATE trades SET margin_amount = (entry_price * quantity) / COALESCE(NULLIF(leverage, 0), 10) WHERE margin_amount IS NULL AND entry_price IS NOT NULL AND quantity IS NOT NULL AND quantity > 0;

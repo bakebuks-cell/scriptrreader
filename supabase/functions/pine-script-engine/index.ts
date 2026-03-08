@@ -2197,6 +2197,10 @@ async function executeTrade(
         console.log(`[TRADE] Adjusted SL=${actualSL?.toFixed(2)}, TP=${actualTP?.toFixed(2)}`)
       }
 
+      // Calculate margin_amount = (entry_price * quantity) / leverage
+      const finalQty = parseFloat(actualQty)
+      const marginAmount = effectiveLeverage > 0 ? (actualEntryPrice * finalQty) / effectiveLeverage : actualEntryPrice * finalQty
+
       await supabase
         .from('trades')
         .update({
@@ -2206,8 +2210,9 @@ async function executeTrade(
           take_profit: actualTP,
           opened_at: new Date().toISOString(),
           coin_consumed: true,
-          quantity: parseFloat(actualQty),
+          quantity: finalQty,
           leverage: effectiveLeverage,
+          margin_amount: marginAmount,
         })
         .eq('id', trade.id)
       
@@ -3406,7 +3411,7 @@ Deno.serve(async (req) => {
                   // 1) Realized P&L from closed trades today
                   const { data: todayClosedTrades } = await supabase
                     .from('trades')
-                    .select('entry_price, exit_price, quantity, signal_type, margin_amount')
+                    .select('entry_price, exit_price, quantity, signal_type, margin_amount, leverage')
                     .eq('user_id', us.user_id)
                     .eq('status', 'CLOSED')
                     .gte('closed_at', cutoff.toISOString())
@@ -3421,14 +3426,21 @@ Deno.serve(async (req) => {
                           : (t.entry_price - t.exit_price) * t.quantity
                         totalPnl += diff
                       }
-                      totalMargin += parseFloat(t.margin_amount || '0')
+                      // Use margin_amount if available, otherwise calculate from entry_price * quantity / leverage
+                      const margin = parseFloat(t.margin_amount || '0')
+                      if (margin > 0) {
+                        totalMargin += margin
+                      } else if (t.entry_price && t.quantity) {
+                        // Fallback: estimate margin from position data (assume leverage from trade or default 10)
+                        totalMargin += (t.entry_price * t.quantity) / 10
+                      }
                     }
                   }
 
                   // 2) Unrealized P&L from open trades (using current market price)
                   const { data: openTrades } = await supabase
                     .from('trades')
-                    .select('id, entry_price, quantity, signal_type, margin_amount, symbol, script_id')
+                    .select('id, entry_price, quantity, signal_type, margin_amount, leverage, symbol, script_id')
                     .eq('user_id', us.user_id)
                     .in('status', ['OPEN', 'PENDING'])
 
@@ -3449,7 +3461,14 @@ Deno.serve(async (req) => {
                         ? (markPrice - t.entry_price) * t.quantity
                         : (t.entry_price - markPrice) * t.quantity
                       totalPnl += diff
-                      totalMargin += parseFloat(t.margin_amount || '0')
+                      // Use margin_amount if available, otherwise calculate from position data
+                      const margin = parseFloat(t.margin_amount || '0')
+                      if (margin > 0) {
+                        totalMargin += margin
+                      } else if (t.entry_price && t.quantity) {
+                        const lev = t.leverage || 10
+                        totalMargin += (t.entry_price * t.quantity) / lev
+                      }
                     }
                   }
 
