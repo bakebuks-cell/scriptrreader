@@ -3426,7 +3426,14 @@ Deno.serve(async (req) => {
                           : (t.entry_price - t.exit_price) * t.quantity
                         totalPnl += diff
                       }
-                      totalMargin += parseFloat(t.margin_amount || '0')
+                      // Use margin_amount if available, otherwise calculate from entry_price * quantity / leverage
+                      const margin = parseFloat(t.margin_amount || '0')
+                      if (margin > 0) {
+                        totalMargin += margin
+                      } else if (t.entry_price && t.quantity) {
+                        // Fallback: estimate margin from position data (assume leverage from trade or default 10)
+                        totalMargin += (t.entry_price * t.quantity) / 10
+                      }
                     }
                   }
 
