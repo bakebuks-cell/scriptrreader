@@ -3440,7 +3440,7 @@ Deno.serve(async (req) => {
                   // 2) Unrealized P&L from open trades (using current market price)
                   const { data: openTrades } = await supabase
                     .from('trades')
-                    .select('id, entry_price, quantity, signal_type, margin_amount, symbol, script_id')
+                    .select('id, entry_price, quantity, signal_type, margin_amount, leverage, symbol, script_id')
                     .eq('user_id', us.user_id)
                     .in('status', ['OPEN', 'PENDING'])
 
@@ -3461,7 +3461,14 @@ Deno.serve(async (req) => {
                         ? (markPrice - t.entry_price) * t.quantity
                         : (t.entry_price - markPrice) * t.quantity
                       totalPnl += diff
-                      totalMargin += parseFloat(t.margin_amount || '0')
+                      // Use margin_amount if available, otherwise calculate from position data
+                      const margin = parseFloat(t.margin_amount || '0')
+                      if (margin > 0) {
+                        totalMargin += margin
+                      } else if (t.entry_price && t.quantity) {
+                        const lev = t.leverage || 10
+                        totalMargin += (t.entry_price * t.quantity) / lev
+                      }
                     }
                   }
 
