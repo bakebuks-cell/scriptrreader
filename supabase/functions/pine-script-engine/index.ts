@@ -2197,6 +2197,10 @@ async function executeTrade(
         console.log(`[TRADE] Adjusted SL=${actualSL?.toFixed(2)}, TP=${actualTP?.toFixed(2)}`)
       }
 
+      // Calculate margin_amount = (entry_price * quantity) / leverage
+      const finalQty = parseFloat(actualQty)
+      const marginAmount = effectiveLeverage > 0 ? (actualEntryPrice * finalQty) / effectiveLeverage : actualEntryPrice * finalQty
+
       await supabase
         .from('trades')
         .update({
@@ -2206,8 +2210,9 @@ async function executeTrade(
           take_profit: actualTP,
           opened_at: new Date().toISOString(),
           coin_consumed: true,
-          quantity: parseFloat(actualQty),
+          quantity: finalQty,
           leverage: effectiveLeverage,
+          margin_amount: marginAmount,
         })
         .eq('id', trade.id)
       
