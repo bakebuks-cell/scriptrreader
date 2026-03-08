@@ -3411,7 +3411,7 @@ Deno.serve(async (req) => {
                   // 1) Realized P&L from closed trades today
                   const { data: todayClosedTrades } = await supabase
                     .from('trades')
-                    .select('entry_price, exit_price, quantity, signal_type, margin_amount')
+                    .select('entry_price, exit_price, quantity, signal_type, margin_amount, leverage')
                     .eq('user_id', us.user_id)
                     .eq('status', 'CLOSED')
                     .gte('closed_at', cutoff.toISOString())

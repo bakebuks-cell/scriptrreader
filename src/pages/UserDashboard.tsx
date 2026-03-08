@@ -153,17 +153,27 @@ export default function UserDashboard() {
     let todayMargin = 0;
     for (const t of todayClosed) {
       todayPnl += calcPnL(t) ?? 0;
-      todayMargin += t.margin_amount ? Number(t.margin_amount) : 0;
+      const margin = t.margin_amount ? Number(t.margin_amount) : 0;
+      if (margin > 0) {
+        todayMargin += margin;
+      } else if (t.entry_price && t.quantity) {
+        todayMargin += (t.entry_price * t.quantity) / (t.leverage || 10);
+      }
     }
 
     // Add unrealized P&L from open/pending trades
     for (const t of activeTrades) {
-      if (t.entry_price && t.margin_amount) {
+      if (t.entry_price) {
         const livePos = livePositions.find(p => p.symbol === t.symbol);
         if (livePos) {
           todayPnl += parseFloat(livePos.unrealizedProfit || '0');
         }
-        todayMargin += Number(t.margin_amount);
+        const margin = t.margin_amount ? Number(t.margin_amount) : 0;
+        if (margin > 0) {
+          todayMargin += margin;
+        } else if (t.entry_price && t.quantity) {
+          todayMargin += (t.entry_price * t.quantity) / (t.leverage || 10);
+        }
       }
     }
 
