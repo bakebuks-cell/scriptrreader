@@ -111,6 +111,10 @@ export default {
           from: { opacity: "0", transform: "translateX(-10px)" },
           to: { opacity: "1", transform: "translateX(0)" },
         },
+        "scroll": {
+          from: { transform: "translateX(0)" },
+          to: { transform: "translateX(-50%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",

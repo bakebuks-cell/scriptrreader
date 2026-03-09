@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { motion } from 'framer-motion';
+import { Web3MediaHero } from '@/components/ui/web3media-hero';
 import { 
   Bot,
   ArrowRight,
@@ -16,33 +16,12 @@ import {
   Wallet,
   Globe,
   AlertTriangle,
-  Play,
-  Layers,
-  Cpu,
-  Activity
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import HeroVideoPlayer from '@/components/HeroVideoPlayer';
 import logo from '@/assets/logo.png';
 
 const exchanges = ['Binance', 'Bybit', 'Bitget', 'KuCoin', 'MEXC', 'BingX', 'BitMart'];
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.12, duration: 0.6, ease: "easeOut" as const },
-  }),
-};
-
-const navLinks = [
-  { label: 'Features', href: '#features', active: true },
-  { label: 'Insights', href: '#about' },
-  { label: 'About', href: '#disclaimer' },
-  { label: 'Case Studies', href: '#', strikethrough: true },
-  { label: 'Contact', href: '#cta' },
-];
 
 export default function Index() {
   const navigate = useNavigate();
@@ -56,172 +35,107 @@ export default function Index() {
     }
   };
 
+  const navRight = (
+    <div className="flex items-center gap-3">
+      <ThemeToggle />
+      {loading ? null : user ? (
+        <Button
+          onClick={() => navigate('/dashboard')}
+          className="bg-white text-black hover:bg-white/90 rounded-full px-5 text-sm font-medium"
+        >
+          Dashboard
+          <ArrowRight className="ml-1 h-4 w-4" />
+        </Button>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#000000] text-white">
-      {/* ── Navbar ── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-black/40 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src={logo} alt="LoveWithTrade" className="h-10 w-auto" />
-            <span className="text-lg font-medium tracking-tight text-white">LoveWithTrade</span>
-          </div>
-
-          <div className="hidden md:flex items-center gap-1">
-            {navLinks.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                className={`px-4 py-2 text-sm rounded-full transition-all ${
-                  link.active
-                    ? 'bg-white/10 border border-white/20 text-white'
-                    : link.strikethrough
-                    ? 'text-white/40 line-through cursor-not-allowed'
-                    : 'text-white/60 hover:text-white'
-                }`}
-              >
-                {link.label}
-              </a>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            {loading ? null : user ? (
-              <Button
-                onClick={() => navigate('/dashboard')}
-                className="bg-white text-black hover:bg-white/90 rounded-full px-5 text-sm font-medium"
-              >
-                Dashboard
-                <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            ) : (
-              <Button
-                onClick={handleGetStarted}
-                className="bg-gradient-to-r from-white to-white/80 text-black hover:from-white/90 hover:to-white/70 rounded-full px-5 text-sm font-medium"
-              >
-                Get Started for Free
-              </Button>
-            )}
-          </div>
-        </div>
-      </nav>
-
-      {/* ── Hero Section ── */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden pt-20">
-        {/* Background Video */}
-        <HeroVideoPlayer />
-
-        {/* Hero Content */}
-        <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
-          {/* Badges */}
-          <motion.div
-            className="flex flex-wrap justify-center gap-3 mb-10"
-            initial="hidden"
-            animate="visible"
-            variants={fadeUp}
-            custom={0}
-          >
-            {[
-              { icon: Layers, label: 'Integrated with Binance' },
-              { icon: Cpu, label: 'AI-Powered Strategies' },
-              { icon: Activity, label: 'Real-time Execution' },
-            ].map((badge) => (
-              <div
-                key={badge.label}
-                className="flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-sm text-white/80"
-              >
-                <badge.icon className="h-4 w-4 text-white/60" />
-                <span>{badge.label}</span>
-              </div>
-            ))}
-          </motion.div>
-
-          {/* Headline */}
-          <motion.h1
-            className="text-5xl sm:text-6xl md:text-7xl lg:text-[80px] font-bold tracking-tight leading-[1.05] mb-6"
-            initial="hidden"
-            animate="visible"
-            variants={fadeUp}
-            custom={1}
-          >
-            Where Innovation
-            <br />
-            Meets <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Execution</span>
-          </motion.h1>
-
-          {/* Subtext */}
-          <motion.p
-            className="text-lg md:text-xl text-white/50 max-w-2xl mx-auto mb-10 leading-relaxed"
-            initial="hidden"
-            animate="visible"
-            variants={fadeUp}
-            custom={2}
-          >
-            Automate your crypto trading with powerful bots and strategy tools.
-            <br className="hidden sm:block" />
-            Test, deploy, and scale — without monitoring charts all day.
-          </motion.p>
-
-          {/* Buttons */}
-          <motion.div
-            className="flex flex-wrap justify-center gap-4 mb-12"
-            initial="hidden"
-            animate="visible"
-            variants={fadeUp}
-            custom={3}
-          >
-            <Button
-              size="lg"
-              onClick={handleGetStarted}
-              className="bg-black text-white border border-white/30 hover:bg-white/10 rounded-full px-8 text-base font-medium"
-            >
-              Get Started for Free
-            </Button>
-            <Button
-              size="lg"
-              variant="ghost"
-              onClick={() => {
-                document.getElementById('cta')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="text-white/80 border border-white/10 bg-white/5 backdrop-blur-md hover:bg-white/10 hover:text-white rounded-full px-8 text-base font-medium"
-            >
-              Let's Get Connected
-            </Button>
-          </motion.div>
-
-          {/* Returns disclaimer */}
-          <motion.p
-            className="text-xs text-white/30 max-w-md mx-auto"
-            initial="hidden"
-            animate="visible"
-            variants={fadeUp}
-            custom={4}
-          >
-            Average users may expect around 6%–9% returns depending on strategy and market conditions.
-            Trading always involves risk and profits are never guaranteed.
-          </motion.p>
-        </div>
-
-        {/* Logo Marquee */}
-        <motion.div
-          className="relative z-10 mt-16 w-full border-t border-white/5 pt-8 pb-10"
-          initial="hidden"
-          animate="visible"
-          variants={fadeUp}
-          custom={5}
-        >
-          <p className="text-center text-xs text-white/30 uppercase tracking-widest mb-6">
-            Supported Exchanges
-          </p>
-          <div className="flex justify-center items-center gap-10 flex-wrap px-6 opacity-40">
-            {exchanges.map((exchange) => (
-              <span key={exchange} className="text-white/60 text-sm font-medium tracking-wide">
-                {exchange}
-              </span>
-            ))}
-          </div>
-        </motion.div>
-      </section>
+      <Web3MediaHero
+        logo="LoveWithTrade"
+        logoImage={logo}
+        navigation={[
+          { label: 'Features', href: '#features', active: true },
+          { label: 'Insights', href: '#about' },
+          { label: 'About', href: '#disclaimer' },
+          { label: 'Case Studies', href: '#', strikethrough: true },
+          { label: 'Contact', href: '#cta' },
+        ]}
+        contactButton={
+          !user
+            ? { label: 'Get Started for Free', onClick: handleGetStarted }
+            : undefined
+        }
+        navRight={navRight}
+        title="Where Innovation Meets"
+        highlightedText="Execution"
+        subtitle="Automate your crypto trading with powerful bots and strategy tools. Test, deploy, and scale — without monitoring charts all day."
+        ctaButton={{
+          label: 'Get Started for Free',
+          onClick: handleGetStarted,
+        }}
+        secondaryButton={{
+          label: "Let's Get Connected",
+          onClick: () => document.getElementById('cta')?.scrollIntoView({ behavior: 'smooth' }),
+        }}
+        disclaimerText="Average users may expect around 6%–9% returns depending on strategy and market conditions. Trading always involves risk and profits are never guaranteed."
+        backgroundElement={<HeroVideoPlayer />}
+        cryptoIcons={[
+          {
+            icon: (
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" fill="#FF9900" />
+                <path d="M12 6V18M8 9H13.5C14.163 9 14.7989 9.26339 15.2678 9.73223C15.7366 10.2011 16 10.837 16 11.5C16 12.163 15.7366 12.7989 15.2678 13.2678C14.7989 13.7366 14.163 14 13.5 14H8" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ),
+            label: 'BTC',
+            position: { x: '8%', y: '25%' },
+          },
+          {
+            icon: (
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path d="M12 1.5L5.5 12.5L12 16.5L18.5 12.5L12 1.5Z" fill="#FF9900" />
+                <path d="M12 1.5L5.5 12.5L12 16.5V1.5Z" fill="#FFB84D" />
+                <path d="M12 18L5.5 14L12 22.5L18.5 14L12 18Z" fill="#FF9900" />
+              </svg>
+            ),
+            label: 'ETH',
+            position: { x: '12%', y: '62%' },
+          },
+          {
+            icon: (
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" fill="#FF9900" />
+                <circle cx="12" cy="12" r="3" fill="white" />
+                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="white" />
+              </svg>
+            ),
+            label: 'USDT',
+            position: { x: '82%', y: '22%' },
+          },
+          {
+            icon: (
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <rect width="24" height="24" rx="12" fill="#FF9900" />
+                <path d="M7 12L10.5 8.5L14 12L17 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M14 9H17V12" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ),
+            label: 'BNB',
+            position: { x: '78%', y: '65%' },
+          },
+        ]}
+        trustedByText="Supported Exchanges"
+        brands={exchanges.map((name) => ({
+          name,
+          logo: (
+            <span className="text-white/60 text-sm font-medium tracking-wide whitespace-nowrap">
+              {name}
+            </span>
+          ),
+        }))}
+      />
 
       {/* ── Rest of the page uses themed colors ── */}
       <div className="bg-background text-foreground">
