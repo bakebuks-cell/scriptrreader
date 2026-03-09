@@ -29,28 +29,36 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
 
   // Auto-reconcile: if Binance shows 0 positions but DB has OPEN trades, close them
   useEffect(() => {
-    if (!user?.id || positions === undefined) return;
+    if (!user?.id) return;
+    // Only reconcile when positions have actually loaded (array, even if empty)
+    if (!Array.isArray(positions)) return;
     if (positions.length > 0 || activeTrades.length === 0) return;
 
     // Binance has 0 positions but we have OPEN/PENDING trades in DB
     const staleTrades = activeTrades.filter(t => !reconciledRef.current.has(t.id));
     if (staleTrades.length === 0) return;
 
+    console.log('[RECONCILE] Binance has 0 positions but found', staleTrades.length, 'stale DB trades. Closing...');
+
     const reconcile = async () => {
       for (const trade of staleTrades) {
         reconciledRef.current.add(trade.id);
-        try {
-          await supabase
-            .from('trades')
-            .update({
-              status: 'CLOSED' as const,
-              closed_at: new Date().toISOString(),
-              error_message: 'Auto-reconciled: no matching position on exchange',
-            })
-            .eq('id', trade.id)
-            .eq('user_id', user.id);
-        } catch (err) {
-          console.error('[RECONCILE] Failed to close stale trade', trade.id, err);
+        const { error: updateError } = await supabase
+          .from('trades')
+          .update({
+            status: 'CLOSED' as const,
+            closed_at: new Date().toISOString(),
+            error_message: 'Auto-reconciled: no matching position on exchange',
+          })
+          .eq('id', trade.id)
+          .eq('user_id', user.id);
+
+        if (updateError) {
+          console.error('[RECONCILE] Failed to close trade', trade.id, updateError.message);
+          // Remove from reconciled set so it retries next cycle
+          reconciledRef.current.delete(trade.id);
+        } else {
+          console.log('[RECONCILE] Closed stale trade', trade.id);
         }
       }
       refetchTrades();
