@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -8,6 +8,8 @@ import { Wallet, RefreshCw, TrendingUp, TrendingDown, Link2Off, ShieldCheck, Use
 import { useWalletBalance, useOpenPositions, Wallet as WalletType } from '@/hooks/useWallets';
 import { useTrades } from '@/hooks/useTrades';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 interface WalletCardProps {
   compact?: boolean;
@@ -18,10 +20,44 @@ interface WalletCardProps {
 export default function WalletCard({ compact = false, wallet, showRoleBadge = false }: WalletCardProps) {
   const { balances, totalUSDT, isLoading, isRefreshing, refresh, hasWallets, wallet: activeWallet, error } = useWalletBalance(wallet?.id);
   const { positions } = useOpenPositions();
-  const { activeTrades, closeSingleTrade, closingSingleId } = useTrades();
+  const { activeTrades, closeSingleTrade, closingSingleId, refetch: refetchTrades } = useTrades();
+  const { user } = useAuth();
   const openTradesCount = activeTrades.length;
   const { toast } = useToast();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const reconciledRef = useRef<Set<string>>(new Set());
+
+  // Auto-reconcile: if Binance shows 0 positions but DB has OPEN trades, close them
+  useEffect(() => {
+    if (!user?.id || positions === undefined) return;
+    if (positions.length > 0 || activeTrades.length === 0) return;
+
+    // Binance has 0 positions but we have OPEN/PENDING trades in DB
+    const staleTrades = activeTrades.filter(t => !reconciledRef.current.has(t.id));
+    if (staleTrades.length === 0) return;
+
+    const reconcile = async () => {
+      for (const trade of staleTrades) {
+        reconciledRef.current.add(trade.id);
+        try {
+          await supabase
+            .from('trades')
+            .update({
+              status: 'CLOSED' as const,
+              closed_at: new Date().toISOString(),
+              error_message: 'Auto-reconciled: no matching position on exchange',
+            })
+            .eq('id', trade.id)
+            .eq('user_id', user.id);
+        } catch (err) {
+          console.error('[RECONCILE] Failed to close stale trade', trade.id, err);
+        }
+      }
+      refetchTrades();
+    };
+
+    reconcile();
+  }, [positions, activeTrades, user?.id, refetchTrades]);
 
   const handleCloseTrade = async (tradeId: string) => {
     if (confirmingId !== tradeId) {
