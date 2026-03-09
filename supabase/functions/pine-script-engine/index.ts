@@ -3437,12 +3437,13 @@ Deno.serve(async (req) => {
                     }
                   }
 
-                  // 2) Unrealized P&L from open trades (using current market price)
+                  // 2) Unrealized P&L from open trades opened AFTER cutoff (using current market price)
                   const { data: openTrades } = await supabase
                     .from('trades')
-                    .select('id, entry_price, quantity, signal_type, margin_amount, leverage, symbol, script_id')
+                    .select('id, entry_price, quantity, signal_type, margin_amount, leverage, symbol, script_id, opened_at, created_at')
                     .eq('user_id', us.user_id)
                     .in('status', ['OPEN', 'PENDING'])
+                    .gte('created_at', cutoff.toISOString())
 
                   const symbolPrices: Record<string, number> = {}
                   if (openTrades && openTrades.length > 0) {

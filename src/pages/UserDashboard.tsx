@@ -161,9 +161,10 @@ export default function UserDashboard() {
       }
     }
 
-    // Add unrealized P&L from open/pending trades
+    // Add unrealized P&L from open/pending trades (only those opened after cutoff)
     for (const t of activeTrades) {
-      if (t.entry_price) {
+      const openedTime = t.opened_at ? new Date(t.opened_at) : new Date(t.created_at);
+      if (t.entry_price && openedTime >= cutoff) {
         const livePos = livePositions.find(p => p.symbol === t.symbol);
         if (livePos) {
           todayPnl += parseFloat(livePos.unrealizedProfit || '0');
