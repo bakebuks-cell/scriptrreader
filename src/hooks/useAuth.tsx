@@ -44,18 +44,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    let mounted = true;
+
     // Set up auth state listener BEFORE getting session
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!mounted) return;
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
           // Defer role fetching to avoid blocking
           setTimeout(async () => {
+            if (!mounted) return;
             const userRole = await fetchUserRole(session.user.id);
-            setRole(userRole);
-            setLoading(false);
+            if (mounted) {
+              setRole(userRole);
+              setLoading(false);
+            }
           }, 0);
         } else {
           setRole(null);
@@ -66,10 +72,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Get initial session
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (!mounted) return;
+
       // Handle stale/invalid refresh token by signing out gracefully
       if (error) {
         console.warn('Session retrieval error:', error.message);
-        // Clear any stale session data
         await supabase.auth.signOut();
         setSession(null);
         setUser(null);
@@ -83,12 +90,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (session?.user) {
         const userRole = await fetchUserRole(session.user.id);
-        setRole(userRole);
+        if (mounted) {
+          setRole(userRole);
+        }
       }
-      setLoading(false);
+      if (mounted) setLoading(false);
     }).catch(async (err) => {
+      if (!mounted) return;
       console.error('Session error:', err);
-      // Clear any stale session data on error
       await supabase.auth.signOut();
       setSession(null);
       setUser(null);
@@ -96,7 +105,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // Safety timeout - ensure loading never stays true forever
+    const safetyTimer = setTimeout(() => {
+      if (mounted) {
+        setLoading(prev => {
+          if (prev) console.warn('Auth loading safety timeout triggered');
+          return false;
+        });
+      }
+    }, 5000);
+
+    return () => {
+      mounted = false;
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const getAuthRedirectBaseUrl = () => {
