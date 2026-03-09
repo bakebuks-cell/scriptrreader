@@ -319,9 +319,12 @@ export default function PineScriptEditor({
         toast({ title: '❌ Script Invalid', description: `${result.errors.length} error(s) found. Fix them before saving.`, variant: 'destructive' });
       }
     } catch (err: any) {
+      const errorMsg = err.message === 'Failed to fetch' 
+        ? 'Unable to reach the validation server. Please try again in a few seconds.'
+        : (err.message || 'Validation request failed');
       setValidationResult({
         valid: false,
-        errors: [err.message || 'Validation request failed'],
+        errors: [errorMsg],
         warnings: [],
         detectedIndicators: [],
         hasEntryConditions: false,
