@@ -2212,7 +2212,7 @@ async function executeTrade(
           coin_consumed: true,
           quantity: finalQty,
           leverage: effectiveLeverage,
-          margin_amount: marginAmount,
+          margin_amount: finalMarginAmount,
         })
         .eq('id', trade.id)
       
