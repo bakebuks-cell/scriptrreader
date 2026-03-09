@@ -2199,7 +2199,7 @@ async function executeTrade(
 
       // Calculate margin_amount = (entry_price * quantity) / leverage
       const finalQty = parseFloat(actualQty)
-      const marginAmount = effectiveLeverage > 0 ? (actualEntryPrice * finalQty) / effectiveLeverage : actualEntryPrice * finalQty
+      const finalMarginAmount = effectiveLeverage > 0 ? (actualEntryPrice * finalQty) / effectiveLeverage : actualEntryPrice * finalQty
 
       await supabase
         .from('trades')
@@ -2212,7 +2212,7 @@ async function executeTrade(
           coin_consumed: true,
           quantity: finalQty,
           leverage: effectiveLeverage,
-          margin_amount: marginAmount,
+          margin_amount: finalMarginAmount,
         })
         .eq('id', trade.id)
       
