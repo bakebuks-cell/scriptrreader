@@ -145,7 +145,7 @@ export default function UserDashboard() {
   // Includes both closed trades + unrealized P&L from open trades
   const todayStats = useMemo(() => {
     const todayStart = new Date();
-    todayStart.setUTCHours(0, 0, 0, 0);
+    todayStart.setHours(0, 0, 0, 0);
     const resetAt = profile?.daily_target_reset_at ? new Date(profile.daily_target_reset_at) : null;
     const cutoff = (resetAt && resetAt >= todayStart) ? resetAt : todayStart;
     const todayClosed = closedTrades.filter(t => t.closed_at && new Date(t.closed_at) >= cutoff);
