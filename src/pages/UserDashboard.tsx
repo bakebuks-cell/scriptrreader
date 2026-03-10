@@ -746,7 +746,8 @@ export default function UserDashboard() {
                               {trade.status}
                             </Badge>
                           </td>
-                          <td className="py-3">{fmtTime(trade.opened_at || trade.created_at)}</td>
+                          <td className="py-3">{fmtTime(trade.created_at)}</td>
+                          <td className="py-3">{fmtTime(trade.opened_at)}</td>
                           <td className="py-3">{fmtTime(trade.closed_at)}</td>
                           <td className="py-3">
                             {isOpen ? (
