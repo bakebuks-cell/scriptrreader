@@ -685,6 +685,7 @@ export default function UserDashboard() {
                         <th className="pb-3 font-medium">Margin</th>
                         <th className="pb-3 font-medium">Trade Amt</th>
                         <th className="pb-3 font-medium">Status</th>
+                        <th className="pb-3 font-medium">Signal Time</th>
                         <th className="pb-3 font-medium">Entry Time</th>
                         <th className="pb-3 font-medium">Exit Time</th>
                         <th className="pb-3 font-medium">Action</th>
