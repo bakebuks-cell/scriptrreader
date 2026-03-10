@@ -697,10 +697,12 @@ export default function UserDashboard() {
                         const fmtTime = (ts: string | null) => {
                           if (!ts) return '-';
                           const d = new Date(ts);
+                          const dateStr = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+                          const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
                           return (
                             <span className="whitespace-nowrap">
-                              <span className="block">{d.toLocaleDateString()}</span>
-                              <span className="text-xs text-muted-foreground">{d.toLocaleTimeString()}</span>
+                              <span className="block">{dateStr}</span>
+                              <span className="text-xs text-muted-foreground">{timeStr} IST</span>
                             </span>
                           );
                         };
