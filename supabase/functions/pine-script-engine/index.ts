@@ -837,13 +837,9 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
     // UT Bot trades both directions
     strategy.direction = 'both'
     
-    // Default SL/TP for UT Bot
-    if (!strategy.stopLoss) {
-      strategy.stopLoss = { type: 'atr', value: 1.5 }
-    }
-    if (!strategy.takeProfit) {
-      strategy.takeProfit = { type: 'atr', value: 3.0 }
-    }
+    // TP/SL disabled — trades close only on strategy exit signals
+    // if (!strategy.stopLoss) { strategy.stopLoss = { type: 'atr', value: 1.5 } }
+    // if (!strategy.takeProfit) { strategy.takeProfit = { type: 'atr', value: 3.0 } }
   }
   
   // ---- SUPERTREND DETECTION ----
