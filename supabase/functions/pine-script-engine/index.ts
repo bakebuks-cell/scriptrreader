@@ -3303,13 +3303,29 @@ Deno.serve(async (req) => {
                 if (isSuperTrendStateBased) {
                   const stDirection = indicators.supertrend!.direction
                   const currentSTDir = stDirection[stDirection.length - 1]
-                  rawSignalAction = currentSTDir === 1 ? 'BUY' : 'SELL'
-                  console.log(`[ENGINE] SuperTrend state: ${currentSTDir === 1 ? 'BULLISH' : 'BEARISH'} → rawSignal=${rawSignalAction}`)
+                  const previousSTDir = stDirection[stDirection.length - 2]
+                  const hasFreshFlip = typeof previousSTDir === 'number' && currentSTDir !== previousSTDir
+
+                  if (hasFreshFlip) {
+                    rawSignalAction = currentSTDir === 1 ? 'BUY' : 'SELL'
+                    console.log(`[ENGINE] SuperTrend flip detected: ${previousSTDir} → ${currentSTDir} => rawSignal=${rawSignalAction}`)
+                  } else {
+                    rawSignalAction = 'NONE'
+                    console.log(`[ENGINE] SuperTrend state unchanged (${currentSTDir}) — no fresh entry/exit signal`)
+                  }
                 } else if (isUTBotStateBased) {
                   const utDirection = indicators.utbot!.direction
                   const currentUTDir = utDirection[utDirection.length - 1]
-                  rawSignalAction = currentUTDir === 1 ? 'BUY' : 'SELL'
-                  console.log(`[ENGINE] UTBot state: ${currentUTDir === 1 ? 'BULLISH' : 'BEARISH'} → rawSignal=${rawSignalAction}`)
+                  const previousUTDir = utDirection[utDirection.length - 2]
+                  const hasFreshFlip = typeof previousUTDir === 'number' && currentUTDir !== previousUTDir
+
+                  if (hasFreshFlip) {
+                    rawSignalAction = currentUTDir === 1 ? 'BUY' : 'SELL'
+                    console.log(`[ENGINE] UTBot flip detected: ${previousUTDir} → ${currentUTDir} => rawSignal=${rawSignalAction}`)
+                  } else {
+                    rawSignalAction = 'NONE'
+                    console.log(`[ENGINE] UTBot state unchanged (${currentUTDir}) — no fresh entry/exit signal`)
+                  }
                 } else {
                   const botStartedAt = (settings.bot_started_at as string | undefined) || undefined
                   const evalResult = evaluateStrategy(strategy, indicators, candlesUsed, currentPrice, botStartedAt)
