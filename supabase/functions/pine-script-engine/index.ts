@@ -3637,7 +3637,7 @@ Deno.serve(async (req) => {
                 // Also reconcile stale DB records: if DB says OPEN but no Binance position, auto-close
                 const { data: existingOpen } = await supabase
                   .from('trades')
-                  .select('id, signal_type, status, entry_price, symbol')
+                  .select('id, signal_type, status, entry_price, quantity, symbol')
                   .eq('user_id', us.user_id).eq('symbol', symbol)
                   .in('status', ['OPEN', 'PENDING']).limit(1).maybeSingle()
 
