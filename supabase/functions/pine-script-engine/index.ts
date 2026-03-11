@@ -54,7 +54,7 @@ interface ExitCondition {
 }
 
 interface IndicatorRef {
-  name: 'ema' | 'sma' | 'rsi' | 'macd' | 'macd_signal' | 'macd_histogram' | 'bb_upper' | 'bb_lower' | 'bb_middle' | 'close' | 'open' | 'high' | 'low' | 'atr' | 'supertrend_direction'
+  name: 'ema' | 'sma' | 'rsi' | 'macd' | 'macd_signal' | 'macd_histogram' | 'bb_upper' | 'bb_lower' | 'bb_middle' | 'close' | 'open' | 'high' | 'low' | 'atr' | 'supertrend_direction' | 'utbot_direction'
   period?: number
 }
 
