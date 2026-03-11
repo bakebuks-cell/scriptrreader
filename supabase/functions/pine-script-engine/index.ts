@@ -3677,10 +3677,17 @@ Deno.serve(async (req) => {
                           positionStillOpen = false
                           console.log(`[RECONCILE] Trade ${existingOpen.id} (${symbol}) is OPEN in DB but NO position on Binance — auto-closing stale record`)
                           const exitP = await getCurrentPrice(symbol).catch(() => existingOpen.entry_price || 0)
+                          const reconQty = Number(existingOpen.quantity || 0)
+                          const reconPnl = reconQty > 0
+                            ? (existingOpen.signal_type === 'BUY'
+                              ? (exitP - Number(existingOpen.entry_price)) * reconQty
+                              : (Number(existingOpen.entry_price) - exitP) * reconQty)
+                            : null
                           await supabase.from('trades').update({
                             status: 'CLOSED',
                             exit_price: exitP,
                             closed_at: new Date().toISOString(),
+                            pnl: reconPnl,
                             error_message: 'Auto-reconciled: position closed on exchange (TP/SL hit or manual)',
                           }).eq('id', existingOpen.id)
                         }
