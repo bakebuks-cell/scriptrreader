@@ -1039,12 +1039,9 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
       logic: 'and',
     })
     
-    if (!strategy.stopLoss) {
-      strategy.stopLoss = { type: 'percent', value: 2 }
-    }
-    if (!strategy.takeProfit) {
-      strategy.takeProfit = { type: 'percent', value: 4 }
-    }
+    // TP/SL disabled — trades close only on strategy exit signals
+    // if (!strategy.stopLoss) { strategy.stopLoss = { type: 'percent', value: 2 } }
+    // if (!strategy.takeProfit) { strategy.takeProfit = { type: 'percent', value: 4 } }
   }
   
   // AUTO-GENERATE EXIT CONDITIONS if none defined — use inverse of entry conditions
