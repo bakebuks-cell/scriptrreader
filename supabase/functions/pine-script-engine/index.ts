@@ -3059,17 +3059,53 @@ Deno.serve(async (req) => {
           console.log(`[ENGINE] Processing ${key}: ${groupedScripts.length} scripts (poll interval: ${pollingIntervalMs / 1000}s)`)
           
           try {
-            let ohlcv = await fetchOHLCV(symbol, timeframe, 200)
-            const currentPrice = await getCurrentPrice(symbol)
-            
-            // Check if any script in this group uses Heikin Ashi
-            // We need to compute indicators per candle_type
-            const regularScripts = groupedScripts.filter((us: any) => (us.script.candle_type || 'regular') === 'regular')
-            const haScripts = groupedScripts.filter((us: any) => us.script.candle_type === 'heikin_ashi')
-            
-            const regularIndicators = regularScripts.length > 0 ? calculateAllIndicators(ohlcv) : null
-            const haOhlcv = haScripts.length > 0 ? convertToHeikinAshi(ohlcv) : null
-            const haIndicators = haOhlcv ? calculateAllIndicators(haOhlcv) : null
+            // ===== SHARED MARKET DATA CACHE =====
+            let ohlcv: OHLCV[]
+            let currentPrice: number
+            let regularIndicators: IndicatorValues | null = null
+            let haOhlcv: OHLCV[] | null = null
+            let haIndicators: IndicatorValues | null = null
+
+            const cached = marketDataCache.get(key)
+            if (cached) {
+              ohlcv = cached.ohlcv
+              currentPrice = cached.price
+              regularIndicators = cached.regularIndicators
+              haOhlcv = cached.haOhlcv
+              haIndicators = cached.haIndicators
+              console.log(`[CACHE] Using cached data for ${key}`)
+            } else {
+              ohlcv = await fetchOHLCV(symbol, timeframe, 200)
+              currentPrice = await getCurrentPrice(symbol)
+              dataFreshlyFetched = true
+
+              const regularScripts = groupedScripts.filter((us: any) => (us.script.candle_type || 'regular') === 'regular')
+              const haScriptsGroup = groupedScripts.filter((us: any) => us.script.candle_type === 'heikin_ashi')
+
+              regularIndicators = regularScripts.length > 0 ? calculateAllIndicators(ohlcv) : null
+              haOhlcv = haScriptsGroup.length > 0 ? convertToHeikinAshi(ohlcv) : null
+              haIndicators = haOhlcv ? calculateAllIndicators(haOhlcv) : null
+
+              marketDataCache.set(key, { ohlcv, haOhlcv, price: currentPrice, regularIndicators, haIndicators })
+              console.log(`[CACHE] Fetched and cached fresh data for ${key} (${ohlcv.length} candles, price=${currentPrice})`)
+
+              // Persist to market_data_cache table
+              try {
+                const latestCandleTime = ohlcv.length > 0 ? ohlcv[ohlcv.length - 1].openTime : 0
+                await supabase.from('market_data_cache').upsert({
+                  symbol, timeframe,
+                  latest_candle_time: latestCandleTime,
+                  current_price: currentPrice,
+                  candle_count: ohlcv.length,
+                  fetched_at: schedulerNow.toISOString(),
+                  cache_expiry_time: new Date(schedulerNow.getTime() + pollingIntervalMs).toISOString(),
+                  fetch_status: 'SUCCESS',
+                  fetch_duration_ms: Date.now() - cycleStartMs,
+                }, { onConflict: 'symbol,timeframe' })
+              } catch (cacheErr: any) {
+                console.log(`[CACHE] DB persist error (non-fatal):`, cacheErr?.message)
+              }
+            }
             
             for (const us of groupedScripts) {
               try {
