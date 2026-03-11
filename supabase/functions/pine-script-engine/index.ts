@@ -1609,6 +1609,7 @@ async function closeOpenTrade(
           status: 'CLOSED',
           exit_price: currentPrice,
           closed_at: new Date().toISOString(),
+          pnl: calcPnl(currentPrice),
           error_message: 'Closed by exit signal (no API keys to execute on exchange)',
         }).eq('id', trade.id)
         return { success: true }
