@@ -27,6 +27,7 @@ interface IndicatorValues {
   bb: { upper: number[]; middle: number[]; lower: number[] }
   atr: Record<number, number[]>
   supertrend: { upper: number[]; lower: number[]; direction: number[] } | null
+  utbot: { trailingStop: number[]; direction: number[] } | null
 }
 
 interface ParsedStrategy {
@@ -53,7 +54,7 @@ interface ExitCondition {
 }
 
 interface IndicatorRef {
-  name: 'ema' | 'sma' | 'rsi' | 'macd' | 'macd_signal' | 'macd_histogram' | 'bb_upper' | 'bb_lower' | 'bb_middle' | 'close' | 'open' | 'high' | 'low' | 'atr' | 'supertrend_direction'
+  name: 'ema' | 'sma' | 'rsi' | 'macd' | 'macd_signal' | 'macd_histogram' | 'bb_upper' | 'bb_lower' | 'bb_middle' | 'close' | 'open' | 'high' | 'low' | 'atr' | 'supertrend_direction' | 'utbot_direction'
   period?: number
 }
 
@@ -580,6 +581,70 @@ function calculateSuperTrend(ohlcv: OHLCV[], atrPeriod: number = 10, multiplier:
   return { upper, lower, direction }
 }
 
+// UT Bot Strategy indicator (ATR Trailing Stop with direction tracking)
+// Replicates the UT Bot Alerts / UT Bot Strategy from TradingView
+function calculateUTBot(ohlcv: OHLCV[], keyValue: number = 1, atrPeriod: number = 10): { trailingStop: number[]; direction: number[] } {
+  const closes = ohlcv.map(c => c.close)
+  const atrValues = calculateATR(ohlcv, atrPeriod)
+  if (atrValues.length === 0) return { trailingStop: [], direction: [] }
+
+  // ATR array offset: atrValues[i] corresponds to ohlcv[i + atrPeriod]
+  const atrOffset = atrPeriod
+
+  const trailingStop: number[] = []
+  const direction: number[] = [] // 1 = long, -1 = short
+
+  for (let i = 0; i < atrValues.length; i++) {
+    const oi = i + atrOffset // corresponding ohlcv index
+    const src = closes[oi]
+    const prevSrc = oi > 0 ? closes[oi - 1] : src
+    const nLoss = keyValue * atrValues[i]
+
+    let xATRTrailingStop: number
+    if (i === 0) {
+      xATRTrailingStop = src - nLoss
+    } else {
+      const prevStop = trailingStop[i - 1]
+      if (src > prevStop && prevSrc > prevStop) {
+        xATRTrailingStop = Math.max(prevStop, src - nLoss)
+      } else if (src < prevStop && prevSrc < prevStop) {
+        xATRTrailingStop = Math.min(prevStop, src + nLoss)
+      } else if (src > prevStop) {
+        xATRTrailingStop = src - nLoss
+      } else {
+        xATRTrailingStop = src + nLoss
+      }
+    }
+    trailingStop.push(xATRTrailingStop)
+
+    // Position direction: flip when price crosses trailing stop
+    if (i === 0) {
+      direction.push(src > xATRTrailingStop ? 1 : -1)
+    } else {
+      const prevStop = trailingStop[i - 1]
+      if (prevSrc < prevStop && src > prevStop) {
+        direction.push(1) // flip to long
+      } else if (prevSrc > prevStop && src < prevStop) {
+        direction.push(-1) // flip to short
+      } else {
+        direction.push(direction[i - 1])
+      }
+    }
+  }
+
+  // Debug logging
+  if (direction.length > 0) {
+    const last5 = direction.slice(-5)
+    const changes: Array<{idx: number, from: number, to: number}> = []
+    for (let i = 1; i < direction.length; i++) {
+      if (direction[i] !== direction[i - 1]) changes.push({ idx: i, from: direction[i - 1], to: direction[i] })
+    }
+    console.log(`[INDICATORS] UTBot: ${direction.length} values, last5=[${last5}], direction_changes=${changes.length}${changes.length > 0 ? ` last_change=idx${changes[changes.length-1].idx} (${changes[changes.length-1].from}->${changes[changes.length-1].to})` : ''}`)
+  }
+
+  return { trailingStop, direction }
+}
+
 function calculateAllIndicators(ohlcv: OHLCV[]): IndicatorValues {
   const closes = ohlcv.map(c => c.close)
   
@@ -609,6 +674,7 @@ function calculateAllIndicators(ohlcv: OHLCV[]): IndicatorValues {
       14: calculateATR(ohlcv, 14),
     },
     supertrend: calculateSuperTrend(ohlcv),
+    utbot: calculateUTBot(ohlcv),
   }
 
   // Debug: log last few SuperTrend direction values
@@ -730,6 +796,53 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
         indicator2: { name: 'bb_middle' },
         logic: 'and',
       })
+    }
+  }
+  
+  // ---- UT BOT STRATEGY DETECTION ----
+  // Detects "UT Bot Strategy" / "UT Bot Alerts" — ATR trailing stop with position tracking
+  const hasUTBot = (content.includes('xatrtrailingstop') || content.includes('atrtrailingstop') || content.includes('trailing_stop')) &&
+    content.includes('nloss') && content.includes('atr')
+  
+  if (hasUTBot) {
+    console.log('[PARSER] Detected UT Bot Strategy (ATR Trailing Stop)')
+    
+    // Parse key value (sensitivity) and ATR period from inputs
+    let keyValue = 1
+    let atrPeriod = 10
+    const keyMatch = scriptContent.match(/(?:key\s*val|sensitivity|a\s*=\s*input)\s*\(\s*([\d.]+)/i)
+    const atrMatch = scriptContent.match(/(?:atr\s*period|c\s*=\s*input)\s*\(\s*(\d+)/i)
+    if (keyMatch) keyValue = parseFloat(keyMatch[1])
+    if (atrMatch) atrPeriod = parseInt(atrMatch[1])
+    console.log(`[PARSER] UTBot params: key value=${keyValue}, ATR period=${atrPeriod}`)
+    
+    // Buy signal: direction changes from -1 to 1
+    strategy.entryConditions.push({
+      type: 'direction_change_up',
+      indicator1: { name: 'utbot_direction' },
+      indicator2: 1,
+      logic: 'and',
+    })
+    console.log('[PARSER] Added UTBot entry: direction change up (buy)')
+    
+    // Sell signal: direction changes from 1 to -1
+    strategy.exitConditions.push({
+      type: 'direction_change_down',
+      indicator1: { name: 'utbot_direction' },
+      indicator2: -1,
+      logic: 'and',
+    })
+    console.log('[PARSER] Added UTBot exit: direction change down (sell)')
+    
+    // UT Bot trades both directions
+    strategy.direction = 'both'
+    
+    // Default SL/TP for UT Bot
+    if (!strategy.stopLoss) {
+      strategy.stopLoss = { type: 'atr', value: 1.5 }
+    }
+    if (!strategy.takeProfit) {
+      strategy.takeProfit = { type: 'atr', value: 3.0 }
     }
   }
   
@@ -1051,6 +1164,11 @@ function getIndicatorValue(
       if (!indicators.supertrend || !indicators.supertrend.direction || indicators.supertrend.direction.length === 0) return null
       const idx = adjustedIndex(indicators.supertrend.direction)
       return idx >= 0 ? indicators.supertrend.direction[idx] : null
+    }
+    case 'utbot_direction': {
+      if (!indicators.utbot || !indicators.utbot.direction || indicators.utbot.direction.length === 0) return null
+      const idx = adjustedIndex(indicators.utbot.direction)
+      return idx >= 0 ? indicators.utbot.direction[idx] : null
     }
     default:
       return null
@@ -3261,11 +3379,16 @@ Deno.serve(async (req) => {
                 // ----- STEP 1: EVALUATE SIGNAL -----
                 const strategy = parsePineScript(us.script.script_content)
                 
-                // Determine signal from SuperTrend state or standard evaluation
+                // Determine signal from SuperTrend/UTBot state or standard evaluation
                 const isSuperTrendStateBased =
                   strategy.direction === 'both' &&
-                  strategy.entryConditions.some(c => c.type === 'direction_change_up' || c.type === 'direction_change_down') &&
+                  strategy.entryConditions.some(c => c.indicator1.name === 'supertrend_direction') &&
                   indicators.supertrend?.direction && indicators.supertrend.direction.length > 0
+
+                const isUTBotStateBased =
+                  strategy.direction === 'both' &&
+                  strategy.entryConditions.some(c => c.indicator1.name === 'utbot_direction') &&
+                  indicators.utbot?.direction && indicators.utbot.direction.length > 0
 
                 let rawSignalAction: 'BUY' | 'SELL' | 'NONE'
                 if (isSuperTrendStateBased) {
@@ -3273,6 +3396,11 @@ Deno.serve(async (req) => {
                   const currentSTDir = stDirection[stDirection.length - 1]
                   rawSignalAction = currentSTDir === 1 ? 'BUY' : 'SELL'
                   console.log(`[ENGINE] SuperTrend state: ${currentSTDir === 1 ? 'BULLISH' : 'BEARISH'} → rawSignal=${rawSignalAction}`)
+                } else if (isUTBotStateBased) {
+                  const utDirection = indicators.utbot!.direction
+                  const currentUTDir = utDirection[utDirection.length - 1]
+                  rawSignalAction = currentUTDir === 1 ? 'BUY' : 'SELL'
+                  console.log(`[ENGINE] UTBot state: ${currentUTDir === 1 ? 'BULLISH' : 'BEARISH'} → rawSignal=${rawSignalAction}`)
                 } else {
                   const botStartedAt = (settings.bot_started_at as string | undefined) || undefined
                   const evalResult = evaluateStrategy(strategy, indicators, candlesUsed, currentPrice, botStartedAt)
