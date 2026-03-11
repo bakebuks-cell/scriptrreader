@@ -674,6 +674,7 @@ function calculateUTBot(ohlcv: OHLCV[], keyValue: number = 1, atrPeriod: number 
       14: calculateATR(ohlcv, 14),
     },
     supertrend: calculateSuperTrend(ohlcv),
+    utbot: calculateUTBot(ohlcv),
   }
 
   // Debug: log last few SuperTrend direction values
