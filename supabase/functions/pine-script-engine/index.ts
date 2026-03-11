@@ -3379,11 +3379,16 @@ Deno.serve(async (req) => {
                 // ----- STEP 1: EVALUATE SIGNAL -----
                 const strategy = parsePineScript(us.script.script_content)
                 
-                // Determine signal from SuperTrend state or standard evaluation
+                // Determine signal from SuperTrend/UTBot state or standard evaluation
                 const isSuperTrendStateBased =
                   strategy.direction === 'both' &&
-                  strategy.entryConditions.some(c => c.type === 'direction_change_up' || c.type === 'direction_change_down') &&
+                  strategy.entryConditions.some(c => c.indicator1.name === 'supertrend_direction') &&
                   indicators.supertrend?.direction && indicators.supertrend.direction.length > 0
+
+                const isUTBotStateBased =
+                  strategy.direction === 'both' &&
+                  strategy.entryConditions.some(c => c.indicator1.name === 'utbot_direction') &&
+                  indicators.utbot?.direction && indicators.utbot.direction.length > 0
 
                 let rawSignalAction: 'BUY' | 'SELL' | 'NONE'
                 if (isSuperTrendStateBased) {
@@ -3391,6 +3396,11 @@ Deno.serve(async (req) => {
                   const currentSTDir = stDirection[stDirection.length - 1]
                   rawSignalAction = currentSTDir === 1 ? 'BUY' : 'SELL'
                   console.log(`[ENGINE] SuperTrend state: ${currentSTDir === 1 ? 'BULLISH' : 'BEARISH'} → rawSignal=${rawSignalAction}`)
+                } else if (isUTBotStateBased) {
+                  const utDirection = indicators.utbot!.direction
+                  const currentUTDir = utDirection[utDirection.length - 1]
+                  rawSignalAction = currentUTDir === 1 ? 'BUY' : 'SELL'
+                  console.log(`[ENGINE] UTBot state: ${currentUTDir === 1 ? 'BULLISH' : 'BEARISH'} → rawSignal=${rawSignalAction}`)
                 } else {
                   const botStartedAt = (settings.bot_started_at as string | undefined) || undefined
                   const evalResult = evaluateStrategy(strategy, indicators, candlesUsed, currentPrice, botStartedAt)
