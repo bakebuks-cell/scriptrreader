@@ -2775,9 +2775,21 @@ Deno.serve(async (req) => {
       }
       
       case 'run': {
-        // Optional timeframe filter from cron or manual call
+        // ===== CENTRAL SCHEDULER ENGINE =====
+        // Timeframe-based polling intervals (milliseconds between checks)
+        const POLLING_INTERVALS: Record<string, number> = {
+          '1m': 15_000, '2m': 30_000, '3m': 45_000, '5m': 60_000,
+          '10m': 120_000, '15m': 180_000, '30m': 300_000, '45m': 300_000,
+          '1h': 600_000, '2h': 900_000, '3h': 1_200_000, '4h': 1_500_000,
+          '1d': 1_800_000, '1w': 3_600_000, '1M': 3_600_000,
+        }
+        const cycleStartMs = Date.now()
+        const schedulerNow = new Date()
+        // In-memory shared market data cache (prevents re-fetching same symbol+timeframe within this cycle)
+        const marketDataCache = new Map<string, { ohlcv: OHLCV[], haOhlcv: OHLCV[] | null, price: number, regularIndicators: IndicatorValues | null, haIndicators: IndicatorValues | null }>()
+
         const targetTimeframe = url.searchParams.get('timeframe') || null
-        console.log(`[ENGINE] Starting run${targetTimeframe ? ` for timeframe=${targetTimeframe}` : ' for all active scripts'}...`)
+        console.log(`[SCHEDULER] ===== Cycle started at ${schedulerNow.toISOString()}${targetTimeframe ? ` (tf=${targetTimeframe})` : ''} =====`)
         const results: any[] = []
         
         // Get user_scripts records (for per-user settings and admin-script activation)
