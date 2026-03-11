@@ -220,6 +220,51 @@ export type Database = {
         }
         Relationships: []
       }
+      market_data_cache: {
+        Row: {
+          cache_expiry_time: string | null
+          candle_count: number | null
+          created_at: string | null
+          current_price: number | null
+          data_payload: Json | null
+          fetch_duration_ms: number | null
+          fetch_status: string | null
+          fetched_at: string | null
+          id: string
+          latest_candle_time: number | null
+          symbol: string
+          timeframe: string
+        }
+        Insert: {
+          cache_expiry_time?: string | null
+          candle_count?: number | null
+          created_at?: string | null
+          current_price?: number | null
+          data_payload?: Json | null
+          fetch_duration_ms?: number | null
+          fetch_status?: string | null
+          fetched_at?: string | null
+          id?: string
+          latest_candle_time?: number | null
+          symbol: string
+          timeframe: string
+        }
+        Update: {
+          cache_expiry_time?: string | null
+          candle_count?: number | null
+          created_at?: string | null
+          current_price?: number | null
+          data_payload?: Json | null
+          fetch_duration_ms?: number | null
+          fetch_status?: string | null
+          fetched_at?: string | null
+          id?: string
+          latest_candle_time?: number | null
+          symbol?: string
+          timeframe?: string
+        }
+        Relationships: []
+      }
       market_maker_bots: {
         Row: {
           auto_stop_at: string | null
@@ -541,6 +586,84 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      strategy_state: {
+        Row: {
+          consecutive_errors: number | null
+          created_at: string | null
+          error_count: number | null
+          execution_count: number | null
+          id: string
+          last_checked_time: string | null
+          last_data_update_time: string | null
+          last_error: string | null
+          last_execution_candle_time: number | null
+          last_failed_api_fetch_time: string | null
+          last_order_time: string | null
+          last_processed_candle_time: number | null
+          last_signal_side: string | null
+          last_signal_time: string | null
+          last_successful_api_fetch_time: string | null
+          next_check_time: string | null
+          script_id: string
+          signal_lock_status: string | null
+          status: string
+          symbol: string
+          timeframe: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          consecutive_errors?: number | null
+          created_at?: string | null
+          error_count?: number | null
+          execution_count?: number | null
+          id?: string
+          last_checked_time?: string | null
+          last_data_update_time?: string | null
+          last_error?: string | null
+          last_execution_candle_time?: number | null
+          last_failed_api_fetch_time?: string | null
+          last_order_time?: string | null
+          last_processed_candle_time?: number | null
+          last_signal_side?: string | null
+          last_signal_time?: string | null
+          last_successful_api_fetch_time?: string | null
+          next_check_time?: string | null
+          script_id: string
+          signal_lock_status?: string | null
+          status?: string
+          symbol: string
+          timeframe: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          consecutive_errors?: number | null
+          created_at?: string | null
+          error_count?: number | null
+          execution_count?: number | null
+          id?: string
+          last_checked_time?: string | null
+          last_data_update_time?: string | null
+          last_error?: string | null
+          last_execution_candle_time?: number | null
+          last_failed_api_fetch_time?: string | null
+          last_order_time?: string | null
+          last_processed_candle_time?: number | null
+          last_signal_side?: string | null
+          last_signal_time?: string | null
+          last_successful_api_fetch_time?: string | null
+          next_check_time?: string | null
+          script_id?: string
+          signal_lock_status?: string | null
+          status?: string
+          symbol?: string
+          timeframe?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       subscription_settings: {
         Row: {
