@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Lock, Zap, Mail, CheckCircle2 } from 'lucide-react';
+import { Lock, Zap, Mail, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { isAdminEmail } from '@/lib/constants';
 import logo from '@/assets/logo.png';
@@ -22,6 +22,13 @@ export default function Auth() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
+  const sessionErrorCode = searchParams.get('session_error');
+
+  const sessionErrorMessages: Record<string, string> = {
+    SESSION_EXPIRED: 'Your session has expired. Please sign in again.',
+    SESSION_REVOKED: 'You were signed out because your account was accessed from another device.',
+    SESSION_NOT_FOUND: 'Your session could not be found. Please sign in again.',
+  };
 
   // Check for email verification success from URL and handle redirect
   useEffect(() => {
@@ -171,6 +178,16 @@ export default function Auth() {
             <CardDescription>Sign in to your trading dashboard</CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Show session error if redirected from invalid session */}
+            {sessionErrorCode && sessionErrorMessages[sessionErrorCode] && (
+              <Alert className="mb-4 border-destructive/30 bg-destructive/5">
+                <AlertTriangle className="h-4 w-4 text-destructive" />
+                <AlertDescription className="text-destructive">
+                  {sessionErrorMessages[sessionErrorCode]}
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Show success message if email was just verified */}
             {verifiedEmail && (
               <Alert className="mb-4 border-primary/30 bg-primary/5">

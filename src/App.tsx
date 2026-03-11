@@ -18,7 +18,7 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 function AuthGuard({ children, adminOnly = false }: { children: ReactNode; adminOnly?: boolean }) {
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, sessionError } = useAuth();
 
   if (loading || (adminOnly && user && role === null)) {
     return (
@@ -28,8 +28,10 @@ function AuthGuard({ children, adminOnly = false }: { children: ReactNode; admin
     );
   }
 
-  if (!user) {
-    return <Navigate to="/auth" replace />;
+  // Session was invalidated — redirect to auth with error info
+  if (sessionError || !user) {
+    const params = sessionError ? `?session_error=${sessionError.code}` : '';
+    return <Navigate to={`/auth${params}`} replace />;
   }
 
   if (adminOnly && role !== "admin") {
