@@ -2969,12 +2969,14 @@ Deno.serve(async (req) => {
         const userScripts = (userScriptsRaw || []).filter((us: any) => {
           if (!us.script) return false
 
+          // BASE-LEVEL GUARD: If the pine_scripts record itself is inactive, skip regardless
+          if (!us.script.is_active) {
+            console.log(`[ENGINE] Skipping disabled base script: "${us.script.name}" (${us.script_id})`)
+            return false
+          }
+
           const isOwnScript = us.script.admin_tag === null && us.script.created_by === us.user_id
           if (isOwnScript) {
-            if (!us.script.is_active) {
-              console.log(`[ENGINE] Skipping disabled own script from user_scripts: "${us.script.name}" (${us.script_id})`)
-              return false
-            }
             return true
           }
 
