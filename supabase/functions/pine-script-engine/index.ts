@@ -837,13 +837,9 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
     // UT Bot trades both directions
     strategy.direction = 'both'
     
-    // Default SL/TP for UT Bot
-    if (!strategy.stopLoss) {
-      strategy.stopLoss = { type: 'atr', value: 1.5 }
-    }
-    if (!strategy.takeProfit) {
-      strategy.takeProfit = { type: 'atr', value: 3.0 }
-    }
+    // TP/SL disabled — trades close only on strategy exit signals
+    // if (!strategy.stopLoss) { strategy.stopLoss = { type: 'atr', value: 1.5 } }
+    // if (!strategy.takeProfit) { strategy.takeProfit = { type: 'atr', value: 3.0 } }
   }
   
   // ---- SUPERTREND DETECTION ----
@@ -884,13 +880,9 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
     // SuperTrend scripts typically trade both directions
     strategy.direction = 'both'
     
-    // Default SL/TP for SuperTrend if not specified
-    if (!strategy.stopLoss) {
-      strategy.stopLoss = { type: 'atr', value: 1.5 }
-    }
-    if (!strategy.takeProfit) {
-      strategy.takeProfit = { type: 'atr', value: 3.0 }
-    }
+    // TP/SL disabled — trades close only on strategy exit signals
+    // if (!strategy.stopLoss) { strategy.stopLoss = { type: 'atr', value: 1.5 } }
+    // if (!strategy.takeProfit) { strategy.takeProfit = { type: 'atr', value: 3.0 } }
   }
   
   // ---- EMA/SMA CROSSOVER DETECTION ----
@@ -1047,12 +1039,9 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
       logic: 'and',
     })
     
-    if (!strategy.stopLoss) {
-      strategy.stopLoss = { type: 'percent', value: 2 }
-    }
-    if (!strategy.takeProfit) {
-      strategy.takeProfit = { type: 'percent', value: 4 }
-    }
+    // TP/SL disabled — trades close only on strategy exit signals
+    // if (!strategy.stopLoss) { strategy.stopLoss = { type: 'percent', value: 2 } }
+    // if (!strategy.takeProfit) { strategy.takeProfit = { type: 'percent', value: 4 } }
   }
   
   // AUTO-GENERATE EXIT CONDITIONS if none defined — use inverse of entry conditions
@@ -2356,93 +2345,10 @@ async function executeTrade(
         })
         .eq('id', trade.id)
       
-      // ===== STOP LOSS =====
-      // For LONG: SL below entry. For SHORT: SL above entry.
-      // Futures: reduceOnly=true, closePosition=false, correct quantity
-      if (actualSL) {
-        try {
-          const slSide = signal.action === 'BUY' ? 'SELL' : 'BUY'
-          // Validate SL direction
-          const slValid = signal.action === 'BUY' ? actualSL < actualEntryPrice : actualSL > actualEntryPrice
-          if (!slValid) {
-            console.log(`[TRADE] SL ${actualSL} is on wrong side of entry ${actualEntryPrice} for ${signal.action} — skipping`)
-          } else if (isSpot) {
-            await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
-              symbol: symbol,
-              side: slSide,
-              type: 'STOP_LOSS_LIMIT',
-              quantity: actualQty,
-              stopPrice: actualSL.toFixed(2),
-              price: (actualSL * (signal.action === 'BUY' ? 0.995 : 1.005)).toFixed(2),
-              timeInForce: 'GTC',
-            })
-            console.log(`[TRADE] Stop loss placed at ${actualSL.toFixed(2)}`)
-          } else {
-            const slEndpoint = isCoinM ? '/dapi/v1/order' : '/fapi/v1/order'
-            const slParams: Record<string, string> = {
-              symbol: symbol,
-              side: slSide,
-              type: 'STOP_MARKET',
-              quantity: actualQty,
-              stopPrice: actualSL.toFixed(2),
-              reduceOnly: 'true',
-            }
-            if (positionSide) {
-              slParams.positionSide = positionSide
-              delete (slParams as any).reduceOnly // hedge mode uses positionSide instead
-            }
-            const slFn = isCoinM ? binanceCoinMRequest : (ep: string, ak: string, as2: string, m: string, p: any) => binanceRequest(ep, ak, as2, m, p, true)
-            await slFn(slEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', slParams)
-            console.log(`[TRADE] Stop loss placed at ${actualSL.toFixed(2)} (reduceOnly, qty=${actualQty})`)
-          }
-        } catch (slError) {
-          console.log('[TRADE] Stop loss order failed (non-critical):', slError)
-        }
-      }
-      
-      // ===== TAKE PROFIT =====
-      // For LONG: TP above entry. For SHORT: TP below entry.
-      // Futures: reduceOnly=true, closePosition=false, correct quantity
-      if (actualTP) {
-        try {
-          const tpSide = signal.action === 'BUY' ? 'SELL' : 'BUY'
-          // Validate TP direction
-          const tpValid = signal.action === 'BUY' ? actualTP > actualEntryPrice : actualTP < actualEntryPrice
-          if (!tpValid) {
-            console.log(`[TRADE] TP ${actualTP} is on wrong side of entry ${actualEntryPrice} for ${signal.action} — skipping`)
-          } else if (isSpot) {
-            await binanceRequest('/api/v3/order', apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', {
-              symbol: symbol,
-              side: tpSide,
-              type: 'TAKE_PROFIT_LIMIT',
-              quantity: actualQty,
-              stopPrice: actualTP.toFixed(2),
-              price: (actualTP * (signal.action === 'BUY' ? 1.005 : 0.995)).toFixed(2),
-              timeInForce: 'GTC',
-            })
-            console.log(`[TRADE] Take profit placed at ${actualTP.toFixed(2)}`)
-          } else {
-            const tpEndpoint = isCoinM ? '/dapi/v1/order' : '/fapi/v1/order'
-            const tpParams: Record<string, string> = {
-              symbol: symbol,
-              side: tpSide,
-              type: 'TAKE_PROFIT_MARKET',
-              quantity: actualQty,
-              stopPrice: actualTP.toFixed(2),
-              reduceOnly: 'true',
-            }
-            if (positionSide) {
-              tpParams.positionSide = positionSide
-              delete (tpParams as any).reduceOnly // hedge mode uses positionSide instead
-            }
-            const tpFn = isCoinM ? binanceCoinMRequest : (ep: string, ak: string, as2: string, m: string, p: any) => binanceRequest(ep, ak, as2, m, p, true)
-            await tpFn(tpEndpoint, apiKeys.api_key_encrypted, apiKeys.api_secret_encrypted, 'POST', tpParams)
-            console.log(`[TRADE] Take profit placed at ${actualTP.toFixed(2)} (reduceOnly, qty=${actualQty})`)
-          }
-        } catch (tpError) {
-          console.log('[TRADE] Take profit order failed (non-critical):', tpError)
-        }
-      }
+      // ===== STOP LOSS & TAKE PROFIT DISABLED =====
+      // Trades now close ONLY on strategy exit signals (UTBot/SuperTrend direction change)
+      // No exchange-side SL/TP orders are placed
+      console.log(`[TRADE] TP/SL placement DISABLED — trade will close only on strategy exit signal`)
       
       return { success: true, tradeId: trade.id }
       
