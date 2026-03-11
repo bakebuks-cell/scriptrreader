@@ -1165,6 +1165,11 @@ function getIndicatorValue(
       const idx = adjustedIndex(indicators.supertrend.direction)
       return idx >= 0 ? indicators.supertrend.direction[idx] : null
     }
+    case 'utbot_direction': {
+      if (!indicators.utbot || !indicators.utbot.direction || indicators.utbot.direction.length === 0) return null
+      const idx = adjustedIndex(indicators.utbot.direction)
+      return idx >= 0 ? indicators.utbot.direction[idx] : null
+    }
     default:
       return null
   }
