@@ -1681,6 +1681,7 @@ async function closeOpenTrade(
         status: 'CLOSED',
         exit_price: currentPrice,
         closed_at: new Date().toISOString(),
+        pnl: calcPnl(currentPrice),
       }).eq('id', trade.id)
       return { success: true }
     }
