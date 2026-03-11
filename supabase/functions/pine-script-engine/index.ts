@@ -3010,21 +3010,11 @@ Deno.serve(async (req) => {
             
             for (const us of groupedScripts) {
               try {
-                // ===== FRESH DATA PER SCRIPT =====
-                // Re-fetch OHLCV and price for each script to ensure real-time accuracy
-                // Data is NOT stored in DB — purely in-memory for analysis
-                const freshOhlcv = await fetchOHLCV(symbol, timeframe, 200)
-                const freshPrice = await getCurrentPrice(symbol)
-                const freshRegularIndicators = calculateAllIndicators(freshOhlcv)
-                const freshHaOhlcv = us.script.candle_type === 'heikin_ashi' ? convertToHeikinAshi(freshOhlcv) : null
-                const freshHaIndicators = freshHaOhlcv ? calculateAllIndicators(freshHaOhlcv) : null
-                
+                // ===== USE SHARED CACHED DATA (fetched once per symbol+timeframe group) =====
                 const isHA = us.script.candle_type === 'heikin_ashi'
-                const indicators = isHA ? freshHaIndicators! : freshRegularIndicators
-                const candlesUsed = isHA ? freshHaOhlcv! : freshOhlcv
-                // Update currentPrice to fresh value
-                const currentPrice = freshPrice
-                console.log(`[ENGINE] Evaluating script "${us.script.name}" for user ${us.user_id} (candle: ${isHA ? 'Heikin Ashi' : 'Regular'}, freshPrice=${currentPrice})`)
+                const indicators = isHA ? haIndicators! : regularIndicators!
+                const candlesUsed = isHA ? haOhlcv! : ohlcv!
+                console.log(`[SCHEDULER] Evaluating "${us.script.name}" user=${us.user_id} (${isHA ? 'HA' : 'Regular'}, price=${currentPrice}, fresh=${dataFreshlyFetched})`)
                 // strategy is parsed inside the decision engine below
                 // Force USDT-M futures for futures-only symbols (XAU, XAG)
                 const rawMarketType = us.script.market_type || 'futures'
