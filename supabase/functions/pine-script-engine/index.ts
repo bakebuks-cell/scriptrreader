@@ -645,7 +645,7 @@ function calculateUTBot(ohlcv: OHLCV[], keyValue: number = 1, atrPeriod: number 
   return { trailingStop, direction }
 }
 
-
+function calculateAllIndicators(ohlcv: OHLCV[]): IndicatorValues {
   const closes = ohlcv.map(c => c.close)
   
   const result: IndicatorValues = {
