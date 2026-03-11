@@ -2213,6 +2213,7 @@ async function executeTrade(
           quantity: finalQty,
           leverage: effectiveLeverage,
           margin_amount: finalMarginAmount,
+          trade_amount_used: totalExposure,
         })
         .eq('id', trade.id)
       
