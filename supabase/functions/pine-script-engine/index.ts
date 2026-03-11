@@ -799,6 +799,53 @@ function parsePineScript(scriptContent: string): ParsedStrategy {
     }
   }
   
+  // ---- UT BOT STRATEGY DETECTION ----
+  // Detects "UT Bot Strategy" / "UT Bot Alerts" — ATR trailing stop with position tracking
+  const hasUTBot = (content.includes('xatrtrailingstop') || content.includes('atrtrailingstop') || content.includes('trailing_stop')) &&
+    content.includes('nloss') && content.includes('atr')
+  
+  if (hasUTBot) {
+    console.log('[PARSER] Detected UT Bot Strategy (ATR Trailing Stop)')
+    
+    // Parse key value (sensitivity) and ATR period from inputs
+    let keyValue = 1
+    let atrPeriod = 10
+    const keyMatch = scriptContent.match(/(?:key\s*val|sensitivity|a\s*=\s*input)\s*\(\s*([\d.]+)/i)
+    const atrMatch = scriptContent.match(/(?:atr\s*period|c\s*=\s*input)\s*\(\s*(\d+)/i)
+    if (keyMatch) keyValue = parseFloat(keyMatch[1])
+    if (atrMatch) atrPeriod = parseInt(atrMatch[1])
+    console.log(`[PARSER] UTBot params: key value=${keyValue}, ATR period=${atrPeriod}`)
+    
+    // Buy signal: direction changes from -1 to 1
+    strategy.entryConditions.push({
+      type: 'direction_change_up',
+      indicator1: { name: 'utbot_direction' },
+      indicator2: 1,
+      logic: 'and',
+    })
+    console.log('[PARSER] Added UTBot entry: direction change up (buy)')
+    
+    // Sell signal: direction changes from 1 to -1
+    strategy.exitConditions.push({
+      type: 'direction_change_down',
+      indicator1: { name: 'utbot_direction' },
+      indicator2: -1,
+      logic: 'and',
+    })
+    console.log('[PARSER] Added UTBot exit: direction change down (sell)')
+    
+    // UT Bot trades both directions
+    strategy.direction = 'both'
+    
+    // Default SL/TP for UT Bot
+    if (!strategy.stopLoss) {
+      strategy.stopLoss = { type: 'atr', value: 1.5 }
+    }
+    if (!strategy.takeProfit) {
+      strategy.takeProfit = { type: 'atr', value: 3.0 }
+    }
+  }
+  
   // ---- SUPERTREND DETECTION ----
   const hasSuperTrend = content.includes('supertrend') || 
     (content.includes('atr') && content.includes('hl2') && content.includes('trend')) ||
