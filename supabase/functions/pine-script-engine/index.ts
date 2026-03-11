@@ -3870,7 +3870,7 @@ Deno.serve(async (req) => {
         // Get open trades
         let tradesQuery = supabase
           .from('trades')
-          .select('id, user_id, script_id, symbol, signal_type, entry_price, timeframe')
+          .select('id, user_id, script_id, symbol, signal_type, entry_price, quantity, timeframe')
           .eq('user_id', userId)
           .in('status', ['OPEN', 'PENDING'])
 
