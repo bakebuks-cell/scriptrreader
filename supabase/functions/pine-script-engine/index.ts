@@ -2973,13 +2973,74 @@ Deno.serve(async (req) => {
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }
+
+        // ===== UPSERT STRATEGY_STATE for all valid scripts =====
+        for (const us of validScripts) {
+          const sym = us.script.symbol
+          const tf = us.script.allowed_timeframes?.[0] || '1h'
+          try {
+            const { data: existing } = await supabase
+              .from('strategy_state')
+              .select('id')
+              .eq('user_id', us.user_id)
+              .eq('script_id', us.script_id)
+              .eq('symbol', sym)
+              .eq('timeframe', tf)
+              .maybeSingle()
+            if (!existing) {
+              await supabase.from('strategy_state').insert({
+                user_id: us.user_id,
+                script_id: us.script_id,
+                symbol: sym,
+                timeframe: tf,
+                status: 'active',
+                next_check_time: schedulerNow.toISOString(),
+              })
+              console.log(`[SCHEDULER] Created strategy_state for ${us.script.name} ${sym}:${tf}`)
+            }
+          } catch (upsertErr: any) {
+            console.log(`[SCHEDULER] strategy_state upsert error (non-fatal):`, upsertErr?.message)
+          }
+        }
+
+        // ===== FILTER: Only process scripts whose next_check_time <= now =====
+        const { data: dueStates } = await supabase
+          .from('strategy_state')
+          .select('user_id, script_id, symbol, timeframe')
+          .eq('status', 'active')
+          .lte('next_check_time', schedulerNow.toISOString())
+
+        const dueSet = new Set((dueStates || []).map((s: any) => `${s.user_id}:${s.script_id}:${s.symbol}:${s.timeframe}`))
+        console.log(`[SCHEDULER] ${dueSet.size} strategy_states are due for check`)
+
+        const dueScripts = validScripts.filter((us: any) => {
+          const sym = us.script.symbol
+          const tf = us.script.allowed_timeframes?.[0] || '1h'
+          const key = `${us.user_id}:${us.script_id}:${sym}:${tf}`
+          return dueSet.has(key)
+        })
+
+        console.log(`[SCHEDULER] ${dueScripts.length} scripts due (of ${validScripts.length} valid)`)
+
+        if (dueScripts.length === 0) {
+          return new Response(
+            JSON.stringify({
+              processed: 0,
+              results: [],
+              message: 'No scripts are due for checking in this cycle.',
+              timestamp: schedulerNow.toISOString(),
+              totalValid: validScripts.length,
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
         
         // ===== MULTIPLE SCRIPTS PER SYMBOL ALLOWED =====
         // Each script runs independently — position tracking is per user_script, not per symbol
 
         // Group by symbol+timeframe
         const bySymbolTimeframe: Record<string, any[]> = {}
-        for (const us of validScripts) {
+        for (const us of dueScripts) {
           const sym = us.script.symbol
           const tf = us.script.allowed_timeframes?.[0] || '1h'
           const key = `${sym}:${tf}`
@@ -2993,7 +3054,9 @@ Deno.serve(async (req) => {
         for (const key of Object.keys(bySymbolTimeframe)) {
           const groupedScripts = bySymbolTimeframe[key]
           const [symbol, timeframe] = key.split(':')
-          console.log(`[ENGINE] Processing ${key}: ${groupedScripts.length} scripts`)
+          const pollingIntervalMs = POLLING_INTERVALS[timeframe] || 60_000
+          let dataFreshlyFetched = false
+          console.log(`[ENGINE] Processing ${key}: ${groupedScripts.length} scripts (poll interval: ${pollingIntervalMs / 1000}s)`)
           
           try {
             let ohlcv = await fetchOHLCV(symbol, timeframe, 200)
