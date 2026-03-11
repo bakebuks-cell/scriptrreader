@@ -537,6 +537,30 @@ export type Database = {
           },
         ]
       }
+      session_config: {
+        Row: {
+          id: string
+          max_sessions_per_user: number
+          multi_device_enabled: boolean
+          session_timeout_hours: number
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          max_sessions_per_user?: number
+          multi_device_enabled?: boolean
+          session_timeout_hours?: number
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          max_sessions_per_user?: number
+          multi_device_enabled?: boolean
+          session_timeout_hours?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       signals: {
         Row: {
           candle_timestamp: string
@@ -717,6 +741,7 @@ export type Database = {
           leverage: number | null
           margin_amount: number | null
           opened_at: string | null
+          pnl: number | null
           quantity: number | null
           script_id: string | null
           signal_id: string | null
@@ -726,6 +751,7 @@ export type Database = {
           symbol: string
           take_profit: number | null
           timeframe: string
+          trade_amount_used: number | null
           updated_at: string
           user_id: string
         }
@@ -741,6 +767,7 @@ export type Database = {
           leverage?: number | null
           margin_amount?: number | null
           opened_at?: string | null
+          pnl?: number | null
           quantity?: number | null
           script_id?: string | null
           signal_id?: string | null
@@ -750,6 +777,7 @@ export type Database = {
           symbol: string
           take_profit?: number | null
           timeframe: string
+          trade_amount_used?: number | null
           updated_at?: string
           user_id: string
         }
@@ -765,6 +793,7 @@ export type Database = {
           leverage?: number | null
           margin_amount?: number | null
           opened_at?: string | null
+          pnl?: number | null
           quantity?: number | null
           script_id?: string | null
           signal_id?: string | null
@@ -774,6 +803,7 @@ export type Database = {
           symbol?: string
           take_profit?: number | null
           timeframe?: string
+          trade_amount_used?: number | null
           updated_at?: string
           user_id?: string
         }
@@ -850,6 +880,81 @@ export type Database = {
           },
         ]
       }
+      user_sessions: {
+        Row: {
+          created_at: string
+          device_info: string | null
+          expiry_time: string
+          id: string
+          ip_address: string | null
+          last_activity_time: string
+          login_time: string
+          session_id: string
+          session_status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_info?: string | null
+          expiry_time?: string
+          id?: string
+          ip_address?: string | null
+          last_activity_time?: string
+          login_time?: string
+          session_id: string
+          session_status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device_info?: string | null
+          expiry_time?: string
+          id?: string
+          ip_address?: string | null
+          last_activity_time?: string
+          login_time?: string
+          session_id?: string
+          session_status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_trading_settings: {
+        Row: {
+          created_at: string
+          default_leverage: number
+          default_margin: number
+          default_stop_loss: number | null
+          default_take_profit: number | null
+          default_trade_amount: number
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          default_leverage?: number
+          default_margin?: number
+          default_stop_loss?: number | null
+          default_take_profit?: number | null
+          default_trade_amount?: number
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          default_leverage?: number
+          default_margin?: number
+          default_stop_loss?: number | null
+          default_take_profit?: number | null
+          default_trade_amount?: number
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       wallets: {
         Row: {
           api_key_encrypted: string | null
@@ -900,6 +1005,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_user_session: {
+        Args: { _device_info?: string; _ip_address?: string; _user_id: string }
+        Returns: Json
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -913,6 +1022,10 @@ export type Database = {
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
       is_admin_email: { Args: { check_email: string }; Returns: boolean }
+      validate_session: {
+        Args: { _session_id: string; _user_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "user"
