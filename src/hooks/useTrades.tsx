@@ -26,6 +26,8 @@ export interface Trade {
   quantity: number | null;
   leverage: number | null;
   margin_amount: number | null;
+  trade_amount_used: number | null;
+  pnl: number | null;
 }
 
 export function useTrades() {

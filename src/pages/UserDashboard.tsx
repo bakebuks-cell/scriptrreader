@@ -706,11 +706,10 @@ export default function UserDashboard() {
                             </span>
                           );
                         };
-                        // Get script details for leverage/margin
-                        const linkedScript = trade.script_id ? scripts.find(s => s.id === trade.script_id) : null;
-                        const leverage = linkedScript?.leverage ?? 1;
-                        const margin = linkedScript?.position_size_value ?? 10;
-                        const positionSize = margin * leverage;
+                        // Use per-trade snapshot values (immutable), fallback to script only if missing
+                        const leverage = trade.leverage ?? 1;
+                        const margin = trade.margin_amount ? Number(trade.margin_amount) : 0;
+                        const positionSize = trade.trade_amount_used ? Number(trade.trade_amount_used) : (margin * leverage);
                         const isOpen = trade.status === 'OPEN' || trade.status === 'PENDING';
                         const isClosingThis = closingSingleId === trade.id && isClosingSingle;
                         return (
