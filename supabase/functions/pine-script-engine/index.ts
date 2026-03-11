@@ -3320,7 +3320,7 @@ Deno.serve(async (req) => {
                 // ----- STEP 3: SYNC POSITION WITH DB AND EXCHANGE -----
                 const { data: currentOpenTrades } = await supabase
                   .from('trades')
-                  .select('id, user_id, script_id, symbol, signal_type, entry_price, created_at')
+                  .select('id, user_id, script_id, symbol, signal_type, entry_price, quantity, created_at')
                   .eq('user_id', us.user_id)
                   .eq('symbol', symbol)
                   .in('status', ['OPEN', 'PENDING'])
