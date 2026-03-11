@@ -3340,7 +3340,7 @@ Deno.serve(async (req) => {
                 // Re-fetch after sync
                 const { data: liveOpenTrades } = await supabase
                   .from('trades')
-                  .select('id, user_id, script_id, symbol, signal_type, entry_price, created_at')
+                  .select('id, user_id, script_id, symbol, signal_type, entry_price, quantity, created_at')
                   .eq('user_id', us.user_id)
                   .eq('symbol', symbol)
                   .in('status', ['OPEN', 'PENDING'])
