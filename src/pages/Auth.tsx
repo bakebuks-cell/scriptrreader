@@ -178,6 +178,16 @@ export default function Auth() {
             <CardDescription>Sign in to your trading dashboard</CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Show session error if redirected from invalid session */}
+            {sessionErrorCode && sessionErrorMessages[sessionErrorCode] && (
+              <Alert className="mb-4 border-destructive/30 bg-destructive/5">
+                <AlertTriangle className="h-4 w-4 text-destructive" />
+                <AlertDescription className="text-destructive">
+                  {sessionErrorMessages[sessionErrorCode]}
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Show success message if email was just verified */}
             {verifiedEmail && (
               <Alert className="mb-4 border-primary/30 bg-primary/5">
