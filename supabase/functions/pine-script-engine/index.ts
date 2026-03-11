@@ -1571,6 +1571,15 @@ async function closeOpenTrade(
   reason: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Helper to calculate PNL
+    const calcPnl = (exitP: number) => {
+      const qty = trade.quantity || 0
+      if (qty <= 0) return null
+      return trade.signal_type === 'BUY'
+        ? (exitP - trade.entry_price) * qty
+        : (trade.entry_price - exitP) * qty
+    }
+
     console.log(`[CLOSE] Closing trade ${trade.id}: ${trade.symbol} entry=${trade.entry_price} exit=${currentPrice} reason=${reason}`)
 
     // Get API keys
