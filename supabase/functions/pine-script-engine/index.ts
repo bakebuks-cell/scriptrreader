@@ -1565,7 +1565,7 @@ async function syncOpenTradeWithExchange(
 
 async function closeOpenTrade(
   supabase: any,
-  trade: { id: string; user_id: string; script_id: string; symbol: string; signal_type: string; entry_price: number },
+  trade: { id: string; user_id: string; script_id: string; symbol: string; signal_type: string; entry_price: number; quantity?: number },
   currentPrice: number,
   marketType: string,
   reason: string
