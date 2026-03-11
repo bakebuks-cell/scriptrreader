@@ -3610,7 +3610,7 @@ Deno.serve(async (req) => {
                             const otPrice = symbolPrices[ot.symbol] || await getCurrentPrice(ot.symbol).catch(() => Number(ot.entry_price || 0))
                             const closeRes = await closeOpenTrade(
                               supabase,
-                              { id: ot.id, user_id: us.user_id, script_id: (ot.script_id || us.script_id), symbol: ot.symbol, signal_type: ot.signal_type, entry_price: Number(ot.entry_price || 0) },
+                              { id: ot.id, user_id: us.user_id, script_id: (ot.script_id || us.script_id), symbol: ot.symbol, signal_type: ot.signal_type, entry_price: Number(ot.entry_price || 0), quantity: Number(ot.quantity || 0) },
                               otPrice,
                               mt,
                               `Daily profit target reached (${pnlPercent.toFixed(2)}% >= ${dailyTarget}%)`
