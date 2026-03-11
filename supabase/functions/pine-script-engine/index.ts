@@ -3942,7 +3942,7 @@ Deno.serve(async (req) => {
 
         const { data: trade, error: tradeErr } = await supabase
           .from('trades')
-          .select('id, user_id, script_id, symbol, signal_type, entry_price, timeframe')
+          .select('id, user_id, script_id, symbol, signal_type, entry_price, quantity, timeframe')
           .eq('id', tradeId)
           .eq('user_id', authUser.id)
           .in('status', ['OPEN', 'PENDING'])
