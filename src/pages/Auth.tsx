@@ -22,6 +22,13 @@ export default function Auth() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
+  const sessionErrorCode = searchParams.get('session_error');
+
+  const sessionErrorMessages: Record<string, string> = {
+    SESSION_EXPIRED: 'Your session has expired. Please sign in again.',
+    SESSION_REVOKED: 'You were signed out because your account was accessed from another device.',
+    SESSION_NOT_FOUND: 'Your session could not be found. Please sign in again.',
+  };
 
   // Check for email verification success from URL and handle redirect
   useEffect(() => {
