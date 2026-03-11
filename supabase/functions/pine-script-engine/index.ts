@@ -581,7 +581,71 @@ function calculateSuperTrend(ohlcv: OHLCV[], atrPeriod: number = 10, multiplier:
   return { upper, lower, direction }
 }
 
-function calculateAllIndicators(ohlcv: OHLCV[]): IndicatorValues {
+// UT Bot Strategy indicator (ATR Trailing Stop with direction tracking)
+// Replicates the UT Bot Alerts / UT Bot Strategy from TradingView
+function calculateUTBot(ohlcv: OHLCV[], keyValue: number = 1, atrPeriod: number = 10): { trailingStop: number[]; direction: number[] } {
+  const closes = ohlcv.map(c => c.close)
+  const atrValues = calculateATR(ohlcv, atrPeriod)
+  if (atrValues.length === 0) return { trailingStop: [], direction: [] }
+
+  // ATR array offset: atrValues[i] corresponds to ohlcv[i + atrPeriod]
+  const atrOffset = atrPeriod
+
+  const trailingStop: number[] = []
+  const direction: number[] = [] // 1 = long, -1 = short
+
+  for (let i = 0; i < atrValues.length; i++) {
+    const oi = i + atrOffset // corresponding ohlcv index
+    const src = closes[oi]
+    const prevSrc = oi > 0 ? closes[oi - 1] : src
+    const nLoss = keyValue * atrValues[i]
+
+    let xATRTrailingStop: number
+    if (i === 0) {
+      xATRTrailingStop = src - nLoss
+    } else {
+      const prevStop = trailingStop[i - 1]
+      if (src > prevStop && prevSrc > prevStop) {
+        xATRTrailingStop = Math.max(prevStop, src - nLoss)
+      } else if (src < prevStop && prevSrc < prevStop) {
+        xATRTrailingStop = Math.min(prevStop, src + nLoss)
+      } else if (src > prevStop) {
+        xATRTrailingStop = src - nLoss
+      } else {
+        xATRTrailingStop = src + nLoss
+      }
+    }
+    trailingStop.push(xATRTrailingStop)
+
+    // Position direction: flip when price crosses trailing stop
+    if (i === 0) {
+      direction.push(src > xATRTrailingStop ? 1 : -1)
+    } else {
+      const prevStop = trailingStop[i - 1]
+      if (prevSrc < prevStop && src > prevStop) {
+        direction.push(1) // flip to long
+      } else if (prevSrc > prevStop && src < prevStop) {
+        direction.push(-1) // flip to short
+      } else {
+        direction.push(direction[i - 1])
+      }
+    }
+  }
+
+  // Debug logging
+  if (direction.length > 0) {
+    const last5 = direction.slice(-5)
+    const changes: Array<{idx: number, from: number, to: number}> = []
+    for (let i = 1; i < direction.length; i++) {
+      if (direction[i] !== direction[i - 1]) changes.push({ idx: i, from: direction[i - 1], to: direction[i] })
+    }
+    console.log(`[INDICATORS] UTBot: ${direction.length} values, last5=[${last5}], direction_changes=${changes.length}${changes.length > 0 ? ` last_change=idx${changes[changes.length-1].idx} (${changes[changes.length-1].from}->${changes[changes.length-1].to})` : ''}`)
+  }
+
+  return { trailingStop, direction }
+}
+
+
   const closes = ohlcv.map(c => c.close)
   
   const result: IndicatorValues = {
