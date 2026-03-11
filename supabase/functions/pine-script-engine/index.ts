@@ -1533,10 +1533,19 @@ async function syncOpenTradeWithExchange(
         exitPrice = await getCurrentPrice(trade.symbol)
       } catch (_) {}
 
+      // Calculate PNL: (exitPrice - entryPrice) * quantity for BUY, inverse for SELL
+      const syncQty = trade.quantity || 0
+      const syncPnl = syncQty > 0
+        ? (trade.signal_type === 'BUY'
+          ? (exitPrice - trade.entry_price) * syncQty
+          : (trade.entry_price - exitPrice) * syncQty)
+        : null
+
       await supabase.from('trades').update({
         status: 'CLOSED',
         exit_price: exitPrice,
         closed_at: new Date().toISOString(),
+        pnl: syncPnl,
         error_message: 'Position closed externally (SL/TP hit or manual close on exchange)',
       }).eq('id', trade.id)
 
