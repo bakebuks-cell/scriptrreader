@@ -2917,11 +2917,12 @@ Deno.serve(async (req) => {
       case 'run': {
         // ===== CENTRAL SCHEDULER ENGINE =====
         // Timeframe-based polling intervals (milliseconds between checks)
+        // All timeframes poll every 3 seconds for maximum responsiveness
         const POLLING_INTERVALS: Record<string, number> = {
-          '1m': 15_000, '2m': 30_000, '3m': 45_000, '5m': 60_000,
-          '10m': 120_000, '15m': 180_000, '30m': 300_000, '45m': 300_000,
-          '1h': 600_000, '2h': 900_000, '3h': 1_200_000, '4h': 1_500_000,
-          '1d': 1_800_000, '1w': 3_600_000, '1M': 3_600_000,
+          '1m': 3_000, '2m': 3_000, '3m': 3_000, '5m': 3_000,
+          '10m': 3_000, '15m': 3_000, '30m': 3_000, '45m': 3_000,
+          '1h': 3_000, '2h': 3_000, '3h': 3_000, '4h': 3_000,
+          '1d': 3_000, '1w': 3_000, '1M': 3_000,
         }
         const cycleStartMs = Date.now()
         const schedulerNow = new Date()
