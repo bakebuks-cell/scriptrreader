@@ -1443,7 +1443,7 @@ function buildTradeSignal(
 
 async function syncOpenTradeWithExchange(
   supabase: any,
-  trade: { id: string; user_id: string; symbol: string; signal_type: string; entry_price: number },
+  trade: { id: string; user_id: string; symbol: string; signal_type: string; entry_price: number; quantity?: number },
   marketType: string
 ): Promise<{ stillOpen: boolean }> {
   try {
