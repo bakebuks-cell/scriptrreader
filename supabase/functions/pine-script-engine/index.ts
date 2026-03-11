@@ -27,6 +27,7 @@ interface IndicatorValues {
   bb: { upper: number[]; middle: number[]; lower: number[] }
   atr: Record<number, number[]>
   supertrend: { upper: number[]; lower: number[]; direction: number[] } | null
+  utbot: { trailingStop: number[]; direction: number[] } | null
 }
 
 interface ParsedStrategy {
