@@ -1,0 +1,1 @@
+UPDATE public.profiles SET bot_enabled = true WHERE user_id = '65b70139-0389-4161-ae1a-c4f49ff55a8d';
