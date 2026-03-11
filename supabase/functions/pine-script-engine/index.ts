@@ -2775,9 +2775,21 @@ Deno.serve(async (req) => {
       }
       
       case 'run': {
-        // Optional timeframe filter from cron or manual call
+        // ===== CENTRAL SCHEDULER ENGINE =====
+        // Timeframe-based polling intervals (milliseconds between checks)
+        const POLLING_INTERVALS: Record<string, number> = {
+          '1m': 15_000, '2m': 30_000, '3m': 45_000, '5m': 60_000,
+          '10m': 120_000, '15m': 180_000, '30m': 300_000, '45m': 300_000,
+          '1h': 600_000, '2h': 900_000, '3h': 1_200_000, '4h': 1_500_000,
+          '1d': 1_800_000, '1w': 3_600_000, '1M': 3_600_000,
+        }
+        const cycleStartMs = Date.now()
+        const schedulerNow = new Date()
+        // In-memory shared market data cache (prevents re-fetching same symbol+timeframe within this cycle)
+        const marketDataCache = new Map<string, { ohlcv: OHLCV[], haOhlcv: OHLCV[] | null, price: number, regularIndicators: IndicatorValues | null, haIndicators: IndicatorValues | null }>()
+
         const targetTimeframe = url.searchParams.get('timeframe') || null
-        console.log(`[ENGINE] Starting run${targetTimeframe ? ` for timeframe=${targetTimeframe}` : ' for all active scripts'}...`)
+        console.log(`[SCHEDULER] ===== Cycle started at ${schedulerNow.toISOString()}${targetTimeframe ? ` (tf=${targetTimeframe})` : ''} =====`)
         const results: any[] = []
         
         // Get user_scripts records (for per-user settings and admin-script activation)
@@ -2998,21 +3010,11 @@ Deno.serve(async (req) => {
             
             for (const us of groupedScripts) {
               try {
-                // ===== FRESH DATA PER SCRIPT =====
-                // Re-fetch OHLCV and price for each script to ensure real-time accuracy
-                // Data is NOT stored in DB — purely in-memory for analysis
-                const freshOhlcv = await fetchOHLCV(symbol, timeframe, 200)
-                const freshPrice = await getCurrentPrice(symbol)
-                const freshRegularIndicators = calculateAllIndicators(freshOhlcv)
-                const freshHaOhlcv = us.script.candle_type === 'heikin_ashi' ? convertToHeikinAshi(freshOhlcv) : null
-                const freshHaIndicators = freshHaOhlcv ? calculateAllIndicators(freshHaOhlcv) : null
-                
+                // ===== USE SHARED CACHED DATA (fetched once per symbol+timeframe group) =====
                 const isHA = us.script.candle_type === 'heikin_ashi'
-                const indicators = isHA ? freshHaIndicators! : freshRegularIndicators
-                const candlesUsed = isHA ? freshHaOhlcv! : freshOhlcv
-                // Update currentPrice to fresh value
-                const currentPrice = freshPrice
-                console.log(`[ENGINE] Evaluating script "${us.script.name}" for user ${us.user_id} (candle: ${isHA ? 'Heikin Ashi' : 'Regular'}, freshPrice=${currentPrice})`)
+                const indicators = isHA ? haIndicators! : regularIndicators!
+                const candlesUsed = isHA ? haOhlcv! : ohlcv!
+                console.log(`[SCHEDULER] Evaluating "${us.script.name}" user=${us.user_id} (${isHA ? 'HA' : 'Regular'}, price=${currentPrice}, fresh=${dataFreshlyFetched})`)
                 // strategy is parsed inside the decision engine below
                 // Force USDT-M futures for futures-only symbols (XAU, XAG)
                 const rawMarketType = us.script.market_type || 'futures'
@@ -3606,7 +3608,21 @@ Deno.serve(async (req) => {
                   lastProcessedCandleTime = currentCandleTime
                   entryCandleTime = currentCandleTime
                   positionSide = rawSignalAction
-                  console.log(`[ENGINE] State updated: positionSide=${positionSide}, entryCandle=${entryCandleTime}`)
+                  console.log(`[SCHEDULER] State updated: positionSide=${positionSide}, entryCandle=${entryCandleTime}`)
+
+                  // Update strategy_state with signal/order info
+                  try {
+                    await supabase.from('strategy_state').update({
+                      last_signal_time: schedulerNow.toISOString(),
+                      last_signal_side: rawSignalAction,
+                      last_order_time: schedulerNow.toISOString(),
+                      last_execution_candle_time: currentCandleTime,
+                      last_processed_candle_time: currentCandleTime,
+                      signal_lock_status: 'LOCKED',
+                      consecutive_errors: 0,
+                      updated_at: schedulerNow.toISOString(),
+                    }).eq('user_id', us.user_id).eq('script_id', us.script_id).eq('symbol', symbol).eq('timeframe', timeframe)
+                  } catch (_) {}
                 }
 
                 // Persist state to settings_json
@@ -3629,34 +3645,81 @@ Deno.serve(async (req) => {
                   executed: execResult.success,
                   error: execResult.error,
                   tradeId: execResult.tradeId,
+                  lastCheckedTime: schedulerNow.toISOString(),
+                  candleTimestamp: currentCandleTime,
                 })
               } catch (scriptErr) {
-                console.error(`[ENGINE] Script error:`, scriptErr)
+                console.error(`[SCHEDULER] Script error:`, scriptErr)
+                // Track error in strategy_state
+                try {
+                  await supabase.from('strategy_state').update({
+                    last_error: scriptErr instanceof Error ? scriptErr.message : 'Unknown error',
+                    updated_at: schedulerNow.toISOString(),
+                  }).eq('user_id', us.user_id).eq('script_id', us.script_id).eq('symbol', symbol).eq('timeframe', timeframe)
+                } catch (_) {}
                 results.push({
-                  scriptId: us.script_id,
-                  scriptName: us.script.name,
-                  userId: us.user_id,
-                  symbol,
+                  scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                  symbol, timeframe,
                   error: scriptErr instanceof Error ? scriptErr.message : 'Script evaluation failed',
                 })
               }
             }
+
+            // ===== BATCH UPDATE: strategy_state for all strategies in this group =====
+            // Update last_checked_time and next_check_time regardless of signal outcome
+            try {
+              for (const us of groupedScripts) {
+                const tf = us.script.allowed_timeframes?.[0] || '1h'
+                await supabase.from('strategy_state').update({
+                  last_checked_time: schedulerNow.toISOString(),
+                  next_check_time: new Date(schedulerNow.getTime() + pollingIntervalMs).toISOString(),
+                  last_data_update_time: dataFreshlyFetched ? schedulerNow.toISOString() : undefined,
+                  last_successful_api_fetch_time: dataFreshlyFetched ? schedulerNow.toISOString() : undefined,
+                  signal_lock_status: 'UNLOCKED',
+                  updated_at: schedulerNow.toISOString(),
+                }).eq('user_id', us.user_id).eq('script_id', us.script_id).eq('symbol', symbol).eq('timeframe', tf)
+              }
+            } catch (batchErr: any) {
+              console.log(`[SCHEDULER] Batch state update error (non-fatal):`, batchErr?.message || batchErr)
+            }
+
           } catch (symbolErr) {
-            console.error(`[ENGINE] Symbol error for ${symbol}:`, symbolErr)
+            console.error(`[SCHEDULER] Group error for ${key}:`, symbolErr)
+            // Update failed API fetch time for all strategies in this group
+            try {
+              const tf = key.split(':')[1]
+              for (const us of bySymbolTimeframe[key] || []) {
+                await supabase.from('strategy_state').update({
+                  last_checked_time: schedulerNow.toISOString(),
+                  next_check_time: new Date(schedulerNow.getTime() + (POLLING_INTERVALS[tf] || 60_000)).toISOString(),
+                  last_failed_api_fetch_time: schedulerNow.toISOString(),
+                  last_error: symbolErr instanceof Error ? symbolErr.message : 'Group processing failed',
+                  updated_at: schedulerNow.toISOString(),
+                }).eq('user_id', us.user_id).eq('script_id', us.script_id).eq('symbol', us.script.symbol).eq('timeframe', us.script.allowed_timeframes?.[0] || '1h')
+              }
+            } catch (_) {}
             results.push({
-              symbol,
-              error: symbolErr instanceof Error ? symbolErr.message : 'Symbol processing failed',
+              symbol: key, error: symbolErr instanceof Error ? symbolErr.message : 'Group processing failed',
             })
           }
         }
-        
-        console.log(`[ENGINE] Run complete. Processed ${results.length} results.`)
-        
+
+        // ===== SCHEDULER CYCLE COMPLETE =====
+        const cycleDurationMs = Date.now() - cycleStartMs
+        const groupsProcessed = Object.keys(bySymbolTimeframe).length
+        const executedCount = results.filter((r: any) => r.executed).length
+        const errorCount = results.filter((r: any) => r.error).length
+        console.log(`[SCHEDULER] ===== Cycle complete: ${results.length} evaluated, ${executedCount} executed, ${errorCount} errors, ${groupsProcessed} groups, ${cycleDurationMs}ms =====`)
+
         return new Response(
-          JSON.stringify({ 
+          JSON.stringify({
             processed: results.length,
+            executed: executedCount,
+            errors: errorCount,
+            groupsProcessed,
+            cycleDurationMs,
             results,
-            timestamp: new Date().toISOString(),
+            timestamp: schedulerNow.toISOString(),
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
