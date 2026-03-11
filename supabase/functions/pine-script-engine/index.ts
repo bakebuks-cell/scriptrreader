@@ -1443,7 +1443,7 @@ function buildTradeSignal(
 
 async function syncOpenTradeWithExchange(
   supabase: any,
-  trade: { id: string; user_id: string; symbol: string; signal_type: string; entry_price: number },
+  trade: { id: string; user_id: string; symbol: string; signal_type: string; entry_price: number; quantity?: number },
   marketType: string
 ): Promise<{ stillOpen: boolean }> {
   try {
@@ -1533,10 +1533,19 @@ async function syncOpenTradeWithExchange(
         exitPrice = await getCurrentPrice(trade.symbol)
       } catch (_) {}
 
+      // Calculate PNL: (exitPrice - entryPrice) * quantity for BUY, inverse for SELL
+      const syncQty = trade.quantity || 0
+      const syncPnl = syncQty > 0
+        ? (trade.signal_type === 'BUY'
+          ? (exitPrice - trade.entry_price) * syncQty
+          : (trade.entry_price - exitPrice) * syncQty)
+        : null
+
       await supabase.from('trades').update({
         status: 'CLOSED',
         exit_price: exitPrice,
         closed_at: new Date().toISOString(),
+        pnl: syncPnl,
         error_message: 'Position closed externally (SL/TP hit or manual close on exchange)',
       }).eq('id', trade.id)
 
@@ -1556,12 +1565,21 @@ async function syncOpenTradeWithExchange(
 
 async function closeOpenTrade(
   supabase: any,
-  trade: { id: string; user_id: string; script_id: string; symbol: string; signal_type: string; entry_price: number },
+  trade: { id: string; user_id: string; script_id: string; symbol: string; signal_type: string; entry_price: number; quantity?: number },
   currentPrice: number,
   marketType: string,
   reason: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Helper to calculate PNL
+    const calcPnl = (exitP: number) => {
+      const qty = trade.quantity || 0
+      if (qty <= 0) return null
+      return trade.signal_type === 'BUY'
+        ? (exitP - trade.entry_price) * qty
+        : (trade.entry_price - exitP) * qty
+    }
+
     console.log(`[CLOSE] Closing trade ${trade.id}: ${trade.symbol} entry=${trade.entry_price} exit=${currentPrice} reason=${reason}`)
 
     // Get API keys
@@ -1591,6 +1609,7 @@ async function closeOpenTrade(
           status: 'CLOSED',
           exit_price: currentPrice,
           closed_at: new Date().toISOString(),
+          pnl: calcPnl(currentPrice),
           error_message: 'Closed by exit signal (no API keys to execute on exchange)',
         }).eq('id', trade.id)
         return { success: true }
@@ -1662,6 +1681,7 @@ async function closeOpenTrade(
         status: 'CLOSED',
         exit_price: currentPrice,
         closed_at: new Date().toISOString(),
+        pnl: calcPnl(currentPrice),
       }).eq('id', trade.id)
       return { success: true }
     }
@@ -1712,6 +1732,7 @@ async function closeOpenTrade(
       status: 'CLOSED',
       exit_price: exitPrice,
       closed_at: new Date().toISOString(),
+      pnl: calcPnl(exitPrice),
     }).eq('id', trade.id)
 
     return { success: true }
@@ -2213,6 +2234,7 @@ async function executeTrade(
           quantity: finalQty,
           leverage: effectiveLeverage,
           margin_amount: finalMarginAmount,
+          trade_amount_used: totalExposure,
         })
         .eq('id', trade.id)
       
@@ -3298,7 +3320,7 @@ Deno.serve(async (req) => {
                 // ----- STEP 3: SYNC POSITION WITH DB AND EXCHANGE -----
                 const { data: currentOpenTrades } = await supabase
                   .from('trades')
-                  .select('id, user_id, script_id, symbol, signal_type, entry_price, created_at')
+                  .select('id, user_id, script_id, symbol, signal_type, entry_price, quantity, created_at')
                   .eq('user_id', us.user_id)
                   .eq('symbol', symbol)
                   .in('status', ['OPEN', 'PENDING'])
@@ -3318,7 +3340,7 @@ Deno.serve(async (req) => {
                 // Re-fetch after sync
                 const { data: liveOpenTrades } = await supabase
                   .from('trades')
-                  .select('id, user_id, script_id, symbol, signal_type, entry_price, created_at')
+                  .select('id, user_id, script_id, symbol, signal_type, entry_price, quantity, created_at')
                   .eq('user_id', us.user_id)
                   .eq('symbol', symbol)
                   .in('status', ['OPEN', 'PENDING'])
@@ -3588,7 +3610,7 @@ Deno.serve(async (req) => {
                             const otPrice = symbolPrices[ot.symbol] || await getCurrentPrice(ot.symbol).catch(() => Number(ot.entry_price || 0))
                             const closeRes = await closeOpenTrade(
                               supabase,
-                              { id: ot.id, user_id: us.user_id, script_id: (ot.script_id || us.script_id), symbol: ot.symbol, signal_type: ot.signal_type, entry_price: Number(ot.entry_price || 0) },
+                              { id: ot.id, user_id: us.user_id, script_id: (ot.script_id || us.script_id), symbol: ot.symbol, signal_type: ot.signal_type, entry_price: Number(ot.entry_price || 0), quantity: Number(ot.quantity || 0) },
                               otPrice,
                               mt,
                               `Daily profit target reached (${pnlPercent.toFixed(2)}% >= ${dailyTarget}%)`
@@ -3615,7 +3637,7 @@ Deno.serve(async (req) => {
                 // Also reconcile stale DB records: if DB says OPEN but no Binance position, auto-close
                 const { data: existingOpen } = await supabase
                   .from('trades')
-                  .select('id, signal_type, status, entry_price, symbol')
+                  .select('id, signal_type, status, entry_price, quantity, symbol')
                   .eq('user_id', us.user_id).eq('symbol', symbol)
                   .in('status', ['OPEN', 'PENDING']).limit(1).maybeSingle()
 
@@ -3655,10 +3677,17 @@ Deno.serve(async (req) => {
                           positionStillOpen = false
                           console.log(`[RECONCILE] Trade ${existingOpen.id} (${symbol}) is OPEN in DB but NO position on Binance — auto-closing stale record`)
                           const exitP = await getCurrentPrice(symbol).catch(() => existingOpen.entry_price || 0)
+                          const reconQty = Number(existingOpen.quantity || 0)
+                          const reconPnl = reconQty > 0
+                            ? (existingOpen.signal_type === 'BUY'
+                              ? (exitP - Number(existingOpen.entry_price)) * reconQty
+                              : (Number(existingOpen.entry_price) - exitP) * reconQty)
+                            : null
                           await supabase.from('trades').update({
                             status: 'CLOSED',
                             exit_price: exitP,
                             closed_at: new Date().toISOString(),
+                            pnl: reconPnl,
                             error_message: 'Auto-reconciled: position closed on exchange (TP/SL hit or manual)',
                           }).eq('id', existingOpen.id)
                         }
@@ -3848,7 +3877,7 @@ Deno.serve(async (req) => {
         // Get open trades
         let tradesQuery = supabase
           .from('trades')
-          .select('id, user_id, script_id, symbol, signal_type, entry_price, timeframe')
+          .select('id, user_id, script_id, symbol, signal_type, entry_price, quantity, timeframe')
           .eq('user_id', userId)
           .in('status', ['OPEN', 'PENDING'])
 
@@ -3920,7 +3949,7 @@ Deno.serve(async (req) => {
 
         const { data: trade, error: tradeErr } = await supabase
           .from('trades')
-          .select('id, user_id, script_id, symbol, signal_type, entry_price, timeframe')
+          .select('id, user_id, script_id, symbol, signal_type, entry_price, quantity, timeframe')
           .eq('id', tradeId)
           .eq('user_id', authUser.id)
           .in('status', ['OPEN', 'PENDING'])
