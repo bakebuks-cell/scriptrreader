@@ -3312,38 +3312,28 @@ Deno.serve(async (req) => {
 
                 let rawSignalAction: 'BUY' | 'SELL' | 'NONE'
                 
-                // Helper: scan direction array for the most recent flip since lastProcessedCandleTime.
-                // This catches flips that were missed (e.g. due to data source change from spot→futures).
+                // Helper: detect direction flip on CLOSED candles only.
+                // IMPORTANT: directionArr[len-1] = RUNNING candle (not yet closed, can reverse!)
+                //            directionArr[len-2] = last CLOSED candle
+                //            directionArr[len-3] = previous CLOSED candle
+                // We ONLY check closed candles to match TradingView's signal timing exactly.
+                // If a signal is missed, we do NOT scan backwards — we wait for the next fresh flip.
                 const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number } => {
                   const len = directionArr.length
-                  if (len < 2) return { flipped: false, direction: directionArr[len - 1] || 0 }
+                  if (len < 3) return { flipped: false, direction: directionArr[Math.max(0, len - 2)] || 0 }
                   
-                  const currentDir = directionArr[len - 1]
-                  const previousDir = directionArr[len - 2]
+                  // Only check the last two CLOSED candles (skip running candle at len-1)
+                  const lastClosedDir = directionArr[len - 2]
+                  const prevClosedDir = directionArr[len - 3]
                   
-                  // Case 1: Fresh flip on the very last candle — always trigger
-                  if (currentDir !== previousDir) {
-                    return { flipped: true, direction: currentDir }
+                  if (lastClosedDir !== prevClosedDir) {
+                    console.log(`[ENGINE] CLOSED candle flip: ${prevClosedDir} → ${lastClosedDir} (confirmed, not running candle)`)
+                    return { flipped: true, direction: lastClosedDir }
                   }
                   
-                  // Case 2: No open position — scan backwards to find if ANY flip happened
-                  // since lastProcessedCandleTime that we haven't traded on yet.
-                  if (positionSide === 'NONE' && lastProcessedCandleTime > 0) {
-                    // Calculate how many candles back to scan (from lastProcessedCandleTime to now)
-                    const candlesSinceLastProcessed = candleDistance(lastProcessedCandleTime, currentCandleTime)
-                    // Scan backwards in direction array from the end, up to candlesSinceLastProcessed
-                    const scanDepth = Math.min(candlesSinceLastProcessed + 1, len - 1)
-                    
-                    for (let i = len - 1; i >= len - scanDepth && i >= 1; i--) {
-                      if (directionArr[i] !== directionArr[i - 1]) {
-                        // Found a flip that happened after lastProcessedCandleTime
-                        console.log(`[ENGINE] MISSED FLIP detected at idx ${i}: ${directionArr[i-1]} → ${directionArr[i]} (${len - i} candles ago, positionSide=NONE)`)
-                        return { flipped: true, direction: currentDir }
-                      }
-                    }
-                  }
-                  
-                  return { flipped: false, direction: currentDir }
+                  // No flip on closed candles — do NOT scan backwards for missed signals.
+                  // If a signal was missed, wait for the next fresh flip.
+                  return { flipped: false, direction: lastClosedDir }
                 }
 
                 if (isSuperTrendStateBased) {
