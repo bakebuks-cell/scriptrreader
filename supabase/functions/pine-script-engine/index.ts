@@ -3348,24 +3348,36 @@ Deno.serve(async (req) => {
                 // IMPORTANT: directionArr[len-1] = RUNNING candle (not yet closed, can reverse!)
                 //            directionArr[len-2] = last CLOSED candle
                 //            directionArr[len-3] = previous CLOSED candle
-                // We ONLY check closed candles to match TradingView's signal timing exactly.
-                // If a signal is missed, we do NOT scan backwards — we wait for the next fresh flip.
-                const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number } => {
+                // Rule:
+                //   - Prefer fresh flip on the latest closed candle.
+                //   - Allow only ONE-candle catch-up if scheduler missed the exact close boundary.
+                //   - Never deep-scan historical candles (prevents forced stale trades).
+                const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number; source: 'fresh' | 'catchup' | 'none' } => {
                   const len = directionArr.length
-                  if (len < 3) return { flipped: false, direction: directionArr[Math.max(0, len - 2)] || 0 }
-                  
-                  // Only check the last two CLOSED candles (skip running candle at len-1)
+                  if (len < 3) return { flipped: false, direction: directionArr[Math.max(0, len - 2)] || 0, source: 'none' }
+
                   const lastClosedDir = directionArr[len - 2]
                   const prevClosedDir = directionArr[len - 3]
-                  
+
+                  // Fresh confirmed flip between the two most recent CLOSED candles
                   if (lastClosedDir !== prevClosedDir) {
-                    console.log(`[ENGINE] CLOSED candle flip: ${prevClosedDir} → ${lastClosedDir} (confirmed, not running candle)`)
-                    return { flipped: true, direction: lastClosedDir }
+                    console.log(`[ENGINE] CLOSED candle flip: ${prevClosedDir} → ${lastClosedDir} (fresh)`)
+                    return { flipped: true, direction: lastClosedDir, source: 'fresh' }
                   }
-                  
-                  // No flip on closed candles — do NOT scan backwards for missed signals.
-                  // If a signal was missed, wait for the next fresh flip.
-                  return { flipped: false, direction: lastClosedDir }
+
+                  // One-candle catch-up only (if the flip happened one closed candle earlier
+                  // and we have not processed that candle yet).
+                  if (len >= 4) {
+                    const olderClosedDir = directionArr[len - 4]
+                    const prevClosedCandleTime = candlesUsed[candlesUsed.length - 3]?.openTime || 0
+                    const missedOneCandleFlip = prevClosedDir !== olderClosedDir && lastProcessedCandleTime < prevClosedCandleTime
+                    if (missedOneCandleFlip) {
+                      console.log(`[ENGINE] CLOSED candle flip catch-up: ${olderClosedDir} → ${prevClosedDir} (one-candle recovery)`)
+                      return { flipped: true, direction: prevClosedDir, source: 'catchup' }
+                    }
+                  }
+
+                  return { flipped: false, direction: lastClosedDir, source: 'none' }
                 }
 
                 if (isSuperTrendStateBased) {
