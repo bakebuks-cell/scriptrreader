@@ -3895,22 +3895,42 @@ Deno.serve(async (req) => {
           }
         }
 
-        // ===== SCHEDULER CYCLE COMPLETE =====
+        // ===== CYCLE COMPLETE — check if we should loop again =====
         const cycleDurationMs = Date.now() - cycleStartMs
         const groupsProcessed = Object.keys(bySymbolTimeframe).length
         const executedCount = results.filter((r: any) => r.executed).length
         const errorCount = results.filter((r: any) => r.error).length
-        console.log(`[SCHEDULER] ===== Cycle complete: ${results.length} evaluated, ${executedCount} executed, ${errorCount} errors, ${groupsProcessed} groups, ${cycleDurationMs}ms =====`)
+        
+        if (executedCount > 0 || errorCount > 0 || loopCount === 1) {
+          console.log(`[SCHEDULER] Cycle #${loopCount}: ${results.length} evaluated, ${executedCount} executed, ${errorCount} errors, ${groupsProcessed} groups, ${cycleDurationMs}ms`)
+        }
+        
+        allResults.push(...results)
+
+        // Check if we have time for another iteration
+        const elapsed = Date.now() - invocationStartMs
+        if (elapsed + LOOP_INTERVAL_MS >= LOOP_DURATION_MS) {
+          break // Not enough time for another full cycle
+        }
+
+        // Wait before next iteration
+        await new Promise(resolve => setTimeout(resolve, LOOP_INTERVAL_MS))
+        } // end while loop
+
+        const totalDurationMs = Date.now() - invocationStartMs
+        const totalExecuted = allResults.filter((r: any) => r.executed).length
+        const totalErrors = allResults.filter((r: any) => r.error).length
+        console.log(`[SCHEDULER] ===== Polling loop complete: ${loopCount} cycles, ${allResults.length} total evaluations, ${totalExecuted} executed, ${totalErrors} errors, ${totalDurationMs}ms =====`)
 
         return new Response(
           JSON.stringify({
-            processed: results.length,
-            executed: executedCount,
-            errors: errorCount,
-            groupsProcessed,
-            cycleDurationMs,
-            results,
-            timestamp: schedulerNow.toISOString(),
+            processed: allResults.length,
+            executed: totalExecuted,
+            errors: totalErrors,
+            cycles: loopCount,
+            totalDurationMs,
+            results: allResults.slice(-20), // Last 20 results to keep response size reasonable
+            timestamp: new Date().toISOString(),
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
