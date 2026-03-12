@@ -2830,8 +2830,8 @@ Deno.serve(async (req) => {
           '1h': 3_000, '2h': 3_000, '3h': 3_000, '4h': 3_000,
           '1d': 3_000, '1w': 3_000, '1M': 3_000,
         }
-        const LOOP_DURATION_MS = 50_000  // Run for 50 seconds max
-        const LOOP_INTERVAL_MS = 5_000   // Check every 5 seconds
+        const LOOP_DURATION_MS = 55_000  // Run for 55 seconds max (tighter coverage before next cron)
+        const LOOP_INTERVAL_MS = 3_000   // Check every 3 seconds — matches all timeframe polling intervals
         const invocationStartMs = Date.now()
         const targetTimeframe = url.searchParams.get('timeframe') || null
         const allResults: any[] = []
