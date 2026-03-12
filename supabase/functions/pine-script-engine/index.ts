@@ -3311,31 +3311,62 @@ Deno.serve(async (req) => {
                   indicators.utbot?.direction && indicators.utbot.direction.length > 0
 
                 let rawSignalAction: 'BUY' | 'SELL' | 'NONE'
+                
+                // Helper: scan direction array for the most recent flip since lastProcessedCandleTime.
+                // This catches flips that were missed (e.g. due to data source change from spot→futures).
+                const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number } => {
+                  const len = directionArr.length
+                  if (len < 2) return { flipped: false, direction: directionArr[len - 1] || 0 }
+                  
+                  const currentDir = directionArr[len - 1]
+                  const previousDir = directionArr[len - 2]
+                  
+                  // Case 1: Fresh flip on the very last candle — always trigger
+                  if (currentDir !== previousDir) {
+                    return { flipped: true, direction: currentDir }
+                  }
+                  
+                  // Case 2: No open position — scan backwards to find if ANY flip happened
+                  // since lastProcessedCandleTime that we haven't traded on yet.
+                  if (positionSide === 'NONE' && lastProcessedCandleTime > 0) {
+                    // Calculate how many candles back to scan (from lastProcessedCandleTime to now)
+                    const candlesSinceLastProcessed = candleDistance(lastProcessedCandleTime, currentCandleTime)
+                    // Scan backwards in direction array from the end, up to candlesSinceLastProcessed
+                    const scanDepth = Math.min(candlesSinceLastProcessed + 1, len - 1)
+                    
+                    for (let i = len - 1; i >= len - scanDepth && i >= 1; i--) {
+                      if (directionArr[i] !== directionArr[i - 1]) {
+                        // Found a flip that happened after lastProcessedCandleTime
+                        console.log(`[ENGINE] MISSED FLIP detected at idx ${i}: ${directionArr[i-1]} → ${directionArr[i]} (${len - i} candles ago, positionSide=NONE)`)
+                        return { flipped: true, direction: currentDir }
+                      }
+                    }
+                  }
+                  
+                  return { flipped: false, direction: currentDir }
+                }
+
                 if (isSuperTrendStateBased) {
                   const stDirection = indicators.supertrend!.direction
-                  const currentSTDir = stDirection[stDirection.length - 1]
-                  const previousSTDir = stDirection[stDirection.length - 2]
-                  const hasFreshFlip = typeof previousSTDir === 'number' && currentSTDir !== previousSTDir
-
-                  if (hasFreshFlip) {
-                    rawSignalAction = currentSTDir === 1 ? 'BUY' : 'SELL'
-                    console.log(`[ENGINE] SuperTrend flip detected: ${previousSTDir} → ${currentSTDir} => rawSignal=${rawSignalAction}`)
+                  const result = findRecentFlip(stDirection)
+                  
+                  if (result.flipped) {
+                    rawSignalAction = result.direction === 1 ? 'BUY' : 'SELL'
+                    console.log(`[ENGINE] SuperTrend flip detected => rawSignal=${rawSignalAction}`)
                   } else {
                     rawSignalAction = 'NONE'
-                    console.log(`[ENGINE] SuperTrend state unchanged (${currentSTDir}) — no fresh entry/exit signal`)
+                    console.log(`[ENGINE] SuperTrend state unchanged (${result.direction}) — no fresh entry/exit signal`)
                   }
                 } else if (isUTBotStateBased) {
                   const utDirection = indicators.utbot!.direction
-                  const currentUTDir = utDirection[utDirection.length - 1]
-                  const previousUTDir = utDirection[utDirection.length - 2]
-                  const hasFreshFlip = typeof previousUTDir === 'number' && currentUTDir !== previousUTDir
-
-                  if (hasFreshFlip) {
-                    rawSignalAction = currentUTDir === 1 ? 'BUY' : 'SELL'
-                    console.log(`[ENGINE] UTBot flip detected: ${previousUTDir} → ${currentUTDir} => rawSignal=${rawSignalAction}`)
+                  const result = findRecentFlip(utDirection)
+                  
+                  if (result.flipped) {
+                    rawSignalAction = result.direction === 1 ? 'BUY' : 'SELL'
+                    console.log(`[ENGINE] UTBot flip detected => rawSignal=${rawSignalAction}`)
                   } else {
                     rawSignalAction = 'NONE'
-                    console.log(`[ENGINE] UTBot state unchanged (${currentUTDir}) — no fresh entry/exit signal`)
+                    console.log(`[ENGINE] UTBot state unchanged (${result.direction}) — no fresh entry/exit signal`)
                   }
                 } else {
                   const botStartedAt = (settings.bot_started_at as string | undefined) || undefined
