@@ -360,8 +360,8 @@ function convertToHeikinAshi(candles: OHLCV[]): OHLCV[] {
 }
 
 async function getCurrentPrice(symbol: string): Promise<number> {
-  const isFutures = isFuturesOnlySymbol(symbol)
-  const baseUrl = isFutures ? 'https://fapi.binance.com/fapi/v1' : 'https://api.binance.com/api/v3'
+  // Always use futures price to match the market we're trading on
+  const baseUrl = 'https://fapi.binance.com/fapi/v1'
   const url = `${baseUrl}/ticker/price?symbol=${symbol}`
   const response = await fetch(url)
   if (!response.ok) {
