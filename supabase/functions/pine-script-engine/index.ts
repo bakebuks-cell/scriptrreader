@@ -3141,6 +3141,14 @@ Deno.serve(async (req) => {
             let haOhlcv: OHLCV[] | null = null
             let haIndicators: IndicatorValues | null = null
 
+            const candleSourceByScriptId = new Map<string, 'regular' | 'heikin_ashi'>()
+            for (const scriptRow of groupedScripts) {
+              const resolvedSource = resolveCandleSource(scriptRow.script.script_content, scriptRow.script.candle_type)
+              candleSourceByScriptId.set(scriptRow.script_id, resolvedSource)
+            }
+            const needsRegular = groupedScripts.some((scriptRow: any) => candleSourceByScriptId.get(scriptRow.script_id) !== 'heikin_ashi')
+            const needsHA = groupedScripts.some((scriptRow: any) => candleSourceByScriptId.get(scriptRow.script_id) === 'heikin_ashi')
+
             const cached = marketDataCache.get(key)
             if (cached) {
               ohlcv = cached.ohlcv
@@ -3154,11 +3162,8 @@ Deno.serve(async (req) => {
               currentPrice = await getCurrentPrice(symbol)
               dataFreshlyFetched = true
 
-              const regularScripts = groupedScripts.filter((us: any) => (us.script.candle_type || 'regular') === 'regular')
-              const haScriptsGroup = groupedScripts.filter((us: any) => us.script.candle_type === 'heikin_ashi')
-
-              regularIndicators = regularScripts.length > 0 ? calculateAllIndicators(ohlcv) : null
-              haOhlcv = haScriptsGroup.length > 0 ? convertToHeikinAshi(ohlcv) : null
+              regularIndicators = needsRegular ? calculateAllIndicators(ohlcv) : null
+              haOhlcv = needsHA ? convertToHeikinAshi(ohlcv) : null
               haIndicators = haOhlcv ? calculateAllIndicators(haOhlcv) : null
 
               marketDataCache.set(key, { ohlcv, haOhlcv, price: currentPrice, regularIndicators, haIndicators })
@@ -3181,11 +3186,23 @@ Deno.serve(async (req) => {
                 console.log(`[CACHE] DB persist error (non-fatal):`, cacheErr?.message)
               }
             }
+
+            // If cache was built for a different candle-source mix, compute missing views on demand.
+            if (needsRegular && !regularIndicators) {
+              regularIndicators = calculateAllIndicators(ohlcv)
+            }
+            if (needsHA && !haOhlcv) {
+              haOhlcv = convertToHeikinAshi(ohlcv)
+            }
+            if (needsHA && !haIndicators && haOhlcv) {
+              haIndicators = calculateAllIndicators(haOhlcv)
+            }
             
             for (const us of groupedScripts) {
               try {
                 // ===== USE SHARED CACHED DATA (fetched once per symbol+timeframe group) =====
-                const isHA = us.script.candle_type === 'heikin_ashi'
+                const resolvedSource = candleSourceByScriptId.get(us.script_id) || 'regular'
+                const isHA = resolvedSource === 'heikin_ashi'
                 const indicators = isHA ? haIndicators! : regularIndicators!
                 const candlesUsed = isHA ? haOhlcv! : ohlcv!
                 console.log(`[SCHEDULER] Evaluating "${us.script.name}" user=${us.user_id} (${isHA ? 'HA' : 'Regular'}, price=${currentPrice}, fresh=${dataFreshlyFetched})`)
