@@ -359,6 +359,21 @@ function convertToHeikinAshi(candles: OHLCV[]): OHLCV[] {
   return ha
 }
 
+function resolveCandleSource(scriptContent: string, configuredCandleType?: string | null): 'regular' | 'heikin_ashi' {
+  const content = scriptContent || ''
+  const hasHeikinAshiSecurity = /security\s*\(\s*heikinashi\s*\(/i.test(content)
+  const hasHeikinAshiTitleInput = content.match(/input\s*\(\s*(true|false)\s*,\s*title\s*=\s*["'][^"']*heikin\s*ashi[^"']*["']/i)
+
+  // UT Bot-style scripts often expose a boolean toggle:
+  // h = input(false, title="Signals from Heikin Ashi Candles")
+  // We must honor the script's own toggle to match TradingView.
+  if (hasHeikinAshiSecurity && hasHeikinAshiTitleInput) {
+    return hasHeikinAshiTitleInput[1].toLowerCase() === 'true' ? 'heikin_ashi' : 'regular'
+  }
+
+  return configuredCandleType === 'heikin_ashi' ? 'heikin_ashi' : 'regular'
+}
+
 async function getCurrentPrice(symbol: string): Promise<number> {
   // Always use futures price to match the market we're trading on
   const baseUrl = 'https://fapi.binance.com/fapi/v1'
@@ -3126,6 +3141,14 @@ Deno.serve(async (req) => {
             let haOhlcv: OHLCV[] | null = null
             let haIndicators: IndicatorValues | null = null
 
+            const candleSourceByScriptId = new Map<string, 'regular' | 'heikin_ashi'>()
+            for (const scriptRow of groupedScripts) {
+              const resolvedSource = resolveCandleSource(scriptRow.script.script_content, scriptRow.script.candle_type)
+              candleSourceByScriptId.set(scriptRow.script_id, resolvedSource)
+            }
+            const needsRegular = groupedScripts.some((scriptRow: any) => candleSourceByScriptId.get(scriptRow.script_id) !== 'heikin_ashi')
+            const needsHA = groupedScripts.some((scriptRow: any) => candleSourceByScriptId.get(scriptRow.script_id) === 'heikin_ashi')
+
             const cached = marketDataCache.get(key)
             if (cached) {
               ohlcv = cached.ohlcv
@@ -3139,11 +3162,8 @@ Deno.serve(async (req) => {
               currentPrice = await getCurrentPrice(symbol)
               dataFreshlyFetched = true
 
-              const regularScripts = groupedScripts.filter((us: any) => (us.script.candle_type || 'regular') === 'regular')
-              const haScriptsGroup = groupedScripts.filter((us: any) => us.script.candle_type === 'heikin_ashi')
-
-              regularIndicators = regularScripts.length > 0 ? calculateAllIndicators(ohlcv) : null
-              haOhlcv = haScriptsGroup.length > 0 ? convertToHeikinAshi(ohlcv) : null
+              regularIndicators = needsRegular ? calculateAllIndicators(ohlcv) : null
+              haOhlcv = needsHA ? convertToHeikinAshi(ohlcv) : null
               haIndicators = haOhlcv ? calculateAllIndicators(haOhlcv) : null
 
               marketDataCache.set(key, { ohlcv, haOhlcv, price: currentPrice, regularIndicators, haIndicators })
@@ -3166,11 +3186,23 @@ Deno.serve(async (req) => {
                 console.log(`[CACHE] DB persist error (non-fatal):`, cacheErr?.message)
               }
             }
+
+            // If cache was built for a different candle-source mix, compute missing views on demand.
+            if (needsRegular && !regularIndicators) {
+              regularIndicators = calculateAllIndicators(ohlcv)
+            }
+            if (needsHA && !haOhlcv) {
+              haOhlcv = convertToHeikinAshi(ohlcv)
+            }
+            if (needsHA && !haIndicators && haOhlcv) {
+              haIndicators = calculateAllIndicators(haOhlcv)
+            }
             
             for (const us of groupedScripts) {
               try {
                 // ===== USE SHARED CACHED DATA (fetched once per symbol+timeframe group) =====
-                const isHA = us.script.candle_type === 'heikin_ashi'
+                const resolvedSource = candleSourceByScriptId.get(us.script_id) || 'regular'
+                const isHA = resolvedSource === 'heikin_ashi'
                 const indicators = isHA ? haIndicators! : regularIndicators!
                 const candlesUsed = isHA ? haOhlcv! : ohlcv!
                 console.log(`[SCHEDULER] Evaluating "${us.script.name}" user=${us.user_id} (${isHA ? 'HA' : 'Regular'}, price=${currentPrice}, fresh=${dataFreshlyFetched})`)
@@ -3316,24 +3348,36 @@ Deno.serve(async (req) => {
                 // IMPORTANT: directionArr[len-1] = RUNNING candle (not yet closed, can reverse!)
                 //            directionArr[len-2] = last CLOSED candle
                 //            directionArr[len-3] = previous CLOSED candle
-                // We ONLY check closed candles to match TradingView's signal timing exactly.
-                // If a signal is missed, we do NOT scan backwards — we wait for the next fresh flip.
-                const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number } => {
+                // Rule:
+                //   - Prefer fresh flip on the latest closed candle.
+                //   - Allow only ONE-candle catch-up if scheduler missed the exact close boundary.
+                //   - Never deep-scan historical candles (prevents forced stale trades).
+                const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number; source: 'fresh' | 'catchup' | 'none' } => {
                   const len = directionArr.length
-                  if (len < 3) return { flipped: false, direction: directionArr[Math.max(0, len - 2)] || 0 }
-                  
-                  // Only check the last two CLOSED candles (skip running candle at len-1)
+                  if (len < 3) return { flipped: false, direction: directionArr[Math.max(0, len - 2)] || 0, source: 'none' }
+
                   const lastClosedDir = directionArr[len - 2]
                   const prevClosedDir = directionArr[len - 3]
-                  
+
+                  // Fresh confirmed flip between the two most recent CLOSED candles
                   if (lastClosedDir !== prevClosedDir) {
-                    console.log(`[ENGINE] CLOSED candle flip: ${prevClosedDir} → ${lastClosedDir} (confirmed, not running candle)`)
-                    return { flipped: true, direction: lastClosedDir }
+                    console.log(`[ENGINE] CLOSED candle flip: ${prevClosedDir} → ${lastClosedDir} (fresh)`)
+                    return { flipped: true, direction: lastClosedDir, source: 'fresh' }
                   }
-                  
-                  // No flip on closed candles — do NOT scan backwards for missed signals.
-                  // If a signal was missed, wait for the next fresh flip.
-                  return { flipped: false, direction: lastClosedDir }
+
+                  // One-candle catch-up only (if the flip happened one closed candle earlier
+                  // and we have not processed that candle yet).
+                  if (len >= 4) {
+                    const olderClosedDir = directionArr[len - 4]
+                    const prevClosedCandleTime = candlesUsed[candlesUsed.length - 3]?.openTime || 0
+                    const missedOneCandleFlip = prevClosedDir !== olderClosedDir && lastProcessedCandleTime < prevClosedCandleTime
+                    if (missedOneCandleFlip) {
+                      console.log(`[ENGINE] CLOSED candle flip catch-up: ${olderClosedDir} → ${prevClosedDir} (one-candle recovery)`)
+                      return { flipped: true, direction: prevClosedDir, source: 'catchup' }
+                    }
+                  }
+
+                  return { flipped: false, direction: lastClosedDir, source: 'none' }
                 }
 
                 if (isSuperTrendStateBased) {
@@ -3342,7 +3386,7 @@ Deno.serve(async (req) => {
                   
                   if (result.flipped) {
                     rawSignalAction = result.direction === 1 ? 'BUY' : 'SELL'
-                    console.log(`[ENGINE] SuperTrend flip detected => rawSignal=${rawSignalAction}`)
+                    console.log(`[ENGINE] SuperTrend flip detected (${result.source}) => rawSignal=${rawSignalAction}`)
                   } else {
                     rawSignalAction = 'NONE'
                     console.log(`[ENGINE] SuperTrend state unchanged (${result.direction}) — no fresh entry/exit signal`)
@@ -3353,7 +3397,7 @@ Deno.serve(async (req) => {
                   
                   if (result.flipped) {
                     rawSignalAction = result.direction === 1 ? 'BUY' : 'SELL'
-                    console.log(`[ENGINE] UTBot flip detected => rawSignal=${rawSignalAction}`)
+                    console.log(`[ENGINE] UTBot flip detected (${result.source}) => rawSignal=${rawSignalAction}`)
                   } else {
                     rawSignalAction = 'NONE'
                     console.log(`[ENGINE] UTBot state unchanged (${result.direction}) — no fresh entry/exit signal`)
