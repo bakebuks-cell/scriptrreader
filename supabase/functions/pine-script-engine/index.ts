@@ -303,10 +303,11 @@ function isFuturesOnlySymbol(symbol: string): boolean {
 }
 
 async function fetchOHLCV(symbol: string, interval: string, limit: number = 100): Promise<OHLCV[]> {
-  const isFutures = isFuturesOnlySymbol(symbol)
-  const baseUrl = isFutures ? 'https://fapi.binance.com/fapi/v1' : 'https://api.binance.com/api/v3'
+  // ALWAYS use futures data — all trades execute on futures, and users watch futures charts on TradingView.
+  // Using spot data causes signal timing mismatches (Heikin Ashi / UTBot flips at different candles).
+  const baseUrl = 'https://fapi.binance.com/fapi/v1'
   const url = `${baseUrl}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
-  console.log(`[ENGINE] Fetching OHLCV: ${symbol} ${interval} limit=${limit} (${isFutures ? 'futures' : 'spot'})`)
+  console.log(`[ENGINE] Fetching OHLCV: ${symbol} ${interval} limit=${limit} (futures)`)
   
   const response = await fetch(url)
   if (!response.ok) {
@@ -359,8 +360,8 @@ function convertToHeikinAshi(candles: OHLCV[]): OHLCV[] {
 }
 
 async function getCurrentPrice(symbol: string): Promise<number> {
-  const isFutures = isFuturesOnlySymbol(symbol)
-  const baseUrl = isFutures ? 'https://fapi.binance.com/fapi/v1' : 'https://api.binance.com/api/v3'
+  // Always use futures price to match the market we're trading on
+  const baseUrl = 'https://fapi.binance.com/fapi/v1'
   const url = `${baseUrl}/ticker/price?symbol=${symbol}`
   const response = await fetch(url)
   if (!response.ok) {
