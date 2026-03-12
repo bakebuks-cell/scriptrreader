@@ -359,6 +359,21 @@ function convertToHeikinAshi(candles: OHLCV[]): OHLCV[] {
   return ha
 }
 
+function resolveCandleSource(scriptContent: string, configuredCandleType?: string | null): 'regular' | 'heikin_ashi' {
+  const content = scriptContent || ''
+  const hasHeikinAshiSecurity = /security\s*\(\s*heikinashi\s*\(/i.test(content)
+  const hasHeikinAshiTitleInput = content.match(/input\s*\(\s*(true|false)\s*,\s*title\s*=\s*["'][^"']*heikin\s*ashi[^"']*["']/i)
+
+  // UT Bot-style scripts often expose a boolean toggle:
+  // h = input(false, title="Signals from Heikin Ashi Candles")
+  // We must honor the script's own toggle to match TradingView.
+  if (hasHeikinAshiSecurity && hasHeikinAshiTitleInput) {
+    return hasHeikinAshiTitleInput[1].toLowerCase() === 'true' ? 'heikin_ashi' : 'regular'
+  }
+
+  return configuredCandleType === 'heikin_ashi' ? 'heikin_ashi' : 'regular'
+}
+
 async function getCurrentPrice(symbol: string): Promise<number> {
   // Always use futures price to match the market we're trading on
   const baseUrl = 'https://fapi.binance.com/fapi/v1'
