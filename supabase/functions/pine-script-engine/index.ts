@@ -3386,7 +3386,7 @@ Deno.serve(async (req) => {
                   
                   if (result.flipped) {
                     rawSignalAction = result.direction === 1 ? 'BUY' : 'SELL'
-                    console.log(`[ENGINE] SuperTrend flip detected => rawSignal=${rawSignalAction}`)
+                    console.log(`[ENGINE] SuperTrend flip detected (${result.source}) => rawSignal=${rawSignalAction}`)
                   } else {
                     rawSignalAction = 'NONE'
                     console.log(`[ENGINE] SuperTrend state unchanged (${result.direction}) — no fresh entry/exit signal`)
@@ -3397,7 +3397,7 @@ Deno.serve(async (req) => {
                   
                   if (result.flipped) {
                     rawSignalAction = result.direction === 1 ? 'BUY' : 'SELL'
-                    console.log(`[ENGINE] UTBot flip detected => rawSignal=${rawSignalAction}`)
+                    console.log(`[ENGINE] UTBot flip detected (${result.source}) => rawSignal=${rawSignalAction}`)
                   } else {
                     rawSignalAction = 'NONE'
                     console.log(`[ENGINE] UTBot state unchanged (${result.direction}) — no fresh entry/exit signal`)
