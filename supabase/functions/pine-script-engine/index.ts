@@ -2821,23 +2821,33 @@ Deno.serve(async (req) => {
       }
       
       case 'run': {
-        // ===== CENTRAL SCHEDULER ENGINE =====
-        // Timeframe-based polling intervals (milliseconds between checks)
-        // All timeframes poll every 3 seconds for maximum responsiveness
+        // ===== CENTRAL SCHEDULER ENGINE WITH INTERNAL POLLING LOOP =====
+        // The cron fires every 60s, but we loop internally for ~50s checking every 5s
+        // This gives near real-time signal detection instead of 1-minute gaps
         const POLLING_INTERVALS: Record<string, number> = {
           '1m': 3_000, '2m': 3_000, '3m': 3_000, '5m': 3_000,
           '10m': 3_000, '15m': 3_000, '30m': 3_000, '45m': 3_000,
           '1h': 3_000, '2h': 3_000, '3h': 3_000, '4h': 3_000,
           '1d': 3_000, '1w': 3_000, '1M': 3_000,
         }
-        const cycleStartMs = Date.now()
-        const schedulerNow = new Date()
-        // In-memory shared market data cache (prevents re-fetching same symbol+timeframe within this cycle)
-        const marketDataCache = new Map<string, { ohlcv: OHLCV[], haOhlcv: OHLCV[] | null, price: number, regularIndicators: IndicatorValues | null, haIndicators: IndicatorValues | null }>()
-
+        const LOOP_DURATION_MS = 50_000  // Run for 50 seconds max
+        const LOOP_INTERVAL_MS = 5_000   // Check every 5 seconds
+        const invocationStartMs = Date.now()
         const targetTimeframe = url.searchParams.get('timeframe') || null
-        console.log(`[SCHEDULER] ===== Cycle started at ${schedulerNow.toISOString()}${targetTimeframe ? ` (tf=${targetTimeframe})` : ''} =====`)
-        const results: any[] = []
+        const allResults: any[] = []
+        let loopCount = 0
+
+        while (Date.now() - invocationStartMs < LOOP_DURATION_MS) {
+          loopCount++
+          const cycleStartMs = Date.now()
+          const schedulerNow = new Date()
+          // Fresh cache each cycle iteration
+          const marketDataCache = new Map<string, { ohlcv: OHLCV[], haOhlcv: OHLCV[] | null, price: number, regularIndicators: IndicatorValues | null, haIndicators: IndicatorValues | null }>()
+
+          if (loopCount === 1) {
+            console.log(`[SCHEDULER] ===== Polling loop started at ${schedulerNow.toISOString()} (max ${LOOP_DURATION_MS/1000}s, interval ${LOOP_INTERVAL_MS/1000}s)${targetTimeframe ? ` (tf=${targetTimeframe})` : ''} =====`)
+          }
+          const results: any[] = []
         
         // Get user_scripts records (for per-user settings and admin-script activation)
         const { data: userScriptsRaw, error: scriptsError } = await supabase
@@ -3885,22 +3895,42 @@ Deno.serve(async (req) => {
           }
         }
 
-        // ===== SCHEDULER CYCLE COMPLETE =====
+        // ===== CYCLE COMPLETE — check if we should loop again =====
         const cycleDurationMs = Date.now() - cycleStartMs
         const groupsProcessed = Object.keys(bySymbolTimeframe).length
         const executedCount = results.filter((r: any) => r.executed).length
         const errorCount = results.filter((r: any) => r.error).length
-        console.log(`[SCHEDULER] ===== Cycle complete: ${results.length} evaluated, ${executedCount} executed, ${errorCount} errors, ${groupsProcessed} groups, ${cycleDurationMs}ms =====`)
+        
+        if (executedCount > 0 || errorCount > 0 || loopCount === 1) {
+          console.log(`[SCHEDULER] Cycle #${loopCount}: ${results.length} evaluated, ${executedCount} executed, ${errorCount} errors, ${groupsProcessed} groups, ${cycleDurationMs}ms`)
+        }
+        
+        allResults.push(...results)
+
+        // Check if we have time for another iteration
+        const elapsed = Date.now() - invocationStartMs
+        if (elapsed + LOOP_INTERVAL_MS >= LOOP_DURATION_MS) {
+          break // Not enough time for another full cycle
+        }
+
+        // Wait before next iteration
+        await new Promise(resolve => setTimeout(resolve, LOOP_INTERVAL_MS))
+        } // end while loop
+
+        const totalDurationMs = Date.now() - invocationStartMs
+        const totalExecuted = allResults.filter((r: any) => r.executed).length
+        const totalErrors = allResults.filter((r: any) => r.error).length
+        console.log(`[SCHEDULER] ===== Polling loop complete: ${loopCount} cycles, ${allResults.length} total evaluations, ${totalExecuted} executed, ${totalErrors} errors, ${totalDurationMs}ms =====`)
 
         return new Response(
           JSON.stringify({
-            processed: results.length,
-            executed: executedCount,
-            errors: errorCount,
-            groupsProcessed,
-            cycleDurationMs,
-            results,
-            timestamp: schedulerNow.toISOString(),
+            processed: allResults.length,
+            executed: totalExecuted,
+            errors: totalErrors,
+            cycles: loopCount,
+            totalDurationMs,
+            results: allResults.slice(-20), // Last 20 results to keep response size reasonable
+            timestamp: new Date().toISOString(),
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
