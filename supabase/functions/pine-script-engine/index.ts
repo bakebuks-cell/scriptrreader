@@ -3868,6 +3868,11 @@ Deno.serve(async (req) => {
                             pnl: reconPnl,
                             error_message: 'Auto-reconciled: position closed on exchange (TP/SL hit or manual)',
                           }).eq('id', existingOpen.id)
+                          await engineLog(supabase, 'REPAIR', 'RECONCILE',
+                            `Auto-reconciled stale trade: ${existingOpen.signal_type} ${symbol} closed on exchange but OPEN in DB`,
+                            { tradeId: existingOpen.id, exitPrice: exitP, pnl: reconPnl, entryPrice: existingOpen.entry_price },
+                            us.user_id, us.script_id, symbol, timeframe
+                          )
                         }
                       }
                     }
