@@ -3351,8 +3351,10 @@ Deno.serve(async (req) => {
                 // Rule:
                 //   - Prefer fresh flip on the latest closed candle.
                 //   - Allow only ONE-candle catch-up if scheduler missed the exact close boundary.
+                //   - Recovery mode: if we are stuck on the opposite side due a missed/blocked flip,
+                //     realign to the latest closed direction within a bounded lag window.
                 //   - Never deep-scan historical candles (prevents forced stale trades).
-                const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number; source: 'fresh' | 'catchup' | 'none' } => {
+                const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number; source: 'fresh' | 'catchup' | 'recovery' | 'none' } => {
                   const len = directionArr.length
                   if (len < 3) return { flipped: false, direction: directionArr[Math.max(0, len - 2)] || 0, source: 'none' }
 
@@ -3375,6 +3377,19 @@ Deno.serve(async (req) => {
                       console.log(`[ENGINE] CLOSED candle flip catch-up: ${olderClosedDir} → ${prevClosedDir} (one-candle recovery)`)
                       return { flipped: true, direction: prevClosedDir, source: 'catchup' }
                     }
+                  }
+
+                  // Recovery: if position side is opposite to latest CLOSED indicator direction,
+                  // and we're lagging by more than 1 candle, force one corrective flip.
+                  // This prevents getting stuck on the wrong side after a missed/blocked candle.
+                  const trackedPositionDir = positionSide === 'BUY' ? 1 : positionSide === 'SELL' ? -1 : 0
+                  const lagCandles = candleDistance(lastProcessedCandleTime, currentCandleTime)
+                  const maxRecoveryLagCandles = 48
+                  const lagInRecoveryWindow = Number.isFinite(lagCandles) && lagCandles > 1 && lagCandles <= maxRecoveryLagCandles
+
+                  if (trackedPositionDir !== 0 && lastClosedDir !== trackedPositionDir && lagInRecoveryWindow) {
+                    console.log(`[ENGINE] CLOSED candle direction recovery: positionDir=${trackedPositionDir}, latestDir=${lastClosedDir}, lag=${lagCandles} candles`)
+                    return { flipped: true, direction: lastClosedDir, source: 'recovery' }
                   }
 
                   return { flipped: false, direction: lastClosedDir, source: 'none' }
