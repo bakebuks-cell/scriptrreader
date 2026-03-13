@@ -3619,7 +3619,12 @@ Deno.serve(async (req) => {
 
                 if (currentPosition) {
                   // ----- FLIP: Close existing, then open opposite -----
-                  console.log(`[ENGINE] FLIP: ${positionSide} → ${rawSignalAction}`)
+                console.log(`[ENGINE] FLIP: ${positionSide} → ${rawSignalAction}`)
+                  await engineLog(supabase, 'INFO', 'FLIP',
+                    `Flipping position: ${positionSide} → ${rawSignalAction} @ ${currentPrice}`,
+                    { fromSide: positionSide, toSide: rawSignalAction, price: currentPrice, candleTime: currentCandleTime },
+                    us.user_id, us.script_id, symbol, timeframe
+                  )
 
                   // 1) Cancel all open orders (removes old TP)
                   if (scriptMarketType !== 'spot') {
