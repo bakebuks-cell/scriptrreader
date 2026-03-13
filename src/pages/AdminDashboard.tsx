@@ -392,6 +392,9 @@ export default function AdminDashboard() {
       case 'market-maker':
         return <AdminMarketMakerControl />;
 
+      case 'monitoring':
+        return <EngineMonitoringPanel />;
+
       case 'settings':
         return (
           <Card className="dashboard-card max-w-2xl">
