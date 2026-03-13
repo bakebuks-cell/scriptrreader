@@ -122,6 +122,40 @@ interface UserScript {
 }
 
 // ============================================
+// ENGINE LOGGING HELPER
+// ============================================
+
+// Log types: INFO, WARN, ERROR, REPAIR
+// Categories: SIGNAL, TRADE_EXECUTION, RECONCILE, FLIP, CIRCUIT_BREAKER, STARTUP, STATE_SYNC, API_ERROR, AUTO_REPAIR
+async function engineLog(
+  supabase: any,
+  logType: string,
+  category: string,
+  message: string,
+  details: Record<string, any> = {},
+  userId?: string,
+  scriptId?: string,
+  symbol?: string,
+  timeframe?: string,
+) {
+  try {
+    await supabase.from('engine_logs').insert({
+      log_type: logType,
+      category,
+      user_id: userId || null,
+      script_id: scriptId || null,
+      symbol: symbol || null,
+      timeframe: timeframe || null,
+      message,
+      details,
+    })
+  } catch (e) {
+    // Non-fatal — don't break engine for logging failures
+    console.log(`[LOG-ERR] Failed to persist log: ${message}`)
+  }
+}
+
+// ============================================
 // BINANCE API HELPERS
 // ============================================
 
@@ -3571,6 +3605,11 @@ Deno.serve(async (req) => {
                 )
                 if (apiPermissionErrors.length >= 3) {
                   console.log(`[ENGINE] Circuit breaker: 3+ API failures in last 2h`)
+                  await engineLog(supabase, 'WARN', 'CIRCUIT_BREAKER',
+                    `Circuit breaker triggered: 3+ API permission failures in 2h`,
+                    { failCount: apiPermissionErrors.length, errors: apiPermissionErrors.map((e: any) => e.error_message) },
+                    us.user_id, us.script_id, symbol, timeframe
+                  )
                   results.push({
                     scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                     symbol, timeframe, executed: false,
@@ -3585,7 +3624,12 @@ Deno.serve(async (req) => {
 
                 if (currentPosition) {
                   // ----- FLIP: Close existing, then open opposite -----
-                  console.log(`[ENGINE] FLIP: ${positionSide} → ${rawSignalAction}`)
+                console.log(`[ENGINE] FLIP: ${positionSide} → ${rawSignalAction}`)
+                  await engineLog(supabase, 'INFO', 'FLIP',
+                    `Flipping position: ${positionSide} → ${rawSignalAction} @ ${currentPrice}`,
+                    { fromSide: positionSide, toSide: rawSignalAction, price: currentPrice, candleTime: currentCandleTime },
+                    us.user_id, us.script_id, symbol, timeframe
+                  )
 
                   // 1) Cancel all open orders (removes old TP)
                   if (scriptMarketType !== 'spot') {
@@ -3612,6 +3656,11 @@ Deno.serve(async (req) => {
 
                   if (!closeResult.success) {
                     console.log(`[ENGINE] CLOSE FAILED — NOT opening ${rawSignalAction}`)
+                    await engineLog(supabase, 'ERROR', 'TRADE_EXECUTION',
+                      `Close failed before flip to ${rawSignalAction}: ${closeResult.error}`,
+                      { closeError: closeResult.error, fromSide: positionSide, toSide: rawSignalAction },
+                      us.user_id, us.script_id, symbol, timeframe
+                    )
                     results.push({
                       scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                       symbol, timeframe, executed: false,
@@ -3834,6 +3883,11 @@ Deno.serve(async (req) => {
                             pnl: reconPnl,
                             error_message: 'Auto-reconciled: position closed on exchange (TP/SL hit or manual)',
                           }).eq('id', existingOpen.id)
+                          await engineLog(supabase, 'REPAIR', 'RECONCILE',
+                            `Auto-reconciled stale trade: ${existingOpen.signal_type} ${symbol} closed on exchange but OPEN in DB`,
+                            { tradeId: existingOpen.id, exitPrice: exitP, pnl: reconPnl, entryPrice: existingOpen.entry_price },
+                            us.user_id, us.script_id, symbol, timeframe
+                          )
                         }
                       }
                     }
@@ -3868,6 +3922,11 @@ Deno.serve(async (req) => {
                 }
 
                 console.log(`[ENGINE] Executing ${rawSignalAction} ${symbol} @ ${currentPrice}, TP=${farTP.toFixed(2)}, SL=NONE`)
+                await engineLog(supabase, 'INFO', 'TRADE_EXECUTION',
+                  `Executing ${rawSignalAction} ${symbol} @ ${currentPrice}`,
+                  { action: rawSignalAction, price: currentPrice, takeProfit: farTP, candleTime: currentCandleTime },
+                  us.user_id, us.script_id, symbol, timeframe
+                )
 
                 const execResult = await executeTrade(
                   supabase, us.user_id, us.script_id, finalSignal,
@@ -3922,13 +3981,19 @@ Deno.serve(async (req) => {
                 })
               } catch (scriptErr) {
                 console.error(`[SCHEDULER] Script error:`, scriptErr)
+                const errMsg = scriptErr instanceof Error ? scriptErr.message : 'Unknown error'
                 // Track error in strategy_state
                 try {
                   await supabase.from('strategy_state').update({
-                    last_error: scriptErr instanceof Error ? scriptErr.message : 'Unknown error',
+                    last_error: errMsg,
                     updated_at: schedulerNow.toISOString(),
                   }).eq('user_id', us.user_id).eq('script_id', us.script_id).eq('symbol', symbol).eq('timeframe', timeframe)
                 } catch (_) {}
+                await engineLog(supabase, 'ERROR', 'API_ERROR',
+                  `Script evaluation error: ${errMsg}`,
+                  { error: errMsg, stack: scriptErr instanceof Error ? scriptErr.stack : undefined },
+                  us.user_id, us.script_id, symbol, timeframe
+                )
                 results.push({
                   scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                   symbol, timeframe,

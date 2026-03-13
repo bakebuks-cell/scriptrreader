@@ -14,7 +14,8 @@ import {
   LineChart,
   Flag,
   Bot,
-  TrendingUp
+  TrendingUp,
+  Activity
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 import {
@@ -44,6 +45,7 @@ const navItems = [
   { title: 'Library', icon: Code, tab: 'scripts' },
   { title: 'Trades', icon: BarChart3, tab: 'trades' },
   { title: 'Wallets', icon: Wallet, tab: 'wallets' },
+  { title: 'Engine Monitor', icon: Activity, tab: 'monitoring' },
   // { title: 'Market Maker', icon: Bot, tab: 'market-maker' }, // TODO: Hidden temporarily — unhide when ready
   { title: 'Subscription', icon: Coins, tab: 'subscription' },
   { title: 'Payments', icon: Wallet, tab: 'payments' },
@@ -140,6 +142,7 @@ function AdminTopBar({ activeTab }: { activeTab: string }) {
     scripts: 'Library',
     trades: 'Trade Monitor',
     wallets: 'Wallet Overview',
+    monitoring: 'Engine Monitoring',
     'market-maker': 'Market Maker Control',
     subscription: 'Subscription Settings',
     payments: 'Payment Requests',
