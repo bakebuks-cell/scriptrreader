@@ -142,6 +142,7 @@ function AdminTopBar({ activeTab }: { activeTab: string }) {
     scripts: 'Library',
     trades: 'Trade Monitor',
     wallets: 'Wallet Overview',
+    monitoring: 'Engine Monitoring',
     'market-maker': 'Market Maker Control',
     subscription: 'Subscription Settings',
     payments: 'Payment Requests',
