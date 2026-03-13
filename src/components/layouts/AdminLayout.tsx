@@ -14,7 +14,8 @@ import {
   LineChart,
   Flag,
   Bot,
-  TrendingUp
+  TrendingUp,
+  Activity
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 import {
