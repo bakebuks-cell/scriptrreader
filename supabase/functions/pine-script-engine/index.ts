@@ -3656,6 +3656,11 @@ Deno.serve(async (req) => {
 
                   if (!closeResult.success) {
                     console.log(`[ENGINE] CLOSE FAILED — NOT opening ${rawSignalAction}`)
+                    await engineLog(supabase, 'ERROR', 'TRADE_EXECUTION',
+                      `Close failed before flip to ${rawSignalAction}: ${closeResult.error}`,
+                      { closeError: closeResult.error, fromSide: positionSide, toSide: rawSignalAction },
+                      us.user_id, us.script_id, symbol, timeframe
+                    )
                     results.push({
                       scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                       symbol, timeframe, executed: false,
