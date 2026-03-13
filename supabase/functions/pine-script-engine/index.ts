@@ -122,6 +122,40 @@ interface UserScript {
 }
 
 // ============================================
+// ENGINE LOGGING HELPER
+// ============================================
+
+// Log types: INFO, WARN, ERROR, REPAIR
+// Categories: SIGNAL, TRADE_EXECUTION, RECONCILE, FLIP, CIRCUIT_BREAKER, STARTUP, STATE_SYNC, API_ERROR, AUTO_REPAIR
+async function engineLog(
+  supabase: any,
+  logType: string,
+  category: string,
+  message: string,
+  details: Record<string, any> = {},
+  userId?: string,
+  scriptId?: string,
+  symbol?: string,
+  timeframe?: string,
+) {
+  try {
+    await supabase.from('engine_logs').insert({
+      log_type: logType,
+      category,
+      user_id: userId || null,
+      script_id: scriptId || null,
+      symbol: symbol || null,
+      timeframe: timeframe || null,
+      message,
+      details,
+    })
+  } catch (e) {
+    // Non-fatal — don't break engine for logging failures
+    console.log(`[LOG-ERR] Failed to persist log: ${message}`)
+  }
+}
+
+// ============================================
 // BINANCE API HELPERS
 // ============================================
 
