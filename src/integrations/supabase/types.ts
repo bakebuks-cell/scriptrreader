@@ -142,6 +142,54 @@ export type Database = {
         }
         Relationships: []
       }
+      engine_logs: {
+        Row: {
+          category: string
+          created_at: string
+          details: Json | null
+          id: string
+          log_type: string
+          message: string
+          resolved: boolean
+          resolved_at: string | null
+          resolved_by: string | null
+          script_id: string | null
+          symbol: string | null
+          timeframe: string | null
+          user_id: string | null
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          log_type?: string
+          message: string
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          script_id?: string | null
+          symbol?: string | null
+          timeframe?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          log_type?: string
+          message?: string
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          script_id?: string | null
+          symbol?: string | null
+          timeframe?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       exchange_keys: {
         Row: {
           api_key_encrypted: string
