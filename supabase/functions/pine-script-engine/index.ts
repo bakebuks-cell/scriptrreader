@@ -3605,6 +3605,11 @@ Deno.serve(async (req) => {
                 )
                 if (apiPermissionErrors.length >= 3) {
                   console.log(`[ENGINE] Circuit breaker: 3+ API failures in last 2h`)
+                  await engineLog(supabase, 'WARN', 'CIRCUIT_BREAKER',
+                    `Circuit breaker triggered: 3+ API permission failures in 2h`,
+                    { failCount: apiPermissionErrors.length, errors: apiPermissionErrors.map((e: any) => e.error_message) },
+                    us.user_id, us.script_id, symbol, timeframe
+                  )
                   results.push({
                     scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                     symbol, timeframe, executed: false,
