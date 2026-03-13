@@ -3912,6 +3912,11 @@ Deno.serve(async (req) => {
                 }
 
                 console.log(`[ENGINE] Executing ${rawSignalAction} ${symbol} @ ${currentPrice}, TP=${farTP.toFixed(2)}, SL=NONE`)
+                await engineLog(supabase, 'INFO', 'TRADE_EXECUTION',
+                  `Executing ${rawSignalAction} ${symbol} @ ${currentPrice}`,
+                  { action: rawSignalAction, price: currentPrice, takeProfit: farTP, candleTime: currentCandleTime },
+                  us.user_id, us.script_id, symbol, timeframe
+                )
 
                 const execResult = await executeTrade(
                   supabase, us.user_id, us.script_id, finalSignal,
