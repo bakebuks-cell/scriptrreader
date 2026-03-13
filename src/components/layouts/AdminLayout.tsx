@@ -44,6 +44,7 @@ const navItems = [
   { title: 'Library', icon: Code, tab: 'scripts' },
   { title: 'Trades', icon: BarChart3, tab: 'trades' },
   { title: 'Wallets', icon: Wallet, tab: 'wallets' },
+  { title: 'Engine Monitor', icon: Activity, tab: 'monitoring' },
   // { title: 'Market Maker', icon: Bot, tab: 'market-maker' }, // TODO: Hidden temporarily — unhide when ready
   { title: 'Subscription', icon: Coins, tab: 'subscription' },
   { title: 'Payments', icon: Wallet, tab: 'payments' },
