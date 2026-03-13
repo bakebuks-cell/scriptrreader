@@ -3971,13 +3971,19 @@ Deno.serve(async (req) => {
                 })
               } catch (scriptErr) {
                 console.error(`[SCHEDULER] Script error:`, scriptErr)
+                const errMsg = scriptErr instanceof Error ? scriptErr.message : 'Unknown error'
                 // Track error in strategy_state
                 try {
                   await supabase.from('strategy_state').update({
-                    last_error: scriptErr instanceof Error ? scriptErr.message : 'Unknown error',
+                    last_error: errMsg,
                     updated_at: schedulerNow.toISOString(),
                   }).eq('user_id', us.user_id).eq('script_id', us.script_id).eq('symbol', symbol).eq('timeframe', timeframe)
                 } catch (_) {}
+                await engineLog(supabase, 'ERROR', 'API_ERROR',
+                  `Script evaluation error: ${errMsg}`,
+                  { error: errMsg, stack: scriptErr instanceof Error ? scriptErr.stack : undefined },
+                  us.user_id, us.script_id, symbol, timeframe
+                )
                 results.push({
                   scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                   symbol, timeframe,
