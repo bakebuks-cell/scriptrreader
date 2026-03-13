@@ -38,6 +38,7 @@ import SubscriptionSettingsPanel from '@/components/admin/SubscriptionSettingsPa
 import PaymentRequestsPanel from '@/components/admin/PaymentRequestsPanel';
 import LifetimeFreeEmailsPanel from '@/components/admin/LifetimeFreeEmailsPanel';
 import UserAccessControls from '@/components/admin/UserAccessControls';
+import EngineMonitoringPanel from '@/components/admin/EngineMonitoringPanel';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
