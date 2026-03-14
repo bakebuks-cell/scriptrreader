@@ -3325,12 +3325,11 @@ Deno.serve(async (req) => {
                 // Rules:
                 //   1. Do NOT trade on startup — save baseline, wait for new candle
                 //   2. Ignore signals from same candle (dedup by candleTime)
-                //   3. Ignore signals within 1 candle after entry (cooldown)
-                //   4. Same-direction signal → do NOTHING
-                //   5. No Stop Loss — position stays open until opposite signal
-                //   6. TP placed very far (10%) so it doesn't interfere
-                //   7. Only ONE position at a time
-                //   8. Close must be confirmed before opening opposite
+                //   3. Same-direction signal → do NOTHING
+                //   4. No Stop Loss — position stays open until opposite signal
+                //   5. TP placed very far (10%) so it doesn't interfere
+                //   6. Only ONE position at a time
+                //   7. Close must be confirmed before opening opposite
                 //   9. No auto-close based on time
                 // ================================================================
 
