@@ -3465,6 +3465,11 @@ Deno.serve(async (req) => {
                     baselineCandleTime = currentCandleTime
                     baselineSignal = rawSignalAction
                     console.log(`[ENGINE] STARTUP: Baseline saved — candle=${currentCandleTime}, signal=${rawSignalAction}. Waiting for new candle.`)
+                    await engineLog(supabase, 'INFO', 'STARTUP',
+                      `Baseline saved: candle=${currentCandleTime}, signal=${rawSignalAction}. Waiting for new candle.`,
+                      { baselineCandleTime, baselineSignal: rawSignalAction },
+                      us.user_id, us.script_id, symbol, timeframe
+                    )
                     
                     await supabase.from('user_scripts').update({
                       settings_json: { ...settings, baselineCandleTime, baselineSignal, startupComplete: false, positionSide: 'NONE' },
@@ -3508,6 +3513,11 @@ Deno.serve(async (req) => {
                     const syncResult = await syncOpenTradeWithExchange(supabase, openTrade, scriptMarketType)
                     if (!syncResult.stillOpen) {
                       console.log(`[ENGINE] Trade ${openTrade.id} closed externally (TP hit)`)
+                      await engineLog(supabase, 'REPAIR', 'RECONCILE',
+                        `Trade ${openTrade.id} closed externally (SL/TP hit or manual close on exchange)`,
+                        { tradeId: openTrade.id, symbol, signalType: openTrade.signal_type },
+                        us.user_id, us.script_id, symbol, timeframe
+                      )
                       positionSide = 'NONE'
                       entryCandleTime = 0
                     }
@@ -3550,6 +3560,11 @@ Deno.serve(async (req) => {
                 // ----- STEP 5: DEDUP — same candle check -----
                 if (currentCandleTime === lastProcessedCandleTime) {
                   console.log(`[ENGINE] DEDUP: Same candle as last processed (${currentCandleTime}) — IGNORING`)
+                  await engineLog(supabase, 'INFO', 'SIGNAL',
+                    `Dedup: ${rawSignalAction} signal ignored — same candle already processed (${currentCandleTime})`,
+                    { rawSignal: rawSignalAction, candleTime: currentCandleTime, lastProcessed: lastProcessedCandleTime },
+                    us.user_id, us.script_id, symbol, timeframe
+                  )
                   results.push({
                     scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                     symbol, timeframe, executed: false,
@@ -3561,6 +3576,11 @@ Deno.serve(async (req) => {
                 // ----- STEP 6: SAME-DIRECTION signal → do NOTHING -----
                 if (positionSide === rawSignalAction) {
                   console.log(`[ENGINE] SAME direction: position=${positionSide}, signal=${rawSignalAction} — IGNORING`)
+                  await engineLog(supabase, 'INFO', 'SIGNAL',
+                    `Same direction ignored: position=${positionSide}, signal=${rawSignalAction}`,
+                    { positionSide, rawSignal: rawSignalAction, candleTime: currentCandleTime },
+                    us.user_id, us.script_id, symbol, timeframe
+                  )
                   results.push({
                     scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                     symbol, timeframe, executed: false,
@@ -3886,6 +3906,11 @@ Deno.serve(async (req) => {
 
                   if (positionStillOpen) {
                     console.log(`[ENGINE] BLOCKED: ${existingOpen.status} trade ${existingOpen.id} still exists`)
+                    await engineLog(supabase, 'WARN', 'SIGNAL',
+                      `Blocked: ${rawSignalAction} signal blocked — existing ${existingOpen.status} trade ${existingOpen.id} still open`,
+                      { tradeId: existingOpen.id, existingStatus: existingOpen.status, blockedSignal: rawSignalAction },
+                      us.user_id, us.script_id, symbol, timeframe
+                    )
                     results.push({
                       scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                       symbol, timeframe, executed: false,
