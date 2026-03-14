@@ -3513,6 +3513,11 @@ Deno.serve(async (req) => {
                     const syncResult = await syncOpenTradeWithExchange(supabase, openTrade, scriptMarketType)
                     if (!syncResult.stillOpen) {
                       console.log(`[ENGINE] Trade ${openTrade.id} closed externally (TP hit)`)
+                      await engineLog(supabase, 'REPAIR', 'RECONCILE',
+                        `Trade ${openTrade.id} closed externally (SL/TP hit or manual close on exchange)`,
+                        { tradeId: openTrade.id, symbol, signalType: openTrade.signal_type },
+                        us.user_id, us.script_id, symbol, timeframe
+                      )
                       positionSide = 'NONE'
                       entryCandleTime = 0
                     }
