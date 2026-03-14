@@ -3560,6 +3560,11 @@ Deno.serve(async (req) => {
                 // ----- STEP 5: DEDUP — same candle check -----
                 if (currentCandleTime === lastProcessedCandleTime) {
                   console.log(`[ENGINE] DEDUP: Same candle as last processed (${currentCandleTime}) — IGNORING`)
+                  await engineLog(supabase, 'INFO', 'SIGNAL',
+                    `Dedup: ${rawSignalAction} signal ignored — same candle already processed (${currentCandleTime})`,
+                    { rawSignal: rawSignalAction, candleTime: currentCandleTime, lastProcessed: lastProcessedCandleTime },
+                    us.user_id, us.script_id, symbol, timeframe
+                  )
                   results.push({
                     scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                     symbol, timeframe, executed: false,
