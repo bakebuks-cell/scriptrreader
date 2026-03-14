@@ -3465,6 +3465,11 @@ Deno.serve(async (req) => {
                     baselineCandleTime = currentCandleTime
                     baselineSignal = rawSignalAction
                     console.log(`[ENGINE] STARTUP: Baseline saved — candle=${currentCandleTime}, signal=${rawSignalAction}. Waiting for new candle.`)
+                    await engineLog(supabase, 'INFO', 'STARTUP',
+                      `Baseline saved: candle=${currentCandleTime}, signal=${rawSignalAction}. Waiting for new candle.`,
+                      { baselineCandleTime, baselineSignal: rawSignalAction },
+                      us.user_id, us.script_id, symbol, timeframe
+                    )
                     
                     await supabase.from('user_scripts').update({
                       settings_json: { ...settings, baselineCandleTime, baselineSignal, startupComplete: false, positionSide: 'NONE' },
