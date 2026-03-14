@@ -49,7 +49,7 @@ const LOG_TYPE_CONFIG: Record<string, { color: string; icon: any; label: string 
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
-  SIGNAL: 'Signal',
+  SIGNAL: 'Signal Decision',
   TRADE_EXECUTION: 'Trade Execution',
   RECONCILE: 'Reconciliation',
   FLIP: 'Position Flip',
@@ -58,6 +58,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   STATE_SYNC: 'State Sync',
   API_ERROR: 'API Error',
   AUTO_REPAIR: 'Auto Repair',
+  GENERAL: 'General',
 };
 
 export default function EngineMonitoringPanel() {
