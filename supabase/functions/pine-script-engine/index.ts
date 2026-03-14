@@ -3330,7 +3330,7 @@ Deno.serve(async (req) => {
                 //   5. TP placed very far (10%) so it doesn't interfere
                 //   6. Only ONE position at a time
                 //   7. Close must be confirmed before opening opposite
-                //   9. No auto-close based on time
+                //   8. No auto-close based on time
                 // ================================================================
 
                 // ----- STATE TRACKING -----
