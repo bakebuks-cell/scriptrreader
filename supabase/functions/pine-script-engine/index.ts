@@ -3906,6 +3906,11 @@ Deno.serve(async (req) => {
 
                   if (positionStillOpen) {
                     console.log(`[ENGINE] BLOCKED: ${existingOpen.status} trade ${existingOpen.id} still exists`)
+                    await engineLog(supabase, 'WARN', 'SIGNAL',
+                      `Blocked: ${rawSignalAction} signal blocked — existing ${existingOpen.status} trade ${existingOpen.id} still open`,
+                      { tradeId: existingOpen.id, existingStatus: existingOpen.status, blockedSignal: rawSignalAction },
+                      us.user_id, us.script_id, symbol, timeframe
+                    )
                     results.push({
                       scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                       symbol, timeframe, executed: false,

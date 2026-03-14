@@ -83,7 +83,7 @@ export default function EngineMonitoringPanel() {
       } else if (activeFilter === 'trades') {
         query = query.in('category', ['TRADE_EXECUTION', 'FLIP']);
       } else if (activeFilter === 'monitoring') {
-        query = query.in('category', ['CIRCUIT_BREAKER', 'RECONCILE', 'STATE_SYNC']);
+        query = query.in('category', ['CIRCUIT_BREAKER', 'RECONCILE', 'STATE_SYNC', 'SIGNAL', 'STARTUP']);
       }
 
       const { data, error } = await query;
