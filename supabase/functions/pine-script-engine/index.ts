@@ -3414,12 +3414,12 @@ Deno.serve(async (req) => {
                   }
 
                   // Recovery: if position side is opposite to latest CLOSED indicator direction,
-                  // and we're lagging by more than 1 candle, force one corrective flip.
+                  // and we're lagging by at least 1 candle, force one corrective flip.
                   // This prevents getting stuck on the wrong side after a missed/blocked candle.
                   const trackedPositionDir = positionSide === 'BUY' ? 1 : positionSide === 'SELL' ? -1 : 0
                   const lagCandles = candleDistance(lastProcessedCandleTime, currentCandleTime)
                   const maxRecoveryLagCandles = 48
-                  const lagInRecoveryWindow = Number.isFinite(lagCandles) && lagCandles > 1 && lagCandles <= maxRecoveryLagCandles
+                  const lagInRecoveryWindow = Number.isFinite(lagCandles) && lagCandles >= 1 && lagCandles <= maxRecoveryLagCandles
 
                   if (trackedPositionDir !== 0 && lastClosedDir !== trackedPositionDir && lagInRecoveryWindow) {
                     console.log(`[ENGINE] CLOSED candle direction recovery: positionDir=${trackedPositionDir}, latestDir=${lastClosedDir}, lag=${lagCandles} candles`)
