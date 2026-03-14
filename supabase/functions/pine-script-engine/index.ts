@@ -3325,13 +3325,12 @@ Deno.serve(async (req) => {
                 // Rules:
                 //   1. Do NOT trade on startup — save baseline, wait for new candle
                 //   2. Ignore signals from same candle (dedup by candleTime)
-                //   3. Ignore signals within 1 candle after entry (cooldown)
-                //   4. Same-direction signal → do NOTHING
-                //   5. No Stop Loss — position stays open until opposite signal
-                //   6. TP placed very far (10%) so it doesn't interfere
-                //   7. Only ONE position at a time
-                //   8. Close must be confirmed before opening opposite
-                //   9. No auto-close based on time
+                //   3. Same-direction signal → do NOTHING
+                //   4. No Stop Loss — position stays open until opposite signal
+                //   5. TP placed very far (10%) so it doesn't interfere
+                //   6. Only ONE position at a time
+                //   7. Close must be confirmed before opening opposite
+                //   8. No auto-close based on time
                 // ================================================================
 
                 // ----- STATE TRACKING -----
@@ -3414,12 +3413,12 @@ Deno.serve(async (req) => {
                   }
 
                   // Recovery: if position side is opposite to latest CLOSED indicator direction,
-                  // and we're lagging by more than 1 candle, force one corrective flip.
+                  // and we're lagging by at least 1 candle, force one corrective flip.
                   // This prevents getting stuck on the wrong side after a missed/blocked candle.
                   const trackedPositionDir = positionSide === 'BUY' ? 1 : positionSide === 'SELL' ? -1 : 0
                   const lagCandles = candleDistance(lastProcessedCandleTime, currentCandleTime)
                   const maxRecoveryLagCandles = 48
-                  const lagInRecoveryWindow = Number.isFinite(lagCandles) && lagCandles > 1 && lagCandles <= maxRecoveryLagCandles
+                  const lagInRecoveryWindow = Number.isFinite(lagCandles) && lagCandles >= 1 && lagCandles <= maxRecoveryLagCandles
 
                   if (trackedPositionDir !== 0 && lastClosedDir !== trackedPositionDir && lagInRecoveryWindow) {
                     console.log(`[ENGINE] CLOSED candle direction recovery: positionDir=${trackedPositionDir}, latestDir=${lastClosedDir}, lag=${lagCandles} candles`)
@@ -3575,19 +3574,9 @@ Deno.serve(async (req) => {
                   continue
                 }
 
-                // ----- STEP 7: COOLDOWN — block signals within 1 candle of entry -----
-                if (positionSide !== 'NONE' && entryCandleTime > 0) {
-                  const dist = candleDistance(entryCandleTime, currentCandleTime)
-                  if (dist <= 1) {
-                    console.log(`[ENGINE] COOLDOWN: Only ${dist} candle(s) since entry — IGNORING flip signal`)
-                    results.push({
-                      scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
-                      symbol, timeframe, executed: false,
-                      reason: `Cooldown: ${dist} candle(s) since entry, need 2+`,
-                    })
-                    continue
-                  }
-                }
+                // ----- STEP 7: no extra-candle cooldown -----
+                // Opposite signals on the very next CLOSED candle must execute immediately
+                // to avoid 5m/15m lag and drift from chart-confirmed direction.
 
                 // ----- STEP 8: CIRCUIT BREAKER (per user) -----
                 const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
@@ -3916,15 +3905,18 @@ Deno.serve(async (req) => {
                 const finalSignal: TradeSignal = {
                   action: rawSignalAction,
                   price: currentPrice,
-                  stopLoss: undefined,      // Rule 5: NO stop loss
-                  takeProfit: farTP,         // Rule 6: Far TP (10%)
+                  stopLoss: undefined,      // No stop loss
+                  takeProfit: farTP,         // Far TP (10%)
                   reason: `${rawSignalAction} signal: confirmed opposite flip`,
                 }
 
-                console.log(`[ENGINE] Executing ${rawSignalAction} ${symbol} @ ${currentPrice}, TP=${farTP.toFixed(2)}, SL=NONE`)
+                const closedCandleCloseTime = currentCandleTime + intervalMs
+                const signalLatencySec = Math.max(0, Math.floor((Date.now() - closedCandleCloseTime) / 1000))
+
+                console.log(`[ENGINE] Executing ${rawSignalAction} ${symbol} @ ${currentPrice}, TP=${farTP.toFixed(2)}, SL=NONE, latency=${signalLatencySec}s`)
                 await engineLog(supabase, 'INFO', 'TRADE_EXECUTION',
-                  `Executing ${rawSignalAction} ${symbol} @ ${currentPrice}`,
-                  { action: rawSignalAction, price: currentPrice, takeProfit: farTP, candleTime: currentCandleTime },
+                  `Executing ${rawSignalAction} ${symbol} @ ${currentPrice} (latency=${signalLatencySec}s)`,
+                  { action: rawSignalAction, price: currentPrice, takeProfit: farTP, candleTime: currentCandleTime, signalLatencySec },
                   us.user_id, us.script_id, symbol, timeframe
                 )
 
