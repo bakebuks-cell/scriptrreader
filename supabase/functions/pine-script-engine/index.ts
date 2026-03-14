@@ -3576,6 +3576,11 @@ Deno.serve(async (req) => {
                 // ----- STEP 6: SAME-DIRECTION signal → do NOTHING -----
                 if (positionSide === rawSignalAction) {
                   console.log(`[ENGINE] SAME direction: position=${positionSide}, signal=${rawSignalAction} — IGNORING`)
+                  await engineLog(supabase, 'INFO', 'SIGNAL',
+                    `Same direction ignored: position=${positionSide}, signal=${rawSignalAction}`,
+                    { positionSide, rawSignal: rawSignalAction, candleTime: currentCandleTime },
+                    us.user_id, us.script_id, symbol, timeframe
+                  )
                   results.push({
                     scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                     symbol, timeframe, executed: false,
