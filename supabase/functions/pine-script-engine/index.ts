@@ -3905,15 +3905,18 @@ Deno.serve(async (req) => {
                 const finalSignal: TradeSignal = {
                   action: rawSignalAction,
                   price: currentPrice,
-                  stopLoss: undefined,      // Rule 5: NO stop loss
-                  takeProfit: farTP,         // Rule 6: Far TP (10%)
+                  stopLoss: undefined,      // No stop loss
+                  takeProfit: farTP,         // Far TP (10%)
                   reason: `${rawSignalAction} signal: confirmed opposite flip`,
                 }
 
-                console.log(`[ENGINE] Executing ${rawSignalAction} ${symbol} @ ${currentPrice}, TP=${farTP.toFixed(2)}, SL=NONE`)
+                const closedCandleCloseTime = currentCandleTime + intervalMs
+                const signalLatencySec = Math.max(0, Math.floor((Date.now() - closedCandleCloseTime) / 1000))
+
+                console.log(`[ENGINE] Executing ${rawSignalAction} ${symbol} @ ${currentPrice}, TP=${farTP.toFixed(2)}, SL=NONE, latency=${signalLatencySec}s`)
                 await engineLog(supabase, 'INFO', 'TRADE_EXECUTION',
-                  `Executing ${rawSignalAction} ${symbol} @ ${currentPrice}`,
-                  { action: rawSignalAction, price: currentPrice, takeProfit: farTP, candleTime: currentCandleTime },
+                  `Executing ${rawSignalAction} ${symbol} @ ${currentPrice} (latency=${signalLatencySec}s)`,
+                  { action: rawSignalAction, price: currentPrice, takeProfit: farTP, candleTime: currentCandleTime, signalLatencySec },
                   us.user_id, us.script_id, symbol, timeframe
                 )
 
