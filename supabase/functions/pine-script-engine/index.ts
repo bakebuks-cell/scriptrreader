@@ -3575,19 +3575,9 @@ Deno.serve(async (req) => {
                   continue
                 }
 
-                // ----- STEP 7: COOLDOWN — block signals within 1 candle of entry -----
-                if (positionSide !== 'NONE' && entryCandleTime > 0) {
-                  const dist = candleDistance(entryCandleTime, currentCandleTime)
-                  if (dist <= 1) {
-                    console.log(`[ENGINE] COOLDOWN: Only ${dist} candle(s) since entry — IGNORING flip signal`)
-                    results.push({
-                      scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
-                      symbol, timeframe, executed: false,
-                      reason: `Cooldown: ${dist} candle(s) since entry, need 2+`,
-                    })
-                    continue
-                  }
-                }
+                // ----- STEP 7: no extra-candle cooldown -----
+                // Opposite signals on the very next CLOSED candle must execute immediately
+                // to avoid 5m/15m lag and drift from chart-confirmed direction.
 
                 // ----- STEP 8: CIRCUIT BREAKER (per user) -----
                 const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
