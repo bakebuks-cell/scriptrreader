@@ -1602,11 +1602,14 @@ async function syncOpenTradeWithExchange(
   supabase: any,
   trade: { id: string; user_id: string; symbol: string; signal_type: string; entry_price: number; quantity?: number },
   marketType: string,
-  syncState?: { missCount: number; tradeId: string }
-): Promise<{ stillOpen: boolean; missCount: number; tradeId: string }> {
-  const requiredSyncMisses = 3
+  syncState?: { missCount: number; tradeId: string; firstMissTime?: number }
+): Promise<{ stillOpen: boolean; missCount: number; tradeId: string; firstMissTime?: number }> {
+  // Require 10 consecutive misses AND at least 3 minutes elapsed since first miss
+  const requiredSyncMisses = 10
+  const requiredMissWindowMs = 3 * 60 * 1000 // 3 minutes minimum
   let missCount = syncState?.missCount || 0
   let trackedTradeId = syncState?.tradeId || ''
+  let firstMissTime = syncState?.firstMissTime || 0
   try {
     // Get API keys
     const { data: walletKeys } = await supabase
