@@ -3947,14 +3947,20 @@ Deno.serve(async (req) => {
                   }
 
                   if (!positionStillOpen) {
-                    staleOpenMissCount = staleOpenTradeId === existingOpen.id ? staleOpenMissCount + 1 : 1
+                    if (staleOpenTradeId !== existingOpen.id) {
+                      staleOpenMissCount = 1
+                      staleOpenFirstMissTime = Date.now()
+                    } else {
+                      staleOpenMissCount += 1
+                    }
                     staleOpenTradeId = existingOpen.id
 
-                    if (staleOpenMissCount < requiredReconcileMisses) {
-                      console.log(`[RECONCILE] Pending stale confirmation for ${existingOpen.id}: ${staleOpenMissCount}/${requiredReconcileMisses}`)
+                    const staleElapsed = Date.now() - staleOpenFirstMissTime
+                    if (staleOpenMissCount < requiredReconcileMisses || staleElapsed < requiredReconcileWindowMs) {
+                      console.log(`[RECONCILE] Pending stale confirmation for ${existingOpen.id}: ${staleOpenMissCount}/${requiredReconcileMisses}, elapsed=${Math.round(staleElapsed/1000)}s/180s`)
                       await engineLog(supabase, 'INFO', 'RECONCILE',
-                        `Pending stale confirmation: ${existingOpen.signal_type} ${symbol} missing on exchange (${staleOpenMissCount}/${requiredReconcileMisses})`,
-                        { tradeId: existingOpen.id, missCount: staleOpenMissCount, requiredMisses: requiredReconcileMisses },
+                        `Pending stale confirmation: ${existingOpen.signal_type} ${symbol} missing on exchange (${staleOpenMissCount}/${requiredReconcileMisses}, ${Math.round(staleElapsed/1000)}s elapsed)`,
+                        { tradeId: existingOpen.id, missCount: staleOpenMissCount, requiredMisses: requiredReconcileMisses, elapsedSec: Math.round(staleElapsed/1000) },
                         us.user_id, us.script_id, symbol, timeframe
                       )
 
@@ -3969,15 +3975,17 @@ Deno.serve(async (req) => {
                           startupComplete,
                           staleOpenMissCount,
                           staleOpenTradeId,
+                          staleOpenFirstMissTime,
                           syncMissCount,
                           syncMissTradeId,
+                          syncFirstMissTime,
                         },
                       }).eq('script_id', us.script_id).eq('user_id', us.user_id)
 
                       results.push({
                         scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                         symbol, timeframe, executed: false,
-                        reason: `Reconciling stale ${existingOpen.status} trade (${staleOpenMissCount}/${requiredReconcileMisses})`,
+                        reason: `Reconciling stale ${existingOpen.status} trade (${staleOpenMissCount}/${requiredReconcileMisses}, ${Math.round(staleElapsed/1000)}s/180s)`,
                       })
                       continue
                     }
