@@ -1602,11 +1602,14 @@ async function syncOpenTradeWithExchange(
   supabase: any,
   trade: { id: string; user_id: string; symbol: string; signal_type: string; entry_price: number; quantity?: number },
   marketType: string,
-  syncState?: { missCount: number; tradeId: string }
-): Promise<{ stillOpen: boolean; missCount: number; tradeId: string }> {
-  const requiredSyncMisses = 3
+  syncState?: { missCount: number; tradeId: string; firstMissTime?: number }
+): Promise<{ stillOpen: boolean; missCount: number; tradeId: string; firstMissTime?: number }> {
+  // Require 10 consecutive misses AND at least 3 minutes elapsed since first miss
+  const requiredSyncMisses = 10
+  const requiredMissWindowMs = 3 * 60 * 1000 // 3 minutes minimum
   let missCount = syncState?.missCount || 0
   let trackedTradeId = syncState?.tradeId || ''
+  let firstMissTime = syncState?.firstMissTime || 0
   try {
     // Get API keys
     const { data: walletKeys } = await supabase
@@ -1686,13 +1689,19 @@ async function syncOpenTradeWithExchange(
     }
 
     if (!hasPosition) {
-      // 3-strike rule: require multiple consecutive misses before closing
-      missCount = trackedTradeId === trade.id ? missCount + 1 : 1
+      // Multi-strike + time-window rule: require many consecutive misses over minimum time
+      if (trackedTradeId !== trade.id) {
+        missCount = 1
+        firstMissTime = Date.now()
+      } else {
+        missCount += 1
+      }
       trackedTradeId = trade.id
 
-      if (missCount < requiredSyncMisses) {
-        console.log(`[SYNC] Position ${trade.symbol} missing on exchange — pending confirmation (${missCount}/${requiredSyncMisses})`)
-        return { stillOpen: true, missCount, tradeId: trackedTradeId }
+      const elapsedSinceFirstMiss = Date.now() - firstMissTime
+      if (missCount < requiredSyncMisses || elapsedSinceFirstMiss < requiredMissWindowMs) {
+        console.log(`[SYNC] Position ${trade.symbol} missing on exchange — pending confirmation (${missCount}/${requiredSyncMisses}, elapsed=${Math.round(elapsedSinceFirstMiss/1000)}s/${requiredMissWindowMs/1000}s)`)
+        return { stillOpen: true, missCount, tradeId: trackedTradeId, firstMissTime }
       }
 
       console.log(`[SYNC] Position for ${trade.symbol} confirmed missing after ${requiredSyncMisses} checks — closing trade ${trade.id}`)
@@ -1719,14 +1728,14 @@ async function syncOpenTradeWithExchange(
         error_message: 'Position closed externally (SL/TP hit or manual close on exchange)',
       }).eq('id', trade.id)
 
-      return { stillOpen: false, missCount: 0, tradeId: '' }
+      return { stillOpen: false, missCount: 0, tradeId: '', firstMissTime: 0 }
     }
 
     // Position exists — reset miss counter
-    return { stillOpen: true, missCount: 0, tradeId: '' }
+    return { stillOpen: true, missCount: 0, tradeId: '', firstMissTime: 0 }
   } catch (err) {
     console.log(`[SYNC] Error checking position for trade ${trade.id}:`, err)
-    return { stillOpen: true, missCount: missCount, tradeId: trackedTradeId } // assume still open on error
+    return { stillOpen: true, missCount, tradeId: trackedTradeId, firstMissTime } // assume still open on error
   }
 }
 
@@ -3359,7 +3368,8 @@ Deno.serve(async (req) => {
                 //   staleOpenTradeId: string (trade id currently being verified for stale reconciliation)
 
                 const settings = us.settings_json || {}
-                const requiredReconcileMisses = 3
+                const requiredReconcileMisses = 10
+                const requiredReconcileWindowMs = 3 * 60 * 1000 // 3 minutes minimum
                 let lastProcessedCandleTime: number = settings.lastProcessedCandleTime || 0
                 let entryCandleTime: number = settings.entryCandleTime || 0
                 let positionSide: string = settings.positionSide || 'NONE'
@@ -3368,8 +3378,10 @@ Deno.serve(async (req) => {
                 let startupComplete: boolean = settings.startupComplete === true
                 let staleOpenMissCount: number = Number(settings.staleOpenMissCount || 0)
                 let staleOpenTradeId: string = typeof settings.staleOpenTradeId === 'string' ? settings.staleOpenTradeId : ''
+                let staleOpenFirstMissTime: number = Number(settings.staleOpenFirstMissTime || 0)
                 let syncMissCount: number = Number(settings.syncMissCount || 0)
                 let syncMissTradeId: string = typeof settings.syncMissTradeId === 'string' ? settings.syncMissTradeId : ''
+                let syncFirstMissTime: number = Number(settings.syncFirstMissTime || 0)
 
                 // Current candle = last closed candle in OHLCV array
                 const lastCandle = candlesUsed[candlesUsed.length - 2] || candlesUsed[candlesUsed.length - 1]
@@ -3531,20 +3543,21 @@ Deno.serve(async (req) => {
                 // Sync with exchange
                 if (currentOpenTrades && currentOpenTrades.length > 0) {
                   for (const openTrade of currentOpenTrades) {
-                    const syncResult = await syncOpenTradeWithExchange(supabase, openTrade, scriptMarketType, { missCount: syncMissCount, tradeId: syncMissTradeId })
+                    const syncResult = await syncOpenTradeWithExchange(supabase, openTrade, scriptMarketType, { missCount: syncMissCount, tradeId: syncMissTradeId, firstMissTime: syncFirstMissTime })
                     syncMissCount = syncResult.missCount
                     syncMissTradeId = syncResult.tradeId
+                    syncFirstMissTime = syncResult.firstMissTime || 0
                     if (!syncResult.stillOpen) {
-                      console.log(`[ENGINE] Trade ${openTrade.id} closed externally (confirmed after 3 checks)`)
+                      console.log(`[ENGINE] Trade ${openTrade.id} closed externally (confirmed after 10 checks + 3min window)`)
                       await engineLog(supabase, 'REPAIR', 'RECONCILE',
-                        `Trade ${openTrade.id} closed externally (SL/TP hit or manual close on exchange) — confirmed after 3 consecutive checks`,
+                        `Trade ${openTrade.id} closed externally (SL/TP hit or manual close on exchange) — confirmed after 10 consecutive checks over 3+ minutes`,
                         { tradeId: openTrade.id, symbol, signalType: openTrade.signal_type },
                         us.user_id, us.script_id, symbol, timeframe
                       )
                       positionSide = 'NONE'
                       entryCandleTime = 0
                     } else if (syncMissCount > 0) {
-                      console.log(`[ENGINE] Trade ${openTrade.id} missing on exchange — pending confirmation (${syncMissCount}/3)`)
+                      console.log(`[ENGINE] Trade ${openTrade.id} missing on exchange — pending confirmation (${syncMissCount}/10)`)
                     }
                   }
                 }
@@ -3587,8 +3600,10 @@ Deno.serve(async (req) => {
                       startupComplete,
                       staleOpenMissCount,
                       staleOpenTradeId,
+                      staleOpenFirstMissTime,
                       syncMissCount,
                       syncMissTradeId,
+                      syncFirstMissTime,
                     },
                   }).eq('script_id', us.script_id).eq('user_id', us.user_id)
                   continue
@@ -3636,8 +3651,10 @@ Deno.serve(async (req) => {
                       startupComplete,
                       staleOpenMissCount,
                       staleOpenTradeId,
+                      staleOpenFirstMissTime,
                       syncMissCount,
                       syncMissTradeId,
+                      syncFirstMissTime,
                     },
                   }).eq('script_id', us.script_id).eq('user_id', us.user_id)
                   continue
@@ -3934,14 +3951,20 @@ Deno.serve(async (req) => {
                   }
 
                   if (!positionStillOpen) {
-                    staleOpenMissCount = staleOpenTradeId === existingOpen.id ? staleOpenMissCount + 1 : 1
+                    if (staleOpenTradeId !== existingOpen.id) {
+                      staleOpenMissCount = 1
+                      staleOpenFirstMissTime = Date.now()
+                    } else {
+                      staleOpenMissCount += 1
+                    }
                     staleOpenTradeId = existingOpen.id
 
-                    if (staleOpenMissCount < requiredReconcileMisses) {
-                      console.log(`[RECONCILE] Pending stale confirmation for ${existingOpen.id}: ${staleOpenMissCount}/${requiredReconcileMisses}`)
+                    const staleElapsed = Date.now() - staleOpenFirstMissTime
+                    if (staleOpenMissCount < requiredReconcileMisses || staleElapsed < requiredReconcileWindowMs) {
+                      console.log(`[RECONCILE] Pending stale confirmation for ${existingOpen.id}: ${staleOpenMissCount}/${requiredReconcileMisses}, elapsed=${Math.round(staleElapsed/1000)}s/180s`)
                       await engineLog(supabase, 'INFO', 'RECONCILE',
-                        `Pending stale confirmation: ${existingOpen.signal_type} ${symbol} missing on exchange (${staleOpenMissCount}/${requiredReconcileMisses})`,
-                        { tradeId: existingOpen.id, missCount: staleOpenMissCount, requiredMisses: requiredReconcileMisses },
+                        `Pending stale confirmation: ${existingOpen.signal_type} ${symbol} missing on exchange (${staleOpenMissCount}/${requiredReconcileMisses}, ${Math.round(staleElapsed/1000)}s elapsed)`,
+                        { tradeId: existingOpen.id, missCount: staleOpenMissCount, requiredMisses: requiredReconcileMisses, elapsedSec: Math.round(staleElapsed/1000) },
                         us.user_id, us.script_id, symbol, timeframe
                       )
 
@@ -3956,15 +3979,17 @@ Deno.serve(async (req) => {
                           startupComplete,
                           staleOpenMissCount,
                           staleOpenTradeId,
+                          staleOpenFirstMissTime,
                           syncMissCount,
                           syncMissTradeId,
+                          syncFirstMissTime,
                         },
                       }).eq('script_id', us.script_id).eq('user_id', us.user_id)
 
                       results.push({
                         scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                         symbol, timeframe, executed: false,
-                        reason: `Reconciling stale ${existingOpen.status} trade (${staleOpenMissCount}/${requiredReconcileMisses})`,
+                        reason: `Reconciling stale ${existingOpen.status} trade (${staleOpenMissCount}/${requiredReconcileMisses}, ${Math.round(staleElapsed/1000)}s/180s)`,
                       })
                       continue
                     }
@@ -4015,8 +4040,10 @@ Deno.serve(async (req) => {
                         startupComplete,
                         staleOpenMissCount,
                         staleOpenTradeId,
+                        staleOpenFirstMissTime,
                         syncMissCount,
                         syncMissTradeId,
+                        syncFirstMissTime,
                       },
                     }).eq('script_id', us.script_id).eq('user_id', us.user_id)
 
@@ -4095,8 +4122,10 @@ Deno.serve(async (req) => {
                     startupComplete,
                     staleOpenMissCount,
                     staleOpenTradeId,
+                    staleOpenFirstMissTime,
                     syncMissCount,
                     syncMissTradeId,
+                    syncFirstMissTime,
                   },
                 }).eq('script_id', us.script_id).eq('user_id', us.user_id)
 
