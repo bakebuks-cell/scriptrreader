@@ -3368,7 +3368,8 @@ Deno.serve(async (req) => {
                 //   staleOpenTradeId: string (trade id currently being verified for stale reconciliation)
 
                 const settings = us.settings_json || {}
-                const requiredReconcileMisses = 3
+                const requiredReconcileMisses = 10
+                const requiredReconcileWindowMs = 3 * 60 * 1000 // 3 minutes minimum
                 let lastProcessedCandleTime: number = settings.lastProcessedCandleTime || 0
                 let entryCandleTime: number = settings.entryCandleTime || 0
                 let positionSide: string = settings.positionSide || 'NONE'
@@ -3377,8 +3378,10 @@ Deno.serve(async (req) => {
                 let startupComplete: boolean = settings.startupComplete === true
                 let staleOpenMissCount: number = Number(settings.staleOpenMissCount || 0)
                 let staleOpenTradeId: string = typeof settings.staleOpenTradeId === 'string' ? settings.staleOpenTradeId : ''
+                let staleOpenFirstMissTime: number = Number(settings.staleOpenFirstMissTime || 0)
                 let syncMissCount: number = Number(settings.syncMissCount || 0)
                 let syncMissTradeId: string = typeof settings.syncMissTradeId === 'string' ? settings.syncMissTradeId : ''
+                let syncFirstMissTime: number = Number(settings.syncFirstMissTime || 0)
 
                 // Current candle = last closed candle in OHLCV array
                 const lastCandle = candlesUsed[candlesUsed.length - 2] || candlesUsed[candlesUsed.length - 1]
