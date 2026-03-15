@@ -4008,6 +4008,8 @@ Deno.serve(async (req) => {
                     baselineCandleTime,
                     baselineSignal,
                     startupComplete,
+                    staleOpenMissCount,
+                    staleOpenTradeId,
                   },
                 }).eq('script_id', us.script_id).eq('user_id', us.user_id)
 
