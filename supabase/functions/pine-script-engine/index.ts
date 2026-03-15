@@ -3543,20 +3543,21 @@ Deno.serve(async (req) => {
                 // Sync with exchange
                 if (currentOpenTrades && currentOpenTrades.length > 0) {
                   for (const openTrade of currentOpenTrades) {
-                    const syncResult = await syncOpenTradeWithExchange(supabase, openTrade, scriptMarketType, { missCount: syncMissCount, tradeId: syncMissTradeId })
+                    const syncResult = await syncOpenTradeWithExchange(supabase, openTrade, scriptMarketType, { missCount: syncMissCount, tradeId: syncMissTradeId, firstMissTime: syncFirstMissTime })
                     syncMissCount = syncResult.missCount
                     syncMissTradeId = syncResult.tradeId
+                    syncFirstMissTime = syncResult.firstMissTime || 0
                     if (!syncResult.stillOpen) {
-                      console.log(`[ENGINE] Trade ${openTrade.id} closed externally (confirmed after 3 checks)`)
+                      console.log(`[ENGINE] Trade ${openTrade.id} closed externally (confirmed after 10 checks + 3min window)`)
                       await engineLog(supabase, 'REPAIR', 'RECONCILE',
-                        `Trade ${openTrade.id} closed externally (SL/TP hit or manual close on exchange) — confirmed after 3 consecutive checks`,
+                        `Trade ${openTrade.id} closed externally (SL/TP hit or manual close on exchange) — confirmed after 10 consecutive checks over 3+ minutes`,
                         { tradeId: openTrade.id, symbol, signalType: openTrade.signal_type },
                         us.user_id, us.script_id, symbol, timeframe
                       )
                       positionSide = 'NONE'
                       entryCandleTime = 0
                     } else if (syncMissCount > 0) {
-                      console.log(`[ENGINE] Trade ${openTrade.id} missing on exchange — pending confirmation (${syncMissCount}/3)`)
+                      console.log(`[ENGINE] Trade ${openTrade.id} missing on exchange — pending confirmation (${syncMissCount}/10)`)
                     }
                   }
                 }
