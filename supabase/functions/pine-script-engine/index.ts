@@ -1686,7 +1686,16 @@ async function syncOpenTradeWithExchange(
     }
 
     if (!hasPosition) {
-      console.log(`[SYNC] Position for ${trade.symbol} no longer exists on exchange! Marking trade ${trade.id} as CLOSED.`)
+      // 3-strike rule: require multiple consecutive misses before closing
+      missCount = trackedTradeId === trade.id ? missCount + 1 : 1
+      trackedTradeId = trade.id
+
+      if (missCount < requiredSyncMisses) {
+        console.log(`[SYNC] Position ${trade.symbol} missing on exchange — pending confirmation (${missCount}/${requiredSyncMisses})`)
+        return { stillOpen: true, missCount, tradeId: trackedTradeId }
+      }
+
+      console.log(`[SYNC] Position for ${trade.symbol} confirmed missing after ${requiredSyncMisses} checks — closing trade ${trade.id}`)
       
       // Get current price to record as exit price
       let exitPrice = trade.entry_price
@@ -1710,13 +1719,14 @@ async function syncOpenTradeWithExchange(
         error_message: 'Position closed externally (SL/TP hit or manual close on exchange)',
       }).eq('id', trade.id)
 
-      return { stillOpen: false }
+      return { stillOpen: false, missCount: 0, tradeId: '' }
     }
 
-    return { stillOpen: true }
+    // Position exists — reset miss counter
+    return { stillOpen: true, missCount: 0, tradeId: '' }
   } catch (err) {
     console.log(`[SYNC] Error checking position for trade ${trade.id}:`, err)
-    return { stillOpen: true } // assume still open on error
+    return { stillOpen: true, missCount: missCount, tradeId: trackedTradeId } // assume still open on error
   }
 }
 
