@@ -3341,14 +3341,19 @@ Deno.serve(async (req) => {
                 //   baselineCandleTime: number (openTime of candle at bot startup)
                 //   baselineSignal: 'BUY' | 'SELL' | 'NONE' (signal at bot startup)
                 //   startupComplete: boolean (have we seen a new candle after startup?)
+                //   staleOpenMissCount: number (consecutive checks where DB trade exists but exchange position is missing)
+                //   staleOpenTradeId: string (trade id currently being verified for stale reconciliation)
 
                 const settings = us.settings_json || {}
+                const requiredReconcileMisses = 3
                 let lastProcessedCandleTime: number = settings.lastProcessedCandleTime || 0
                 let entryCandleTime: number = settings.entryCandleTime || 0
                 let positionSide: string = settings.positionSide || 'NONE'
                 let baselineCandleTime: number = settings.baselineCandleTime || 0
                 let baselineSignal: string = settings.baselineSignal || 'NONE'
                 let startupComplete: boolean = settings.startupComplete === true
+                let staleOpenMissCount: number = Number(settings.staleOpenMissCount || 0)
+                let staleOpenTradeId: string = typeof settings.staleOpenTradeId === 'string' ? settings.staleOpenTradeId : ''
 
                 // Current candle = last closed candle in OHLCV array
                 const lastCandle = candlesUsed[candlesUsed.length - 2] || candlesUsed[candlesUsed.length - 1]
@@ -3552,7 +3557,17 @@ Deno.serve(async (req) => {
                   })
                   // Persist state
                   await supabase.from('user_scripts').update({
-                    settings_json: { ...settings, lastProcessedCandleTime, entryCandleTime, positionSide, baselineCandleTime, baselineSignal, startupComplete },
+                    settings_json: {
+                      ...settings,
+                      lastProcessedCandleTime,
+                      entryCandleTime,
+                      positionSide,
+                      baselineCandleTime,
+                      baselineSignal,
+                      startupComplete,
+                      staleOpenMissCount,
+                      staleOpenTradeId,
+                    },
                   }).eq('script_id', us.script_id).eq('user_id', us.user_id)
                   continue
                 }
@@ -3589,7 +3604,17 @@ Deno.serve(async (req) => {
                   // Still update lastProcessedCandleTime to avoid re-processing
                   lastProcessedCandleTime = currentCandleTime
                   await supabase.from('user_scripts').update({
-                    settings_json: { ...settings, lastProcessedCandleTime, entryCandleTime, positionSide, baselineCandleTime, baselineSignal, startupComplete },
+                    settings_json: {
+                      ...settings,
+                      lastProcessedCandleTime,
+                      entryCandleTime,
+                      positionSide,
+                      baselineCandleTime,
+                      baselineSignal,
+                      startupComplete,
+                      staleOpenMissCount,
+                      staleOpenTradeId,
+                    },
                   }).eq('script_id', us.script_id).eq('user_id', us.user_id)
                   continue
                 }
@@ -3877,26 +3902,6 @@ Deno.serve(async (req) => {
 
                         if (!pos) {
                           positionStillOpen = false
-                          console.log(`[RECONCILE] Trade ${existingOpen.id} (${symbol}) is OPEN in DB but NO position on Binance — auto-closing stale record`)
-                          const exitP = await getCurrentPrice(symbol).catch(() => existingOpen.entry_price || 0)
-                          const reconQty = Number(existingOpen.quantity || 0)
-                          const reconPnl = reconQty > 0
-                            ? (existingOpen.signal_type === 'BUY'
-                              ? (exitP - Number(existingOpen.entry_price)) * reconQty
-                              : (Number(existingOpen.entry_price) - exitP) * reconQty)
-                            : null
-                          await supabase.from('trades').update({
-                            status: 'CLOSED',
-                            exit_price: exitP,
-                            closed_at: new Date().toISOString(),
-                            pnl: reconPnl,
-                            error_message: 'Auto-reconciled: position closed on exchange (TP/SL hit or manual)',
-                          }).eq('id', existingOpen.id)
-                          await engineLog(supabase, 'REPAIR', 'RECONCILE',
-                            `Auto-reconciled stale trade: ${existingOpen.signal_type} ${symbol} closed on exchange but OPEN in DB`,
-                            { tradeId: existingOpen.id, exitPrice: exitP, pnl: reconPnl, entryPrice: existingOpen.entry_price },
-                            us.user_id, us.script_id, symbol, timeframe
-                          )
                         }
                       }
                     }
@@ -3904,13 +3909,89 @@ Deno.serve(async (req) => {
                     console.log(`[RECONCILE] Could not verify position on Binance:`, reconErr)
                   }
 
-                  if (positionStillOpen) {
+                  if (!positionStillOpen) {
+                    staleOpenMissCount = staleOpenTradeId === existingOpen.id ? staleOpenMissCount + 1 : 1
+                    staleOpenTradeId = existingOpen.id
+
+                    if (staleOpenMissCount < requiredReconcileMisses) {
+                      console.log(`[RECONCILE] Pending stale confirmation for ${existingOpen.id}: ${staleOpenMissCount}/${requiredReconcileMisses}`)
+                      await engineLog(supabase, 'INFO', 'RECONCILE',
+                        `Pending stale confirmation: ${existingOpen.signal_type} ${symbol} missing on exchange (${staleOpenMissCount}/${requiredReconcileMisses})`,
+                        { tradeId: existingOpen.id, missCount: staleOpenMissCount, requiredMisses: requiredReconcileMisses },
+                        us.user_id, us.script_id, symbol, timeframe
+                      )
+
+                      await supabase.from('user_scripts').update({
+                        settings_json: {
+                          ...settings,
+                          lastProcessedCandleTime,
+                          entryCandleTime,
+                          positionSide,
+                          baselineCandleTime,
+                          baselineSignal,
+                          startupComplete,
+                          staleOpenMissCount,
+                          staleOpenTradeId,
+                        },
+                      }).eq('script_id', us.script_id).eq('user_id', us.user_id)
+
+                      results.push({
+                        scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                        symbol, timeframe, executed: false,
+                        reason: `Reconciling stale ${existingOpen.status} trade (${staleOpenMissCount}/${requiredReconcileMisses})`,
+                      })
+                      continue
+                    }
+
+                    console.log(`[RECONCILE] Confirmed stale trade ${existingOpen.id} (${symbol}) — auto-closing DB record`)
+                    const exitP = await getCurrentPrice(symbol).catch(() => existingOpen.entry_price || 0)
+                    const reconQty = Number(existingOpen.quantity || 0)
+                    const reconPnl = reconQty > 0
+                      ? (existingOpen.signal_type === 'BUY'
+                        ? (exitP - Number(existingOpen.entry_price)) * reconQty
+                        : (Number(existingOpen.entry_price) - exitP) * reconQty)
+                      : null
+                    await supabase.from('trades').update({
+                      status: 'CLOSED',
+                      exit_price: exitP,
+                      closed_at: new Date().toISOString(),
+                      pnl: reconPnl,
+                      error_message: 'Auto-reconciled: position closed on exchange (TP/SL hit or manual)',
+                    }).eq('id', existingOpen.id)
+                    await engineLog(supabase, 'REPAIR', 'RECONCILE',
+                      `Auto-reconciled stale trade: ${existingOpen.signal_type} ${symbol} closed on exchange but OPEN in DB`,
+                      { tradeId: existingOpen.id, exitPrice: exitP, pnl: reconPnl, entryPrice: existingOpen.entry_price, requiredMisses: requiredReconcileMisses },
+                      us.user_id, us.script_id, symbol, timeframe
+                    )
+
+                    staleOpenMissCount = 0
+                    staleOpenTradeId = ''
+                    console.log(`[RECONCILE] Stale record cleared — proceeding with new signal`)
+                  } else {
+                    staleOpenMissCount = 0
+                    staleOpenTradeId = ''
+
                     console.log(`[ENGINE] BLOCKED: ${existingOpen.status} trade ${existingOpen.id} still exists`)
                     await engineLog(supabase, 'WARN', 'SIGNAL',
                       `Blocked: ${rawSignalAction} signal blocked — existing ${existingOpen.status} trade ${existingOpen.id} still open`,
                       { tradeId: existingOpen.id, existingStatus: existingOpen.status, blockedSignal: rawSignalAction },
                       us.user_id, us.script_id, symbol, timeframe
                     )
+
+                    await supabase.from('user_scripts').update({
+                      settings_json: {
+                        ...settings,
+                        lastProcessedCandleTime,
+                        entryCandleTime,
+                        positionSide,
+                        baselineCandleTime,
+                        baselineSignal,
+                        startupComplete,
+                        staleOpenMissCount,
+                        staleOpenTradeId,
+                      },
+                    }).eq('script_id', us.script_id).eq('user_id', us.user_id)
+
                     results.push({
                       scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                       symbol, timeframe, executed: false,
@@ -3918,8 +3999,9 @@ Deno.serve(async (req) => {
                     })
                     continue
                   }
-                  // Position was reconciled — proceed to open new trade
-                  console.log(`[RECONCILE] Stale record cleared — proceeding with new signal`)
+                } else {
+                  staleOpenMissCount = 0
+                  staleOpenTradeId = ''
                 }
 
                 // ----- BUILD SIGNAL WITH FAR TP, NO SL -----
@@ -3983,6 +4065,8 @@ Deno.serve(async (req) => {
                     baselineCandleTime,
                     baselineSignal,
                     startupComplete,
+                    staleOpenMissCount,
+                    staleOpenTradeId,
                   },
                 }).eq('script_id', us.script_id).eq('user_id', us.user_id)
 
