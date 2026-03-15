@@ -1601,8 +1601,12 @@ function buildTradeSignal(
 async function syncOpenTradeWithExchange(
   supabase: any,
   trade: { id: string; user_id: string; symbol: string; signal_type: string; entry_price: number; quantity?: number },
-  marketType: string
-): Promise<{ stillOpen: boolean }> {
+  marketType: string,
+  syncState?: { missCount: number; tradeId: string }
+): Promise<{ stillOpen: boolean; missCount: number; tradeId: string }> {
+  const requiredSyncMisses = 3
+  let missCount = syncState?.missCount || 0
+  let trackedTradeId = syncState?.tradeId || ''
   try {
     // Get API keys
     const { data: walletKeys } = await supabase
