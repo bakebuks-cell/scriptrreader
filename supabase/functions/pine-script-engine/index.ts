@@ -1689,13 +1689,19 @@ async function syncOpenTradeWithExchange(
     }
 
     if (!hasPosition) {
-      // 3-strike rule: require multiple consecutive misses before closing
-      missCount = trackedTradeId === trade.id ? missCount + 1 : 1
+      // Multi-strike + time-window rule: require many consecutive misses over minimum time
+      if (trackedTradeId !== trade.id) {
+        missCount = 1
+        firstMissTime = Date.now()
+      } else {
+        missCount += 1
+      }
       trackedTradeId = trade.id
 
-      if (missCount < requiredSyncMisses) {
-        console.log(`[SYNC] Position ${trade.symbol} missing on exchange — pending confirmation (${missCount}/${requiredSyncMisses})`)
-        return { stillOpen: true, missCount, tradeId: trackedTradeId }
+      const elapsedSinceFirstMiss = Date.now() - firstMissTime
+      if (missCount < requiredSyncMisses || elapsedSinceFirstMiss < requiredMissWindowMs) {
+        console.log(`[SYNC] Position ${trade.symbol} missing on exchange — pending confirmation (${missCount}/${requiredSyncMisses}, elapsed=${Math.round(elapsedSinceFirstMiss/1000)}s/${requiredMissWindowMs/1000}s)`)
+        return { stillOpen: true, missCount, tradeId: trackedTradeId, firstMissTime }
       }
 
       console.log(`[SYNC] Position for ${trade.symbol} confirmed missing after ${requiredSyncMisses} checks — closing trade ${trade.id}`)
