@@ -3531,16 +3531,20 @@ Deno.serve(async (req) => {
                 // Sync with exchange
                 if (currentOpenTrades && currentOpenTrades.length > 0) {
                   for (const openTrade of currentOpenTrades) {
-                    const syncResult = await syncOpenTradeWithExchange(supabase, openTrade, scriptMarketType)
+                    const syncResult = await syncOpenTradeWithExchange(supabase, openTrade, scriptMarketType, { missCount: syncMissCount, tradeId: syncMissTradeId })
+                    syncMissCount = syncResult.missCount
+                    syncMissTradeId = syncResult.tradeId
                     if (!syncResult.stillOpen) {
-                      console.log(`[ENGINE] Trade ${openTrade.id} closed externally (TP hit)`)
+                      console.log(`[ENGINE] Trade ${openTrade.id} closed externally (confirmed after 3 checks)`)
                       await engineLog(supabase, 'REPAIR', 'RECONCILE',
-                        `Trade ${openTrade.id} closed externally (SL/TP hit or manual close on exchange)`,
+                        `Trade ${openTrade.id} closed externally (SL/TP hit or manual close on exchange) — confirmed after 3 consecutive checks`,
                         { tradeId: openTrade.id, symbol, signalType: openTrade.signal_type },
                         us.user_id, us.script_id, symbol, timeframe
                       )
                       positionSide = 'NONE'
                       entryCandleTime = 0
+                    } else if (syncMissCount > 0) {
+                      console.log(`[ENGINE] Trade ${openTrade.id} missing on exchange — pending confirmation (${syncMissCount}/3)`)
                     }
                   }
                 }
