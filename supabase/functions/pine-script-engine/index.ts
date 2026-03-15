@@ -3368,6 +3368,8 @@ Deno.serve(async (req) => {
                 let startupComplete: boolean = settings.startupComplete === true
                 let staleOpenMissCount: number = Number(settings.staleOpenMissCount || 0)
                 let staleOpenTradeId: string = typeof settings.staleOpenTradeId === 'string' ? settings.staleOpenTradeId : ''
+                let syncMissCount: number = Number(settings.syncMissCount || 0)
+                let syncMissTradeId: string = typeof settings.syncMissTradeId === 'string' ? settings.syncMissTradeId : ''
 
                 // Current candle = last closed candle in OHLCV array
                 const lastCandle = candlesUsed[candlesUsed.length - 2] || candlesUsed[candlesUsed.length - 1]
