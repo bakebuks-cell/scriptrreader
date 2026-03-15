@@ -3636,6 +3636,8 @@ Deno.serve(async (req) => {
                       startupComplete,
                       staleOpenMissCount,
                       staleOpenTradeId,
+                      syncMissCount,
+                      syncMissTradeId,
                     },
                   }).eq('script_id', us.script_id).eq('user_id', us.user_id)
                   continue
