@@ -3341,14 +3341,19 @@ Deno.serve(async (req) => {
                 //   baselineCandleTime: number (openTime of candle at bot startup)
                 //   baselineSignal: 'BUY' | 'SELL' | 'NONE' (signal at bot startup)
                 //   startupComplete: boolean (have we seen a new candle after startup?)
+                //   staleOpenMissCount: number (consecutive checks where DB trade exists but exchange position is missing)
+                //   staleOpenTradeId: string (trade id currently being verified for stale reconciliation)
 
                 const settings = us.settings_json || {}
+                const requiredReconcileMisses = 3
                 let lastProcessedCandleTime: number = settings.lastProcessedCandleTime || 0
                 let entryCandleTime: number = settings.entryCandleTime || 0
                 let positionSide: string = settings.positionSide || 'NONE'
                 let baselineCandleTime: number = settings.baselineCandleTime || 0
                 let baselineSignal: string = settings.baselineSignal || 'NONE'
                 let startupComplete: boolean = settings.startupComplete === true
+                let staleOpenMissCount: number = Number(settings.staleOpenMissCount || 0)
+                let staleOpenTradeId: string = typeof settings.staleOpenTradeId === 'string' ? settings.staleOpenTradeId : ''
 
                 // Current candle = last closed candle in OHLCV array
                 const lastCandle = candlesUsed[candlesUsed.length - 2] || candlesUsed[candlesUsed.length - 1]
