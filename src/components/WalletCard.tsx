@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -8,7 +8,6 @@ import { Wallet, RefreshCw, TrendingUp, TrendingDown, Link2Off, ShieldCheck, Use
 import { useWalletBalance, useOpenPositions, Wallet as WalletType } from '@/hooks/useWallets';
 import { useTrades } from '@/hooks/useTrades';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 
 interface WalletCardProps {
@@ -25,10 +24,6 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
   const openTradesCount = activeTrades.length;
   const { toast } = useToast();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const reconciledRef = useRef<Set<string>>(new Set());
-  // Track consecutive empty position polls to avoid premature reconciliation
-  const emptyPollCountRef = useRef(0);
-  const REQUIRED_EMPTY_POLLS = 3; // Need 3 consecutive empty polls (30s at 10s interval) before reconciling
 
   // Auto-reconcile DISABLED on client side — engine handles reconciliation with 3-strike rule
   // to prevent premature trade closures from transient API lags
