@@ -3604,7 +3604,17 @@ Deno.serve(async (req) => {
                   // Still update lastProcessedCandleTime to avoid re-processing
                   lastProcessedCandleTime = currentCandleTime
                   await supabase.from('user_scripts').update({
-                    settings_json: { ...settings, lastProcessedCandleTime, entryCandleTime, positionSide, baselineCandleTime, baselineSignal, startupComplete },
+                    settings_json: {
+                      ...settings,
+                      lastProcessedCandleTime,
+                      entryCandleTime,
+                      positionSide,
+                      baselineCandleTime,
+                      baselineSignal,
+                      startupComplete,
+                      staleOpenMissCount,
+                      staleOpenTradeId,
+                    },
                   }).eq('script_id', us.script_id).eq('user_id', us.user_id)
                   continue
                 }
