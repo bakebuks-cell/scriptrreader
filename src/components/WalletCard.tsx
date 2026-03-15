@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -8,7 +8,6 @@ import { Wallet, RefreshCw, TrendingUp, TrendingDown, Link2Off, ShieldCheck, Use
 import { useWalletBalance, useOpenPositions, Wallet as WalletType } from '@/hooks/useWallets';
 import { useTrades } from '@/hooks/useTrades';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 
 interface WalletCardProps {
@@ -25,74 +24,9 @@ export default function WalletCard({ compact = false, wallet, showRoleBadge = fa
   const openTradesCount = activeTrades.length;
   const { toast } = useToast();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const reconciledRef = useRef<Set<string>>(new Set());
-  // Track consecutive empty position polls to avoid premature reconciliation
-  const emptyPollCountRef = useRef(0);
-  const REQUIRED_EMPTY_POLLS = 3; // Need 3 consecutive empty polls (30s at 10s interval) before reconciling
 
-  // Auto-reconcile: if Binance CONSISTENTLY shows 0 positions but DB has OPEN trades, close them with exit_price
-  useEffect(() => {
-    if (!user?.id) return;
-    if (!Array.isArray(positions)) return;
-
-    // If positions exist or no active trades, reset counter and skip
-    if (positions.length > 0 || activeTrades.length === 0) {
-      emptyPollCountRef.current = 0;
-      return;
-    }
-
-    // Increment empty poll counter — only reconcile after sustained confirmation
-    emptyPollCountRef.current += 1;
-    if (emptyPollCountRef.current < REQUIRED_EMPTY_POLLS) {
-      console.log(`[RECONCILE] Empty positions poll ${emptyPollCountRef.current}/${REQUIRED_EMPTY_POLLS} — waiting for confirmation`);
-      return;
-    }
-
-    const staleTrades = activeTrades.filter(t => !reconciledRef.current.has(t.id));
-    if (staleTrades.length === 0) return;
-
-    console.log('[RECONCILE] Confirmed 0 positions after', REQUIRED_EMPTY_POLLS, 'polls. Closing', staleTrades.length, 'stale trades with exit prices...');
-
-    const reconcile = async () => {
-      for (const trade of staleTrades) {
-        reconciledRef.current.add(trade.id);
-        
-        // Fetch current price for exit_price so PNL can be calculated
-        let exitPrice: number | null = null;
-        try {
-          const res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${trade.symbol}`);
-          if (res.ok) {
-            const data = await res.json();
-            exitPrice = parseFloat(data.price);
-          }
-        } catch {
-          // Use entry_price as fallback
-          exitPrice = trade.entry_price;
-        }
-
-        const { error: updateError } = await supabase
-          .from('trades')
-          .update({
-            status: 'CLOSED' as const,
-            exit_price: exitPrice,
-            closed_at: new Date().toISOString(),
-            error_message: 'Auto-reconciled: position closed on exchange (SL/TP hit or manual)',
-          })
-          .eq('id', trade.id)
-          .eq('user_id', user.id);
-
-        if (updateError) {
-          console.error('[RECONCILE] Failed to close trade', trade.id, updateError.message);
-          reconciledRef.current.delete(trade.id);
-        } else {
-          console.log('[RECONCILE] Closed stale trade', trade.id, 'with exit_price=', exitPrice);
-        }
-      }
-      refetchTrades();
-    };
-
-    reconcile();
-  }, [positions, activeTrades, user?.id, refetchTrades]);
+  // Auto-reconcile DISABLED on client side — engine handles reconciliation with 3-strike rule
+  // to prevent premature trade closures from transient API lags
 
   const handleCloseTrade = async (tradeId: string) => {
     if (confirmingId !== tradeId) {
