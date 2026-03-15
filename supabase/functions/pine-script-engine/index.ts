@@ -1728,14 +1728,14 @@ async function syncOpenTradeWithExchange(
         error_message: 'Position closed externally (SL/TP hit or manual close on exchange)',
       }).eq('id', trade.id)
 
-      return { stillOpen: false, missCount: 0, tradeId: '' }
+      return { stillOpen: false, missCount: 0, tradeId: '', firstMissTime: 0 }
     }
 
     // Position exists — reset miss counter
-    return { stillOpen: true, missCount: 0, tradeId: '' }
+    return { stillOpen: true, missCount: 0, tradeId: '', firstMissTime: 0 }
   } catch (err) {
     console.log(`[SYNC] Error checking position for trade ${trade.id}:`, err)
-    return { stillOpen: true, missCount: missCount, tradeId: trackedTradeId } // assume still open on error
+    return { stillOpen: true, missCount, tradeId: trackedTradeId, firstMissTime } // assume still open on error
   }
 }
 
