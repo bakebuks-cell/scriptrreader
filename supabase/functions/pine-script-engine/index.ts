@@ -3384,8 +3384,9 @@ Deno.serve(async (req) => {
                 let syncFirstMissTime: number = Number(settings.syncFirstMissTime || 0)
 
                 // Current candle = last closed candle in OHLCV array
-                const lastCandle = candlesUsed[candlesUsed.length - 2] || candlesUsed[candlesUsed.length - 1]
-                const currentCandleTime = lastCandle.openTime
+                const lastClosedCandle = candlesUsed[candlesUsed.length - 2] || candlesUsed[candlesUsed.length - 1]
+                const runningCandle = candlesUsed[candlesUsed.length - 1]
+                let currentCandleTime = lastClosedCandle.openTime
                 const intervalMs = getIntervalMs(timeframe)
 
                 // Helper: count candles between two openTimes
