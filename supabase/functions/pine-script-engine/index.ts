@@ -682,7 +682,7 @@ function calculateUTBot(ohlcv: OHLCV[], keyValue: number = 1, atrPeriod: number 
     }
   }
 
-  // Debug logging
+  // Debug logging — detailed trailing stop values for TradingView comparison
   if (direction.length > 0) {
     const last5 = direction.slice(-5)
     const changes: Array<{idx: number, from: number, to: number}> = []
@@ -690,6 +690,22 @@ function calculateUTBot(ohlcv: OHLCV[], keyValue: number = 1, atrPeriod: number 
       if (direction[i] !== direction[i - 1]) changes.push({ idx: i, from: direction[i - 1], to: direction[i] })
     }
     console.log(`[INDICATORS] UTBot: ${direction.length} values, last5=[${last5}], direction_changes=${changes.length}${changes.length > 0 ? ` last_change=idx${changes[changes.length-1].idx} (${changes[changes.length-1].from}->${changes[changes.length-1].to})` : ''}`)
+    
+    // Detailed trailing stop debug for last 5 candles (compare with TradingView)
+    const n = direction.length
+    const debugCount = Math.min(5, n)
+    for (let d = debugCount - 1; d >= 0; d--) {
+      const di = n - 1 - d
+      const oi = di + atrOffset
+      const candleTime = ohlcv[oi]?.openTime ? new Date(ohlcv[oi].openTime).toISOString() : '?'
+      const closeVal = closes[oi]?.toFixed(2) || '?'
+      const stopVal = trailingStop[di]?.toFixed(4) || '?'
+      const atrVal = atrValues[di]?.toFixed(4) || '?'
+      const dir = direction[di]
+      const prevStopVal = di > 0 ? trailingStop[di - 1]?.toFixed(4) : 'N/A'
+      const prevCloseVal = oi > 0 ? closes[oi - 1]?.toFixed(2) : 'N/A'
+      console.log(`[UTBOT-DEBUG] candle=${candleTime} close=${closeVal} prevClose=${prevCloseVal} trailStop=${stopVal} prevTrailStop=${prevStopVal} ATR=${atrVal} dir=${dir}`)
+    }
   }
 
   return { trailingStop, direction }
