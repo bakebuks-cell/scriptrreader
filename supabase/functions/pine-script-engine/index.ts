@@ -394,18 +394,27 @@ function convertToHeikinAshi(candles: OHLCV[]): OHLCV[] {
 }
 
 function resolveCandleSource(scriptContent: string, configuredCandleType?: string | null): 'regular' | 'heikin_ashi' {
+  // PRIORITY: If the user explicitly set candle_type in the database (e.g. via the UI toggle),
+  // that overrides the script's default input value. The script might default to h=input(false)
+  // but the user may have toggled it to true on TradingView and configured it in our system.
+  if (configuredCandleType === 'heikin_ashi') {
+    console.log(`[CANDLE-SOURCE] Using Heikin Ashi — explicitly configured in database (overrides script default)`)
+    return 'heikin_ashi'
+  }
+
+  // Fallback: auto-detect from script content only when no explicit config
   const content = scriptContent || ''
   const hasHeikinAshiSecurity = /security\s*\(\s*heikinashi\s*\(/i.test(content)
   const hasHeikinAshiTitleInput = content.match(/input\s*\(\s*(true|false)\s*,\s*title\s*=\s*["'][^"']*heikin\s*ashi[^"']*["']/i)
 
-  // UT Bot-style scripts often expose a boolean toggle:
-  // h = input(false, title="Signals from Heikin Ashi Candles")
-  // We must honor the script's own toggle to match TradingView.
   if (hasHeikinAshiSecurity && hasHeikinAshiTitleInput) {
-    return hasHeikinAshiTitleInput[1].toLowerCase() === 'true' ? 'heikin_ashi' : 'regular'
+    const scriptDefault = hasHeikinAshiTitleInput[1].toLowerCase() === 'true' ? 'heikin_ashi' : 'regular'
+    console.log(`[CANDLE-SOURCE] Auto-detected from script: ${scriptDefault} (h=${hasHeikinAshiTitleInput[1]})`)
+    return scriptDefault
   }
 
-  return configuredCandleType === 'heikin_ashi' ? 'heikin_ashi' : 'regular'
+  console.log(`[CANDLE-SOURCE] Using regular candles (no explicit config, no script detection)`)
+  return 'regular'
 }
 
 async function getCurrentPrice(symbol: string): Promise<number> {
