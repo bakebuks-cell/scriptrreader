@@ -3472,9 +3472,12 @@ Deno.serve(async (req) => {
                   return { flipped: false, direction: lastClosedDir, source: 'none' }
                 }
 
+                let flipSource: string = 'none'
+
                 if (isSuperTrendStateBased) {
                   const stDirection = indicators.supertrend!.direction
                   const result = findRecentFlip(stDirection)
+                  flipSource = result.source
                   
                   if (result.flipped) {
                     rawSignalAction = result.direction === 1 ? 'BUY' : 'SELL'
@@ -3486,6 +3489,7 @@ Deno.serve(async (req) => {
                 } else if (isUTBotStateBased) {
                   const utDirection = indicators.utbot!.direction
                   const result = findRecentFlip(utDirection)
+                  flipSource = result.source
                   
                   if (result.flipped) {
                     rawSignalAction = result.direction === 1 ? 'BUY' : 'SELL'
@@ -3499,6 +3503,13 @@ Deno.serve(async (req) => {
                   const evalResult = evaluateStrategy(strategy, indicators, candlesUsed, currentPrice, botStartedAt)
                   rawSignalAction = evalResult.action === 'BUY' || evalResult.action === 'SELL' ? evalResult.action : 'NONE'
                   console.log(`[ENGINE] Standard eval → rawSignal=${rawSignalAction}`)
+                }
+
+                // For running candle flips, use the running candle's openTime for dedup
+                // This ensures we act immediately but don't re-enter on the same running candle
+                if (flipSource === 'running') {
+                  currentCandleTime = runningCandle.openTime
+                  console.log(`[ENGINE] Early entry mode: using running candle time ${currentCandleTime} for dedup`)
                 }
 
                 // ----- STEP 2: STARTUP LOGIC -----
