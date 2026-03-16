@@ -3421,11 +3421,24 @@ Deno.serve(async (req) => {
                 //   - Recovery mode: if we are stuck on the opposite side due a missed/blocked flip,
                 //     realign to the latest closed direction within a bounded lag window.
                 //   - Never deep-scan historical candles (prevents forced stale trades).
-                const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number; source: 'fresh' | 'catchup' | 'recovery' | 'none' } => {
+                const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number; source: 'running' | 'fresh' | 'catchup' | 'recovery' | 'none' } => {
                   const len = directionArr.length
-                  if (len < 3) return { flipped: false, direction: directionArr[Math.max(0, len - 2)] || 0, source: 'none' }
+                  if (len < 2) return { flipped: false, direction: directionArr[Math.max(0, len - 1)] || 0, source: 'none' }
 
+                  // ============ EARLY ENTRY: RUNNING CANDLE CHECK ============
+                  // Check the CURRENTLY FORMING candle (len-1) vs last CLOSED candle (len-2).
+                  // This gives fastest possible entry — within seconds of indicator flip.
+                  // Trade-off: running candle can reverse (repaint), but recovery mode
+                  // will auto-correct within 1 closed candle if that happens.
+                  const runningDir = directionArr[len - 1]
                   const lastClosedDir = directionArr[len - 2]
+                  if (runningDir !== lastClosedDir) {
+                    console.log(`[ENGINE] RUNNING candle flip: ${lastClosedDir} → ${runningDir} (early entry mode)`)
+                    return { flipped: true, direction: runningDir, source: 'running' }
+                  }
+
+                  if (len < 3) return { flipped: false, direction: lastClosedDir, source: 'none' }
+
                   const prevClosedDir = directionArr[len - 3]
 
                   // Fresh confirmed flip between the two most recent CLOSED candles
@@ -3434,8 +3447,7 @@ Deno.serve(async (req) => {
                     return { flipped: true, direction: lastClosedDir, source: 'fresh' }
                   }
 
-                  // One-candle catch-up only (if the flip happened one closed candle earlier
-                  // and we have not processed that candle yet).
+                  // One-candle catch-up only
                   if (len >= 4) {
                     const olderClosedDir = directionArr[len - 4]
                     const prevClosedCandleTime = candlesUsed[candlesUsed.length - 3]?.openTime || 0
@@ -3446,9 +3458,7 @@ Deno.serve(async (req) => {
                     }
                   }
 
-                  // Recovery: if position side is opposite to latest CLOSED indicator direction,
-                  // and we're lagging by at least 1 candle, force one corrective flip.
-                  // This prevents getting stuck on the wrong side after a missed/blocked candle.
+                  // Recovery: if position side is opposite to latest CLOSED indicator direction
                   const trackedPositionDir = positionSide === 'BUY' ? 1 : positionSide === 'SELL' ? -1 : 0
                   const lagCandles = candleDistance(lastProcessedCandleTime, currentCandleTime)
                   const maxRecoveryLagCandles = 48
