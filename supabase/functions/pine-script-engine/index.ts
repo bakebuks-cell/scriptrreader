@@ -3454,16 +3454,26 @@ Deno.serve(async (req) => {
                   const lastClosedDir = directionArr[len - 2]
 
                   // ============ EARLY ENTRY: RUNNING CANDLE CHECK ============
-                  // DISABLED for Heikin Ashi candles — HA running candles repaint heavily
-                  // and cause false signals that reverse within minutes, leading to
-                  // whipsaw losses. Only use CLOSED candles for HA signal detection.
-                  // For regular candles, early entry is safe since they don't repaint.
-                  if (!isHA && runningDir !== lastClosedDir) {
-                    console.log(`[ENGINE] RUNNING candle flip: ${lastClosedDir} → ${runningDir} (early entry mode — regular candles)`)
-                    return { flipped: true, direction: runningDir, source: 'running' }
-                  }
-                  if (isHA && runningDir !== lastClosedDir) {
-                    console.log(`[ENGINE] RUNNING candle flip IGNORED for Heikin Ashi (${lastClosedDir} → ${runningDir}) — waiting for candle close to confirm`)
+                  // For regular candles: always allow early entry (no repaint risk).
+                  // For Heikin Ashi: allow early entry ONLY when candle is >80% elapsed.
+                  // At >80% completion, HA values are nearly final and repaint risk is minimal.
+                  // This reduces delay from a full candle period (~15 min) to ~3 min.
+                  if (runningDir !== lastClosedDir) {
+                    if (!isHA) {
+                      console.log(`[ENGINE] RUNNING candle flip: ${lastClosedDir} → ${runningDir} (early entry mode — regular candles)`)
+                      return { flipped: true, direction: runningDir, source: 'running' }
+                    } else {
+                      // HA late-candle early entry: only if >80% of candle elapsed
+                      const nowMs = Date.now()
+                      const candleStartMs = runningCandle.openTime
+                      const candleElapsedPct = (nowMs - candleStartMs) / intervalMs
+                      if (candleElapsedPct >= 0.80) {
+                        console.log(`[ENGINE] RUNNING candle flip: ${lastClosedDir} → ${runningDir} (HA late-candle early entry — ${(candleElapsedPct * 100).toFixed(0)}% elapsed)`)
+                        return { flipped: true, direction: runningDir, source: 'running' }
+                      } else {
+                        console.log(`[ENGINE] RUNNING candle flip IGNORED for HA (${lastClosedDir} → ${runningDir}) — only ${(candleElapsedPct * 100).toFixed(0)}% elapsed, need ≥80%`)
+                      }
+                    }
                   }
 
                   if (len < 3) return { flipped: false, direction: lastClosedDir, source: 'none' }
