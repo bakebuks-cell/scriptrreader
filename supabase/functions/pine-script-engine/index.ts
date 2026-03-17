@@ -3489,7 +3489,8 @@ Deno.serve(async (req) => {
                     }
                   }
 
-                  // Recovery: if position side is opposite to latest CLOSED indicator direction
+                  // Recovery: only allow FORWARD realignment to a newer closed candle.
+                  // Never replay an older candle after we already processed a newer running candle.
                   const trackedPositionDir = positionSide === 'BUY' ? 1 : positionSide === 'SELL' ? -1 : 0
                   const lagCandles = candleDistance(lastProcessedCandleTime, currentCandleTime)
                   const maxRecoveryLagCandles = 48
@@ -3500,11 +3501,9 @@ Deno.serve(async (req) => {
                     return { flipped: true, direction: lastClosedDir, source: 'recovery' }
                   }
 
-                  // Re-entry recovery: if positionSide=NONE (no open trade) but indicator has a
-                  // clear direction AND we haven't processed the current candle yet, treat this as
-                  // a fresh entry. This handles the case where a rapid within-candle flip-back
-                  // left us flat (position closed) with no re-entry because dedup blocked it.
-                  const lagInReentryWindow = Number.isFinite(lagCandles) && lagCandles >= 0 && lagCandles <= maxRecoveryLagCandles
+                  // Re-entry recovery is ONLY for the current candle / immediate next evaluation.
+                  // This fixes ghost-flat state without allowing late punches from older candles.
+                  const lagInReentryWindow = Number.isFinite(lagCandles) && lagCandles >= 0 && lagCandles <= 1
                   if (trackedPositionDir === 0 && lastClosedDir !== 0 && lagInReentryWindow) {
                     console.log(`[ENGINE] RE-ENTRY recovery: positionSide=NONE, indicatorDir=${lastClosedDir}, lag=${lagCandles} candles — re-entering`)
                     return { flipped: true, direction: lastClosedDir, source: 'recovery' }
