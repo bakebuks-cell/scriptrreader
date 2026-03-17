@@ -3454,26 +3454,14 @@ Deno.serve(async (req) => {
                   const lastClosedDir = directionArr[len - 2]
 
                   // ============ EARLY ENTRY: RUNNING CANDLE CHECK ============
-                  // For regular candles: always allow early entry (no repaint risk).
-                  // For Heikin Ashi: allow early entry ONLY when candle is >80% elapsed.
-                  // At >80% completion, HA values are nearly final and repaint risk is minimal.
-                  // This reduces delay from a full candle period (~15 min) to ~3 min.
+                  // Treat HA and regular candles the same — execute as soon as the
+                  // running candle's indicator flips. UTBot's trailing stop already
+                  // provides stability; adding an HA time-gate only delays execution
+                  // because HA close values don't converge until very late in the candle.
                   if (runningDir !== lastClosedDir) {
-                    if (!isHA) {
-                      console.log(`[ENGINE] RUNNING candle flip: ${lastClosedDir} → ${runningDir} (early entry mode — regular candles)`)
-                      return { flipped: true, direction: runningDir, source: 'running' }
-                    } else {
-                      // HA late-candle early entry: only if >80% of candle elapsed
-                      const nowMs = Date.now()
-                      const candleStartMs = runningCandle.openTime
-                      const candleElapsedPct = (nowMs - candleStartMs) / intervalMs
-                      if (candleElapsedPct >= 0.80) {
-                        console.log(`[ENGINE] RUNNING candle flip: ${lastClosedDir} → ${runningDir} (HA late-candle early entry — ${(candleElapsedPct * 100).toFixed(0)}% elapsed)`)
-                        return { flipped: true, direction: runningDir, source: 'running' }
-                      } else {
-                        console.log(`[ENGINE] RUNNING candle flip IGNORED for HA (${lastClosedDir} → ${runningDir}) — only ${(candleElapsedPct * 100).toFixed(0)}% elapsed, need ≥80%`)
-                      }
-                    }
+                    const label = isHA ? 'HA' : 'regular'
+                    console.log(`[ENGINE] RUNNING candle flip: ${lastClosedDir} → ${runningDir} (early entry — ${label} candles)`)
+                    return { flipped: true, direction: runningDir, source: 'running' }
                   }
 
                   if (len < 3) return { flipped: false, direction: lastClosedDir, source: 'none' }
