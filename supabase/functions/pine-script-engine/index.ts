@@ -3414,10 +3414,14 @@ Deno.serve(async (req) => {
                 let currentCandleTime = lastClosedCandle.openTime
                 const intervalMs = getIntervalMs(timeframe)
 
-                // Helper: count candles between two openTimes
+                // Helper: count only FORWARD candle distance.
+                // If `to` is older than `from`, return -1 so recovery logic
+                // never replays a stale closed candle after a running-candle trade.
                 const candleDistance = (from: number, to: number): number => {
                   if (from === 0 || to === 0) return Infinity
-                  return Math.floor(Math.abs(to - from) / intervalMs)
+                  const delta = to - from
+                  if (delta < 0) return -1
+                  return Math.floor(delta / intervalMs)
                 }
 
                 // ----- STEP 1: EVALUATE SIGNAL -----
