@@ -3450,16 +3450,20 @@ Deno.serve(async (req) => {
                   const len = directionArr.length
                   if (len < 2) return { flipped: false, direction: directionArr[Math.max(0, len - 1)] || 0, source: 'none' }
 
-                  // ============ EARLY ENTRY: RUNNING CANDLE CHECK ============
-                  // Check the CURRENTLY FORMING candle (len-1) vs last CLOSED candle (len-2).
-                  // This gives fastest possible entry — within seconds of indicator flip.
-                  // Trade-off: running candle can reverse (repaint), but recovery mode
-                  // will auto-correct within 1 closed candle if that happens.
                   const runningDir = directionArr[len - 1]
                   const lastClosedDir = directionArr[len - 2]
-                  if (runningDir !== lastClosedDir) {
-                    console.log(`[ENGINE] RUNNING candle flip: ${lastClosedDir} → ${runningDir} (early entry mode)`)
+
+                  // ============ EARLY ENTRY: RUNNING CANDLE CHECK ============
+                  // DISABLED for Heikin Ashi candles — HA running candles repaint heavily
+                  // and cause false signals that reverse within minutes, leading to
+                  // whipsaw losses. Only use CLOSED candles for HA signal detection.
+                  // For regular candles, early entry is safe since they don't repaint.
+                  if (!isHA && runningDir !== lastClosedDir) {
+                    console.log(`[ENGINE] RUNNING candle flip: ${lastClosedDir} → ${runningDir} (early entry mode — regular candles)`)
                     return { flipped: true, direction: runningDir, source: 'running' }
+                  }
+                  if (isHA && runningDir !== lastClosedDir) {
+                    console.log(`[ENGINE] RUNNING candle flip IGNORED for Heikin Ashi (${lastClosedDir} → ${runningDir}) — waiting for candle close to confirm`)
                   }
 
                   if (len < 3) return { flipped: false, direction: lastClosedDir, source: 'none' }
