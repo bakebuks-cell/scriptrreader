@@ -3496,6 +3496,15 @@ Deno.serve(async (req) => {
                     return { flipped: true, direction: lastClosedDir, source: 'recovery' }
                   }
 
+                  // Re-entry recovery: if positionSide=NONE (no open trade) but indicator has a
+                  // clear direction AND we haven't processed the current candle yet, treat this as
+                  // a fresh entry. This handles the case where a rapid within-candle flip-back
+                  // left us flat (position closed) with no re-entry because dedup blocked it.
+                  if (trackedPositionDir === 0 && lastClosedDir !== 0 && lagInRecoveryWindow) {
+                    console.log(`[ENGINE] RE-ENTRY recovery: positionSide=NONE, indicatorDir=${lastClosedDir}, lag=${lagCandles} candles — re-entering`)
+                    return { flipped: true, direction: lastClosedDir, source: 'recovery' }
+                  }
+
                   return { flipped: false, direction: lastClosedDir, source: 'none' }
                 }
 
@@ -4138,8 +4147,11 @@ Deno.serve(async (req) => {
                 )
 
                 // ----- UPDATE STATE -----
+                // ALWAYS advance lastProcessedCandleTime to prevent infinite retry loops
+                // (e.g. when bot is disabled, execution fails, etc.)
+                lastProcessedCandleTime = currentCandleTime
+
                 if (execResult.success) {
-                  lastProcessedCandleTime = currentCandleTime
                   entryCandleTime = currentCandleTime
                   positionSide = rawSignalAction
                   console.log(`[SCHEDULER] State updated: positionSide=${positionSide}, entryCandle=${entryCandleTime}`)
@@ -4157,6 +4169,8 @@ Deno.serve(async (req) => {
                       updated_at: schedulerNow.toISOString(),
                     }).eq('user_id', us.user_id).eq('script_id', us.script_id).eq('symbol', symbol).eq('timeframe', timeframe)
                   } catch (_) {}
+                } else {
+                  console.log(`[SCHEDULER] Execution failed but advancing lastProcessedCandleTime to ${currentCandleTime} to prevent retry spam`)
                 }
 
                 // Persist state to settings_json
