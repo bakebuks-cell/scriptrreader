@@ -4147,8 +4147,11 @@ Deno.serve(async (req) => {
                 )
 
                 // ----- UPDATE STATE -----
+                // ALWAYS advance lastProcessedCandleTime to prevent infinite retry loops
+                // (e.g. when bot is disabled, execution fails, etc.)
+                lastProcessedCandleTime = currentCandleTime
+
                 if (execResult.success) {
-                  lastProcessedCandleTime = currentCandleTime
                   entryCandleTime = currentCandleTime
                   positionSide = rawSignalAction
                   console.log(`[SCHEDULER] State updated: positionSide=${positionSide}, entryCandle=${entryCandleTime}`)
@@ -4166,6 +4169,8 @@ Deno.serve(async (req) => {
                       updated_at: schedulerNow.toISOString(),
                     }).eq('user_id', us.user_id).eq('script_id', us.script_id).eq('symbol', symbol).eq('timeframe', timeframe)
                   } catch (_) {}
+                } else {
+                  console.log(`[SCHEDULER] Execution failed but advancing lastProcessedCandleTime to ${currentCandleTime} to prevent retry spam`)
                 }
 
                 // Persist state to settings_json
