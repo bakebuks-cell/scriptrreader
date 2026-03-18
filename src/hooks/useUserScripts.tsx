@@ -2,6 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
+const ensureAssignmentSettings = (settings?: Record<string, any> | null) => ({
+  ...(settings || {}),
+  webhook_secret: settings?.webhook_secret || crypto.randomUUID(),
+});
+
 export interface UserScript {
   id: string;
   user_id: string;
@@ -57,9 +62,18 @@ export function useAdminUserScripts() {
 
   const assignScript = useMutation({
     mutationFn: async ({ userId, scriptId }: { userId: string; scriptId: string }) => {
+      const existingAssignment = allUserScripts?.find(
+        (assignment) => assignment.user_id === userId && assignment.script_id === scriptId
+      );
+
       const { error } = await supabase
         .from('user_scripts')
-        .upsert({ user_id: userId, script_id: scriptId, is_active: true });
+        .upsert({
+          user_id: userId,
+          script_id: scriptId,
+          is_active: true,
+          settings_json: ensureAssignmentSettings((existingAssignment as any)?.settings_json || {}),
+        });
 
       if (error) throw error;
     },
