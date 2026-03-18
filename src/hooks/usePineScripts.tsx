@@ -273,7 +273,7 @@ export function usePineScripts() {
       if (tradeMechanism !== undefined) {
         const existingRecord = userScriptRecords?.find(us => us.script_id === id);
         if (existingRecord) {
-          const mergedSettings = { ...((existingRecord as any).settings_json || {}), trade_mechanism: tradeMechanism };
+          const mergedSettings = ensureAssignmentSettings({ ...((existingRecord as any).settings_json || {}), trade_mechanism: tradeMechanism });
           const { error: updateErr } = await supabase
             .from('user_scripts')
             .update({ settings_json: mergedSettings, is_active: persistedScript.is_active })
@@ -287,7 +287,7 @@ export function usePineScripts() {
           // Create user_scripts record to store settings, mirroring actual script activation state
           const { error: insertErr } = await supabase
             .from('user_scripts')
-            .insert({ user_id: user.id, script_id: id, is_active: persistedScript.is_active, settings_json: { trade_mechanism: tradeMechanism } });
+            .insert({ user_id: user.id, script_id: id, is_active: persistedScript.is_active, settings_json: ensureAssignmentSettings({ trade_mechanism: tradeMechanism }) });
           if (insertErr) {
             console.error('[SAVE] Failed to insert trade_mechanism in user_scripts:', insertErr);
           } else {
