@@ -385,14 +385,14 @@ export function usePineScripts() {
           // Update existing record
           const { error } = await supabase
             .from('user_scripts')
-            .update({ is_active })
+            .update({ is_active, settings_json: ensureAssignmentSettings((existingRecord as any).settings_json || {}) })
             .eq('id', existingRecord.id);
           if (error) throw error;
         } else {
           // Create new record
           const { error } = await supabase
             .from('user_scripts')
-            .insert({ user_id: user.id, script_id: id, is_active });
+            .insert({ user_id: user.id, script_id: id, is_active, settings_json: ensureAssignmentSettings({}) });
           if (error) throw error;
         }
         return { id, is_active };
