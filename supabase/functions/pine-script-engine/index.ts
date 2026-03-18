@@ -1661,7 +1661,7 @@ async function syncOpenTradeWithExchange(
 
     if (!apiKeys) {
       console.log(`[SYNC] No API keys for user ${trade.user_id}, cannot verify position`)
-      return { stillOpen: true } // assume still open if can't check
+      return { stillOpen: true, missCount, tradeId: trackedTradeId, firstMissTime } // assume still open if can't check
     }
 
     const effectiveType = isFuturesOnlySymbol(trade.symbol) ? 'usdt_futures' : marketType

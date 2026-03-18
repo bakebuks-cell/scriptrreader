@@ -2,6 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
+const ensureAssignmentSettings = (settings?: Record<string, any> | null) => ({
+  ...(settings || {}),
+  webhook_secret: settings?.webhook_secret || crypto.randomUUID(),
+});
+
 export interface PineScript {
   id: string;
   name: string;
