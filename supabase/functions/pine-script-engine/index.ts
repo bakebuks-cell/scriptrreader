@@ -3102,10 +3102,11 @@ Deno.serve(async (req) => {
         }
 
         const assignment = (assignmentRows || []).find((row: any) => {
+          const rowScript = Array.isArray(row.script) ? row.script[0] : row.script
           const settings = row.settings_json || {}
           return row.is_active === true &&
-            row.script?.is_active === true &&
-            row.script?.webhook_secret === scriptSecret &&
+            rowScript?.is_active === true &&
+            rowScript?.webhook_secret === scriptSecret &&
             settings.webhook_secret === assignmentSecret
         })
 
@@ -3116,18 +3117,26 @@ Deno.serve(async (req) => {
           )
         }
 
-        const signalType = String(body.signal_type || body.action || '').toUpperCase()
-        const timeframe = normalizeTimeframe(body.timeframe || body.interval) || assignment.script.allowed_timeframes?.[0] || '1h'
+        const assignmentScript = Array.isArray(assignment.script) ? assignment.script[0] : assignment.script
+        if (!assignmentScript) {
+          return new Response(
+            JSON.stringify({ error: 'Assignment script not found' }),
+            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
 
-        if (Array.isArray(assignment.script.allowed_timeframes) && assignment.script.allowed_timeframes.length > 0 && !assignment.script.allowed_timeframes.includes(timeframe)) {
+        const signalType = String(body.signal_type || body.action || '').toUpperCase()
+        const timeframe = normalizeTimeframe(body.timeframe || body.interval) || assignmentScript.allowed_timeframes?.[0] || '1h'
+
+        if (Array.isArray(assignmentScript.allowed_timeframes) && assignmentScript.allowed_timeframes.length > 0 && !assignmentScript.allowed_timeframes.includes(timeframe)) {
           return new Response(
             JSON.stringify({ error: `Timeframe ${timeframe} is not allowed for this script` }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }
 
-        const normalizedSymbol = normalizeTradingViewSymbol(body.symbol || assignment.script.symbol)
-        const allowedSymbols = getAssignmentSymbols(assignment)
+        const normalizedSymbol = normalizeTradingViewSymbol(body.symbol || assignmentScript.symbol)
+        const allowedSymbols = getAssignmentSymbols({ ...assignment, script: assignmentScript })
         const matchedSymbol = allowedSymbols.find((value) => value === normalizedSymbol)
 
         if (!matchedSymbol) {
@@ -3148,11 +3157,11 @@ Deno.serve(async (req) => {
           )
         }
 
-        const rawMarketType = settings.market_type || assignment.script.market_type || 'futures'
+        const rawMarketType = settings.market_type || assignmentScript.market_type || 'futures'
         const scriptMarketType = isFuturesOnlySymbol(matchedSymbol) ? 'usdt_futures' : rawMarketType
-        const scriptLeverage = settings.leverage || assignment.script.leverage || 1
-        const scriptPositionSizeType = settings.position_size_type || assignment.script.position_size_type || 'fixed'
-        const scriptPositionSizeValue = settings.position_size_value ?? assignment.script.position_size_value ?? 0
+        const scriptLeverage = settings.leverage || assignmentScript.leverage || 1
+        const scriptPositionSizeType = settings.position_size_type || assignmentScript.position_size_type || 'fixed'
+        const scriptPositionSizeValue = settings.position_size_value ?? assignmentScript.position_size_value ?? 0
         const currentPrice = getNumericValue(body.price) ?? await getCurrentPrice(matchedSymbol)
         const stopLoss = getNumericValue(body.stop_loss ?? body.stopLoss)
         const takeProfit = getNumericValue(body.take_profit ?? body.takeProfit)
