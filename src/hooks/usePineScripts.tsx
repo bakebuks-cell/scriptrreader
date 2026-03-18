@@ -218,7 +218,7 @@ export function usePineScripts() {
         const existingRecord = userScriptRecords?.find(us => us.script_id === id);
         if (existingRecord) {
           // Merge with existing settings
-          const mergedSettings = { ...((existingRecord as any).settings_json || {}), ...userSettings };
+          const mergedSettings = ensureAssignmentSettings({ ...((existingRecord as any).settings_json || {}), ...userSettings });
           const { error } = await supabase
             .from('user_scripts')
             .update({ settings_json: mergedSettings })
@@ -228,7 +228,7 @@ export function usePineScripts() {
           // Create user_scripts record with settings
           const { error } = await supabase
             .from('user_scripts')
-            .insert({ user_id: user.id, script_id: id, is_active: false, settings_json: userSettings });
+            .insert({ user_id: user.id, script_id: id, is_active: false, settings_json: ensureAssignmentSettings(userSettings) });
           if (error) throw new Error(error.message);
         }
         return { ...script, ...userSettings } as PineScript;
