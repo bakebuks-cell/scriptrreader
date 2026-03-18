@@ -2873,6 +2873,100 @@ Deno.serve(async (req) => {
     
     const url = new URL(req.url)
     const action = url.searchParams.get('action') || 'evaluate'
+
+    const normalizeTradingViewSymbol = (rawValue: unknown): string => {
+      if (typeof rawValue !== 'string') return ''
+      return rawValue
+        .trim()
+        .toUpperCase()
+        .split(':')
+        .pop()!
+        .replace(/\.P$/i, '')
+        .replace(/\.PERP$/i, '')
+        .replace(/PERP$/i, '')
+        .replace(/[\/_\-]/g, '')
+    }
+
+    const normalizeTimeframe = (rawValue: unknown): string | null => {
+      if (typeof rawValue !== 'string') return null
+      const trimmed = rawValue.trim()
+      if (!trimmed) return null
+      const value = trimmed.toLowerCase()
+      const map: Record<string, string> = {
+        '1': '1m',
+        '3': '3m',
+        '5': '5m',
+        '15': '15m',
+        '30': '30m',
+        '60': '1h',
+        '120': '2h',
+        '240': '4h',
+        '360': '6h',
+        '480': '8h',
+        '720': '12h',
+        'd': '1d',
+        '1d': '1d',
+        'w': '1w',
+        '1w': '1w',
+      }
+      return map[value] || trimmed
+    }
+
+    const parseTimestampMs = (rawValue: unknown): number | null => {
+      if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+        return rawValue > 1_000_000_000_000 ? rawValue : rawValue * 1000
+      }
+      if (typeof rawValue === 'string' && rawValue.trim()) {
+        const asNumber = Number(rawValue)
+        if (Number.isFinite(asNumber)) {
+          return asNumber > 1_000_000_000_000 ? asNumber : asNumber * 1000
+        }
+        const parsed = Date.parse(rawValue)
+        return Number.isNaN(parsed) ? null : parsed
+      }
+      return null
+    }
+
+    const getNumericValue = (rawValue: unknown): number | undefined => {
+      if (rawValue === null || rawValue === undefined || rawValue === '') return undefined
+      const parsed = Number(rawValue)
+      return Number.isFinite(parsed) ? parsed : undefined
+    }
+
+    const buildWebhookCandleTime = (payload: Record<string, any>, timeframe: string): number => {
+      const explicitTimestamp = parseTimestampMs(
+        payload.bar_close_time ?? payload.candle_timestamp ?? payload.time ?? payload.timestamp
+      )
+      if (explicitTimestamp) {
+        const intervalMs = getIntervalMs(timeframe)
+        return Math.floor(explicitTimestamp / intervalMs) * intervalMs
+      }
+      const intervalMs = getIntervalMs(timeframe)
+      return Math.floor(Date.now() / intervalMs) * intervalMs
+    }
+
+    const buildWebhookDedupKey = (
+      payload: Record<string, any>,
+      symbol: string,
+      timeframe: string,
+      signalType: string,
+      candleTime: number,
+    ): string => {
+      const rawKey = payload.signal_id ?? payload.bar_close_time ?? payload.candle_timestamp ?? payload.time ?? candleTime
+      return `${signalType}:${symbol}:${timeframe}:${String(rawKey)}`
+    }
+
+    const getAssignmentSymbols = (assignment: any): string[] => {
+      const settings = assignment?.settings_json || {}
+      const configuredPairs = Array.isArray(settings.trading_pairs)
+        ? settings.trading_pairs
+        : Array.isArray(assignment?.script?.trading_pairs)
+          ? assignment.script.trading_pairs
+          : [assignment?.script?.symbol]
+      return configuredPairs
+        .filter(Boolean)
+        .map((value: string) => normalizeTradingViewSymbol(value))
+    }
     
     console.log(`[ENGINE] Action: ${action}`)
     
@@ -2915,6 +3009,297 @@ Deno.serve(async (req) => {
             },
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      case 'tradingview-webhook': {
+        if (req.method !== 'POST') {
+          return new Response(
+            JSON.stringify({ error: 'Method not allowed' }),
+            { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const body = await req.json().catch(() => null)
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid JSON body' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const scriptId = typeof body.script_id === 'string' ? body.script_id : null
+        const userScriptId = typeof body.user_script_id === 'string'
+          ? body.user_script_id
+          : (typeof body.assignment_id === 'string' ? body.assignment_id : null)
+        const userId = typeof body.user_id === 'string' ? body.user_id : null
+        const scriptSecret = req.headers.get('x-script-secret') || body.script_secret || body.webhook_secret
+        const assignmentSecret = req.headers.get('x-assignment-secret') || body.assignment_secret || body.user_secret
+
+        if (!scriptId && !userScriptId) {
+          return new Response(
+            JSON.stringify({ error: 'Missing script_id or user_script_id' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        if (!scriptSecret || !assignmentSecret) {
+          return new Response(
+            JSON.stringify({ error: 'Missing script secret or assignment secret' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const validation = validateSignalPayload(body)
+        if (!validation.valid) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid webhook payload', validation }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        let assignmentQuery = supabase
+          .from('user_scripts')
+          .select(`
+            id,
+            script_id,
+            user_id,
+            is_active,
+            settings_json,
+            script:pine_scripts (
+              id,
+              name,
+              symbol,
+              is_active,
+              allowed_timeframes,
+              market_type,
+              leverage,
+              position_size_type,
+              position_size_value,
+              validation_status,
+              webhook_secret,
+              trading_pairs
+            )
+          `)
+
+        if (userScriptId) {
+          assignmentQuery = assignmentQuery.eq('id', userScriptId)
+        } else if (scriptId) {
+          assignmentQuery = assignmentQuery.eq('script_id', scriptId)
+        }
+
+        if (userId) {
+          assignmentQuery = assignmentQuery.eq('user_id', userId)
+        }
+
+        const { data: assignmentRows, error: assignmentError } = await assignmentQuery
+
+        if (assignmentError) {
+          return new Response(
+            JSON.stringify({ error: assignmentError.message }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const assignment = (assignmentRows || []).find((row: any) => {
+          const settings = row.settings_json || {}
+          return row.is_active === true &&
+            row.script?.is_active === true &&
+            row.script?.webhook_secret === scriptSecret &&
+            settings.webhook_secret === assignmentSecret
+        })
+
+        if (!assignment) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid script secret, assignment secret, or inactive assignment' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const signalType = String(body.signal_type || body.action || '').toUpperCase()
+        const timeframe = normalizeTimeframe(body.timeframe || body.interval) || assignment.script.allowed_timeframes?.[0] || '1h'
+
+        if (Array.isArray(assignment.script.allowed_timeframes) && assignment.script.allowed_timeframes.length > 0 && !assignment.script.allowed_timeframes.includes(timeframe)) {
+          return new Response(
+            JSON.stringify({ error: `Timeframe ${timeframe} is not allowed for this script` }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const normalizedSymbol = normalizeTradingViewSymbol(body.symbol || assignment.script.symbol)
+        const allowedSymbols = getAssignmentSymbols(assignment)
+        const matchedSymbol = allowedSymbols.find((value) => value === normalizedSymbol)
+
+        if (!matchedSymbol) {
+          return new Response(
+            JSON.stringify({ error: `Symbol ${normalizedSymbol || 'UNKNOWN'} is not assigned to this script` }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const settings = assignment.settings_json || {}
+        const candleTime = buildWebhookCandleTime(body, timeframe)
+        const dedupKey = buildWebhookDedupKey(body, matchedSymbol, timeframe, signalType, candleTime)
+
+        if (settings.lastWebhookDedupKey === dedupKey) {
+          return new Response(
+            JSON.stringify({ success: true, deduped: true, reason: 'Duplicate webhook ignored' }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const rawMarketType = settings.market_type || assignment.script.market_type || 'futures'
+        const scriptMarketType = isFuturesOnlySymbol(matchedSymbol) ? 'usdt_futures' : rawMarketType
+        const scriptLeverage = settings.leverage || assignment.script.leverage || 1
+        const scriptPositionSizeType = settings.position_size_type || assignment.script.position_size_type || 'fixed'
+        const scriptPositionSizeValue = settings.position_size_value ?? assignment.script.position_size_value ?? 0
+        const currentPrice = getNumericValue(body.price) ?? await getCurrentPrice(matchedSymbol)
+        const stopLoss = getNumericValue(body.stop_loss ?? body.stopLoss)
+        const takeProfit = getNumericValue(body.take_profit ?? body.takeProfit)
+
+        const { data: liveOpenTrades } = await supabase
+          .from('trades')
+          .select('id, user_id, script_id, symbol, signal_type, entry_price, quantity, created_at')
+          .eq('user_id', assignment.user_id)
+          .eq('symbol', matchedSymbol)
+          .in('status', ['OPEN', 'PENDING'])
+          .order('created_at', { ascending: false })
+
+        const currentPosition = liveOpenTrades && liveOpenTrades.length > 0 ? liveOpenTrades[0] : null
+        const currentPositionSide: 'LONG' | 'SHORT' | 'NONE' = currentPosition
+          ? (currentPosition.signal_type === 'BUY' ? 'LONG' : 'SHORT')
+          : 'NONE'
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('strategy_opposite_policy')
+          .eq('user_id', assignment.user_id)
+          .maybeSingle()
+
+        const effectiveMode: TradeMode = validation.detectedMode || 'plain'
+        const oppositePolicy: StrategyOppositePolicy = profile?.strategy_opposite_policy === 'flip' ? 'flip' : 'reject'
+        const simulation = simulateSignalDecision(signalType, currentPositionSide, effectiveMode, oppositePolicy, currentPrice)
+
+        if (!simulation.wouldExecute) {
+          await supabase
+            .from('user_scripts')
+            .update({
+              settings_json: {
+                ...settings,
+                lastWebhookDedupKey: dedupKey,
+                lastProcessedCandleTime: candleTime,
+              },
+            })
+            .eq('id', assignment.id)
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              executed: false,
+              deduped: false,
+              decision: simulation.decision,
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        let closeResult: { success: boolean; error?: string } | null = null
+        const isExitOnly = signalType === 'BUY_EXIT' || signalType === 'SELL_EXIT'
+        const openingAction: 'BUY' | 'SELL' = signalType.startsWith('BUY') ? 'BUY' : 'SELL'
+
+        if (currentPosition) {
+          closeResult = await closeOpenTrade(
+            supabase,
+            currentPosition,
+            currentPrice,
+            scriptMarketType,
+            `TradingView webhook: ${signalType}`,
+          )
+
+          if (!closeResult.success) {
+            return new Response(
+              JSON.stringify({ error: closeResult.error || 'Failed to close current position before webhook execution' }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+        }
+
+        if (isExitOnly) {
+          await supabase
+            .from('user_scripts')
+            .update({
+              settings_json: {
+                ...settings,
+                lastWebhookDedupKey: dedupKey,
+                lastProcessedCandleTime: candleTime,
+                entryCandleTime: 0,
+                positionSide: 'NONE',
+              },
+            })
+            .eq('id', assignment.id)
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              executed: true,
+              action: signalType,
+              closedOnly: true,
+              symbol: matchedSymbol,
+              timeframe,
+              decision: simulation.decision,
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const farTakeProfit = openingAction === 'BUY' ? currentPrice * 1.10 : currentPrice * 0.90
+        const finalSignal: TradeSignal = {
+          action: openingAction,
+          price: currentPrice,
+          stopLoss,
+          takeProfit: takeProfit ?? farTakeProfit,
+          reason: `TradingView webhook: ${signalType}`,
+        }
+
+        const execResult = await executeTrade(
+          supabase,
+          assignment.user_id,
+          assignment.script_id,
+          finalSignal,
+          matchedSymbol,
+          timeframe,
+          scriptMarketType,
+          scriptLeverage,
+          scriptPositionSizeType,
+          scriptPositionSizeValue,
+        )
+
+        await supabase
+          .from('user_scripts')
+          .update({
+            settings_json: {
+              ...settings,
+              lastWebhookDedupKey: dedupKey,
+              lastProcessedCandleTime: candleTime,
+              entryCandleTime: execResult.success ? candleTime : (settings.entryCandleTime || 0),
+              positionSide: execResult.success ? openingAction : (settings.positionSide || 'NONE'),
+            },
+          })
+          .eq('id', assignment.id)
+
+        return new Response(
+          JSON.stringify({
+            success: execResult.success,
+            executed: execResult.success,
+            action: signalType,
+            symbol: matchedSymbol,
+            timeframe,
+            tradeId: execResult.tradeId,
+            error: execResult.error,
+            decision: simulation.decision,
+            closedBeforeOpen: !!closeResult,
+          }),
+          { status: execResult.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
       
