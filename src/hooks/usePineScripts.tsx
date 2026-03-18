@@ -2,6 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
+const ensureAssignmentSettings = (settings?: Record<string, any> | null) => ({
+  ...(settings || {}),
+  webhook_secret: settings?.webhook_secret || crypto.randomUUID(),
+});
+
 export interface PineScript {
   id: string;
   name: string;
@@ -213,7 +218,7 @@ export function usePineScripts() {
         const existingRecord = userScriptRecords?.find(us => us.script_id === id);
         if (existingRecord) {
           // Merge with existing settings
-          const mergedSettings = { ...((existingRecord as any).settings_json || {}), ...userSettings };
+          const mergedSettings = ensureAssignmentSettings({ ...((existingRecord as any).settings_json || {}), ...userSettings });
           const { error } = await supabase
             .from('user_scripts')
             .update({ settings_json: mergedSettings })
@@ -223,7 +228,7 @@ export function usePineScripts() {
           // Create user_scripts record with settings
           const { error } = await supabase
             .from('user_scripts')
-            .insert({ user_id: user.id, script_id: id, is_active: false, settings_json: userSettings });
+            .insert({ user_id: user.id, script_id: id, is_active: false, settings_json: ensureAssignmentSettings(userSettings) });
           if (error) throw new Error(error.message);
         }
         return { ...script, ...userSettings } as PineScript;
@@ -268,7 +273,7 @@ export function usePineScripts() {
       if (tradeMechanism !== undefined) {
         const existingRecord = userScriptRecords?.find(us => us.script_id === id);
         if (existingRecord) {
-          const mergedSettings = { ...((existingRecord as any).settings_json || {}), trade_mechanism: tradeMechanism };
+          const mergedSettings = ensureAssignmentSettings({ ...((existingRecord as any).settings_json || {}), trade_mechanism: tradeMechanism });
           const { error: updateErr } = await supabase
             .from('user_scripts')
             .update({ settings_json: mergedSettings, is_active: persistedScript.is_active })
@@ -282,7 +287,7 @@ export function usePineScripts() {
           // Create user_scripts record to store settings, mirroring actual script activation state
           const { error: insertErr } = await supabase
             .from('user_scripts')
-            .insert({ user_id: user.id, script_id: id, is_active: persistedScript.is_active, settings_json: { trade_mechanism: tradeMechanism } });
+            .insert({ user_id: user.id, script_id: id, is_active: persistedScript.is_active, settings_json: ensureAssignmentSettings({ trade_mechanism: tradeMechanism }) });
           if (insertErr) {
             console.error('[SAVE] Failed to insert trade_mechanism in user_scripts:', insertErr);
           } else {
@@ -380,14 +385,14 @@ export function usePineScripts() {
           // Update existing record
           const { error } = await supabase
             .from('user_scripts')
-            .update({ is_active })
+            .update({ is_active, settings_json: ensureAssignmentSettings((existingRecord as any).settings_json || {}) })
             .eq('id', existingRecord.id);
           if (error) throw error;
         } else {
           // Create new record
           const { error } = await supabase
             .from('user_scripts')
-            .insert({ user_id: user.id, script_id: id, is_active });
+            .insert({ user_id: user.id, script_id: id, is_active, settings_json: ensureAssignmentSettings({}) });
           if (error) throw error;
         }
         return { id, is_active };
@@ -411,13 +416,13 @@ export function usePineScripts() {
       if (existingRecord) {
         const { error: userScriptUpdateError } = await supabase
           .from('user_scripts')
-          .update({ is_active })
+          .update({ is_active, settings_json: ensureAssignmentSettings((existingRecord as any).settings_json || {}) })
           .eq('id', existingRecord.id);
         if (userScriptUpdateError) throw userScriptUpdateError;
       } else {
         const { error: userScriptInsertError } = await supabase
           .from('user_scripts')
-          .insert({ user_id: user.id, script_id: id, is_active, settings_json: {} });
+          .insert({ user_id: user.id, script_id: id, is_active, settings_json: ensureAssignmentSettings({}) });
         if (userScriptInsertError) throw userScriptInsertError;
       }
 
