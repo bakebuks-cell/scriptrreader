@@ -227,6 +227,7 @@ export default function PineScriptEditor({
       script_content: DEFAULT_PINE_SCRIPT,
       allowed_timeframes: ['1m'],
       is_active: false,
+      timezone: '',
     });
     setBotConfig(DEFAULT_BOT_CONFIG);
     setSelectedScript(null);
