@@ -122,6 +122,95 @@ interface UserScript {
 }
 
 // ============================================
+// TIMEZONE HELPERS
+// ============================================
+
+// All known timezone UTC offsets in minutes. DST is approximated with fixed offsets.
+// For production accuracy, this covers the most common trading timezones.
+const TIMEZONE_OFFSETS: Record<string, number> = {
+  'UTC': 0,
+  'Asia/Dubai': 240,        // UTC+4
+  'Asia/Kolkata': 330,       // UTC+5:30
+  'Asia/Tokyo': 540,         // UTC+9
+  'Asia/Shanghai': 480,      // UTC+8
+  'Asia/Hong_Kong': 480,     // UTC+8
+  'Asia/Singapore': 480,     // UTC+8
+  'Asia/Seoul': 540,         // UTC+9
+  'Asia/Bangkok': 420,       // UTC+7
+  'Asia/Karachi': 300,       // UTC+5
+  'Asia/Dhaka': 360,         // UTC+6
+  'Asia/Jakarta': 420,       // UTC+7
+  'Asia/Riyadh': 180,        // UTC+3
+  'Asia/Tehran': 210,        // UTC+3:30
+  'Europe/London': 0,        // UTC+0 (ignoring DST)
+  'Europe/Berlin': 60,       // UTC+1
+  'Europe/Paris': 60,        // UTC+1
+  'Europe/Moscow': 180,      // UTC+3
+  'Europe/Istanbul': 180,    // UTC+3
+  'Europe/Zurich': 60,       // UTC+1
+  'Europe/Amsterdam': 60,    // UTC+1
+  'America/New_York': -300,  // UTC-5
+  'America/Chicago': -360,   // UTC-6
+  'America/Denver': -420,    // UTC-7
+  'America/Los_Angeles': -480, // UTC-8
+  'America/Toronto': -300,   // UTC-5
+  'America/Sao_Paulo': -180, // UTC-3
+  'America/Argentina/Buenos_Aires': -180, // UTC-3
+  'America/Mexico_City': -360, // UTC-6
+  'Pacific/Auckland': 720,   // UTC+12
+  'Australia/Sydney': 600,   // UTC+10
+  'Australia/Melbourne': 600, // UTC+10
+  'Africa/Cairo': 120,       // UTC+2
+  'Africa/Johannesburg': 120, // UTC+2
+  'Africa/Lagos': 60,        // UTC+1
+}
+
+/**
+ * Get UTC offset in milliseconds for a timezone string.
+ * Returns 0 (UTC) for unknown timezones.
+ */
+function getTimezoneOffsetMs(timezone: string): number {
+  const offsetMinutes = TIMEZONE_OFFSETS[timezone]
+  if (offsetMinutes === undefined) {
+    console.log(`[TIMEZONE] Unknown timezone "${timezone}" — defaulting to UTC`)
+    return 0
+  }
+  return offsetMinutes * 60 * 1000
+}
+
+/**
+ * Get the start-of-day timestamp adjusted for the user's timezone.
+ * E.g. for Dubai (UTC+4), "today" starts at 20:00 UTC of the previous day.
+ */
+function getTimezoneTodayStart(timezone: string): Date {
+  const offsetMs = getTimezoneOffsetMs(timezone)
+  const now = new Date()
+  // Convert current UTC time to the user's local time
+  const localMs = now.getTime() + offsetMs
+  // Floor to start of day in local time
+  const localDayStart = new Date(Math.floor(localMs / 86400000) * 86400000)
+  // Convert back to UTC
+  return new Date(localDayStart.getTime() - offsetMs)
+}
+
+/**
+ * Get the candle boundary start time adjusted for timezone (for daily+ timeframes).
+ * For sub-daily timeframes, candle boundaries are UTC-epoch-based and timezone doesn't change them.
+ * For daily timeframes, the "day" starts at midnight in the user's timezone.
+ */
+function getTimezoneCandleStart(timezone: string, timeframe: string, intervalMs: number): Date {
+  const isDailyOrHigher = timeframe === '1d' || timeframe === '1w' || timeframe === '1M'
+  
+  if (isDailyOrHigher) {
+    // Use timezone-aware day boundary
+    return getTimezoneTodayStart(timezone)
+  }
+  
+  // Sub-daily: candle boundaries are based on UTC epoch (same as Binance)
+  return new Date(Math.floor(Date.now() / intervalMs) * intervalMs)
+}
+
+// ============================================
 // ENGINE LOGGING HELPER
 // ============================================
 
