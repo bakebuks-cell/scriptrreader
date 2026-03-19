@@ -258,6 +258,10 @@ export default function PineScriptEditor({
       toast({ title: 'Error', description: `Maximum ${MAX_SYMBOLS_PER_SCRIPT} symbols allowed`, variant: 'destructive' });
       return;
     }
+    if (!formData.timezone) {
+      toast({ title: 'Error', description: 'Timezone selection is required', variant: 'destructive' });
+      return;
+    }
 
     const fullData = {
       name: formData.name,
@@ -266,6 +270,7 @@ export default function PineScriptEditor({
       script_content: formData.script_content,
       allowed_timeframes: formData.allowed_timeframes,
       is_active: formData.is_active,
+      timezone: formData.timezone,
       ...botConfig,
       trading_pairs: formData.symbols,
       multi_pair_mode: formData.symbols.length > 1,
