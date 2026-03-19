@@ -3464,7 +3464,8 @@ Deno.serve(async (req) => {
               trading_pairs,
               multi_pair_mode,
               created_by,
-              admin_tag
+              admin_tag,
+              timezone
             )
           `)
         
