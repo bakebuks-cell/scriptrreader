@@ -3781,7 +3781,9 @@ Deno.serve(async (req) => {
                 const isHA = resolvedSource === 'heikin_ashi'
                 const indicators = isHA ? haIndicators! : regularIndicators!
                 const candlesUsed = isHA ? haOhlcv! : ohlcv!
-                console.log(`[SCHEDULER] Evaluating "${us.script.name}" user=${us.user_id} (${isHA ? 'HA' : 'Regular'}, price=${currentPrice}, fresh=${dataFreshlyFetched})`)
+                const scriptTimezone = us.script.timezone || 'UTC'
+                const tzOffsetMs = getTimezoneOffsetMs(scriptTimezone)
+                console.log(`[SCHEDULER] Evaluating "${us.script.name}" user=${us.user_id} (${isHA ? 'HA' : 'Regular'}, price=${currentPrice}, fresh=${dataFreshlyFetched}, tz=${scriptTimezone}, offset=${tzOffsetMs/60000}min)`)
                 // strategy is parsed inside the decision engine below
                 // Force USDT-M futures for futures-only symbols (XAU, XAG)
                 const rawMarketType = us.script.market_type || 'futures'
