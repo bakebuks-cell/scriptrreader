@@ -3417,6 +3417,8 @@ Deno.serve(async (req) => {
             error: execResult.error,
             decision: simulation.decision,
             closedBeforeOpen: !!closeResult,
+            executionMode: 'timezone_primary_webhook_secondary',
+            scriptTimezone: assignmentScript.timezone || 'UTC',
           }),
           { status: execResult.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
