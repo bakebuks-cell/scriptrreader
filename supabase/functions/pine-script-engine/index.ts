@@ -4189,6 +4189,13 @@ Deno.serve(async (req) => {
 
                 // ----- STEP 4: SIGNAL = NONE → nothing to do -----
                 if (rawSignalAction === 'NONE') {
+                  // When positionSide is NONE and signal is NONE, advance lastProcessedCandleTime
+                  // to prevent the gap from growing indefinitely (which would block RE-ENTRY recovery
+                  // if the indicator later flips while we have no position).
+                  if (positionSide === 'NONE' && currentCandleTime > lastProcessedCandleTime) {
+                    console.log(`[ENGINE] No signal + no position: advancing lastProcessedCandleTime ${lastProcessedCandleTime} → ${currentCandleTime}`)
+                    lastProcessedCandleTime = currentCandleTime
+                  }
                   results.push({
                     scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                     symbol, timeframe, executed: false,
