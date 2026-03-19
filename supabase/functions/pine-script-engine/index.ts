@@ -4386,8 +4386,8 @@ Deno.serve(async (req) => {
 
                 const dailyTarget = parseFloat(userProfile?.daily_profit_target || '0')
                 if (dailyTarget > 0) {
-                  const todayStart = new Date()
-                  todayStart.setUTCHours(0, 0, 0, 0)
+                  // Use script timezone for "today" calculation
+                  const todayStart = getTimezoneTodayStart(scriptTimezone)
                   const resetAt = userProfile?.daily_target_reset_at ? new Date(userProfile.daily_target_reset_at) : null
                   const cutoff = (resetAt && resetAt >= todayStart) ? resetAt : todayStart
 
