@@ -3167,7 +3167,8 @@ Deno.serve(async (req) => {
               position_size_value,
               validation_status,
               webhook_secret,
-              trading_pairs
+              trading_pairs,
+              timezone
             )
           `)
 
