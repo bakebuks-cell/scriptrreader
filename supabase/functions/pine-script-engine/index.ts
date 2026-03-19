@@ -3280,6 +3280,9 @@ Deno.serve(async (req) => {
         const simulation = simulateSignalDecision(signalType, currentPositionSide, effectiveMode, oppositePolicy, currentPrice)
 
         if (!simulation.wouldExecute) {
+          const scriptTimezone = assignmentScript.timezone || 'UTC'
+          console.log(`[WEBHOOK] Signal ${signalType} received but won't execute (decision: ${simulation.decision}). Script timezone: ${scriptTimezone}. Stored as secondary verification.`)
+          
           await supabase
             .from('user_scripts')
             .update({
@@ -3287,9 +3290,11 @@ Deno.serve(async (req) => {
                 ...settings,
                 webhook_enabled: true,
                 lastWebhookReceivedAt: new Date().toISOString(),
-                lastExecutionSource: 'tradingview_webhook',
+                lastExecutionSource: 'tradingview_webhook_secondary',
                 lastWebhookDedupKey: dedupKey,
                 lastProcessedCandleTime: candleTime,
+                lastWebhookSignalType: signalType.startsWith('BUY') ? 'BUY' : signalType.startsWith('SELL') ? 'SELL' : 'NONE',
+                lastWebhookTimezone: scriptTimezone,
               },
             })
             .eq('id', assignment.id)
@@ -3300,6 +3305,8 @@ Deno.serve(async (req) => {
               executed: false,
               deduped: false,
               decision: simulation.decision,
+              executionMode: 'timezone_primary_webhook_secondary',
+              scriptTimezone,
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
