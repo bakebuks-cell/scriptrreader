@@ -200,6 +200,7 @@ export default function PineScriptEditor({
         script_content: selectedScript.script_content,
         allowed_timeframes: selectedScript.allowed_timeframes,
         is_active: selectedScript.is_active,
+        timezone: (selectedScript as any).timezone || '',
       });
       setBotConfig({
         candle_type: selectedScript.candle_type || 'regular',
