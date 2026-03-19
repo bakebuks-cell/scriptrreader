@@ -4127,6 +4127,11 @@ Deno.serve(async (req) => {
                       )
                       positionSide = 'NONE'
                       entryCandleTime = 0
+                      // CRITICAL: Advance lastProcessedCandleTime so RE-ENTRY recovery can fire
+                      // on the NEXT candle (lag=0-1 window). Without this, the gap grows
+                      // indefinitely and RE-ENTRY never fires, leaving the bot stuck with no position.
+                      lastProcessedCandleTime = currentCandleTime
+                      console.log(`[ENGINE] External close: advanced lastProcessedCandleTime to ${currentCandleTime} for RE-ENTRY eligibility`)
                     } else if (syncMissCount > 0) {
                       console.log(`[ENGINE] Trade ${openTrade.id} missing on exchange — pending confirmation (${syncMissCount}/10)`)
                     }
@@ -4184,6 +4189,13 @@ Deno.serve(async (req) => {
 
                 // ----- STEP 4: SIGNAL = NONE → nothing to do -----
                 if (rawSignalAction === 'NONE') {
+                  // When positionSide is NONE and signal is NONE, advance lastProcessedCandleTime
+                  // to prevent the gap from growing indefinitely (which would block RE-ENTRY recovery
+                  // if the indicator later flips while we have no position).
+                  if (positionSide === 'NONE' && currentCandleTime > lastProcessedCandleTime) {
+                    console.log(`[ENGINE] No signal + no position: advancing lastProcessedCandleTime ${lastProcessedCandleTime} → ${currentCandleTime}`)
+                    lastProcessedCandleTime = currentCandleTime
+                  }
                   results.push({
                     scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
                     symbol, timeframe, executed: false,
