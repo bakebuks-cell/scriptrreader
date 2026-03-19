@@ -415,6 +415,7 @@ export type Database = {
           position_size_value: number | null
           script_content: string
           symbol: string
+          timezone: string
           trading_pairs: string[] | null
           updated_at: string
           validation_errors: string[]
@@ -441,6 +442,7 @@ export type Database = {
           position_size_value?: number | null
           script_content: string
           symbol: string
+          timezone?: string
           trading_pairs?: string[] | null
           updated_at?: string
           validation_errors?: string[]
@@ -467,6 +469,7 @@ export type Database = {
           position_size_value?: number | null
           script_content?: string
           symbol?: string
+          timezone?: string
           trading_pairs?: string[] | null
           updated_at?: string
           validation_errors?: string[]

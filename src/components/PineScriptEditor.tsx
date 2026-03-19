@@ -9,7 +9,8 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Shield, Power, AlertTriangle, Globe } from 'lucide-react';
+import { Code, Save, Trash2, Play, Pause, Plus, Copy, Check, FlaskConical, Loader2, X, Settings2, Shield, Power, AlertTriangle, Globe, Clock } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AVAILABLE_TIMEFRAMES, MAX_SYMBOLS_PER_SCRIPT } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { useEvaluateScript, useRunEngine } from '@/hooks/usePineScriptEngine';
@@ -67,6 +68,44 @@ interface PineScriptEditorProps {
 }
 
 const DEFAULT_PINE_SCRIPT = '';
+
+const ALL_TIMEZONES = [
+  { value: 'UTC', label: 'UTC (Coordinated Universal Time)' },
+  { value: 'Asia/Dubai', label: 'Asia/Dubai (GMT+4)' },
+  { value: 'Asia/Kolkata', label: 'Asia/Kolkata (GMT+5:30)' },
+  { value: 'Asia/Tokyo', label: 'Asia/Tokyo (GMT+9)' },
+  { value: 'Asia/Shanghai', label: 'Asia/Shanghai (GMT+8)' },
+  { value: 'Asia/Hong_Kong', label: 'Asia/Hong Kong (GMT+8)' },
+  { value: 'Asia/Singapore', label: 'Asia/Singapore (GMT+8)' },
+  { value: 'Asia/Seoul', label: 'Asia/Seoul (GMT+9)' },
+  { value: 'Asia/Bangkok', label: 'Asia/Bangkok (GMT+7)' },
+  { value: 'Asia/Karachi', label: 'Asia/Karachi (GMT+5)' },
+  { value: 'Asia/Dhaka', label: 'Asia/Dhaka (GMT+6)' },
+  { value: 'Asia/Jakarta', label: 'Asia/Jakarta (GMT+7)' },
+  { value: 'Asia/Riyadh', label: 'Asia/Riyadh (GMT+3)' },
+  { value: 'Asia/Tehran', label: 'Asia/Tehran (GMT+3:30)' },
+  { value: 'Europe/London', label: 'Europe/London (GMT+0/+1)' },
+  { value: 'Europe/Berlin', label: 'Europe/Berlin (GMT+1/+2)' },
+  { value: 'Europe/Paris', label: 'Europe/Paris (GMT+1/+2)' },
+  { value: 'Europe/Moscow', label: 'Europe/Moscow (GMT+3)' },
+  { value: 'Europe/Istanbul', label: 'Europe/Istanbul (GMT+3)' },
+  { value: 'Europe/Zurich', label: 'Europe/Zurich (GMT+1/+2)' },
+  { value: 'Europe/Amsterdam', label: 'Europe/Amsterdam (GMT+1/+2)' },
+  { value: 'America/New_York', label: 'America/New York (GMT-5/-4)' },
+  { value: 'America/Chicago', label: 'America/Chicago (GMT-6/-5)' },
+  { value: 'America/Denver', label: 'America/Denver (GMT-7/-6)' },
+  { value: 'America/Los_Angeles', label: 'America/Los Angeles (GMT-8/-7)' },
+  { value: 'America/Toronto', label: 'America/Toronto (GMT-5/-4)' },
+  { value: 'America/Sao_Paulo', label: 'America/São Paulo (GMT-3)' },
+  { value: 'America/Argentina/Buenos_Aires', label: 'America/Buenos Aires (GMT-3)' },
+  { value: 'America/Mexico_City', label: 'America/Mexico City (GMT-6/-5)' },
+  { value: 'Pacific/Auckland', label: 'Pacific/Auckland (GMT+12/+13)' },
+  { value: 'Australia/Sydney', label: 'Australia/Sydney (GMT+10/+11)' },
+  { value: 'Australia/Melbourne', label: 'Australia/Melbourne (GMT+10/+11)' },
+  { value: 'Africa/Cairo', label: 'Africa/Cairo (GMT+2)' },
+  { value: 'Africa/Johannesburg', label: 'Africa/Johannesburg (GMT+2)' },
+  { value: 'Africa/Lagos', label: 'Africa/Lagos (GMT+1)' },
+];
 
 const DEFAULT_BOT_CONFIG: BotConfig = {
   candle_type: 'regular',
@@ -141,8 +180,9 @@ export default function PineScriptEditor({
     description: '',
     symbols: ['BTCUSDT'] as string[],
     script_content: DEFAULT_PINE_SCRIPT,
-      allowed_timeframes: ['1m'],
+    allowed_timeframes: ['1m'],
     is_active: false,
+    timezone: '',
   });
 
   const [botConfig, setBotConfig] = useState<BotConfig>(DEFAULT_BOT_CONFIG);
@@ -160,6 +200,7 @@ export default function PineScriptEditor({
         script_content: selectedScript.script_content,
         allowed_timeframes: selectedScript.allowed_timeframes,
         is_active: selectedScript.is_active,
+        timezone: (selectedScript as any).timezone || '',
       });
       setBotConfig({
         candle_type: selectedScript.candle_type || 'regular',
@@ -186,6 +227,7 @@ export default function PineScriptEditor({
       script_content: DEFAULT_PINE_SCRIPT,
       allowed_timeframes: ['1m'],
       is_active: false,
+      timezone: '',
     });
     setBotConfig(DEFAULT_BOT_CONFIG);
     setSelectedScript(null);
@@ -216,6 +258,10 @@ export default function PineScriptEditor({
       toast({ title: 'Error', description: `Maximum ${MAX_SYMBOLS_PER_SCRIPT} symbols allowed`, variant: 'destructive' });
       return;
     }
+    if (!formData.timezone) {
+      toast({ title: 'Error', description: 'Timezone selection is required', variant: 'destructive' });
+      return;
+    }
 
     const fullData = {
       name: formData.name,
@@ -224,6 +270,7 @@ export default function PineScriptEditor({
       script_content: formData.script_content,
       allowed_timeframes: formData.allowed_timeframes,
       is_active: formData.is_active,
+      timezone: formData.timezone,
       ...botConfig,
       trading_pairs: formData.symbols,
       multi_pair_mode: formData.symbols.length > 1,
@@ -617,6 +664,36 @@ export default function PineScriptEditor({
                       placeholder="Enter your Pine Script code here..."
                       disabled={readOnly || companyMode}
                     />
+                  </div>
+
+                  {/* Timezone Selection */}
+                  <div>
+                    <Label className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Timezone *
+                    </Label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Select the timezone your TradingView chart uses. This ensures signals and trade execution are synchronized.
+                    </p>
+                    <Select
+                      value={formData.timezone}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, timezone: value }))}
+                      disabled={readOnly && !companyMode}
+                    >
+                      <SelectTrigger className={!formData.timezone ? 'border-destructive/50' : ''}>
+                        <SelectValue placeholder="Select your timezone..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ALL_TIMEZONES.map(tz => (
+                          <SelectItem key={tz.value} value={tz.value}>
+                            {tz.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!formData.timezone && (
+                      <p className="text-xs text-destructive mt-1">⚠ Timezone is required before saving</p>
+                    )}
                   </div>
 
                   {/* Validation Summary Panel */}
