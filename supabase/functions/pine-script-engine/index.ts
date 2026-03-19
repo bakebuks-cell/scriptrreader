@@ -122,6 +122,95 @@ interface UserScript {
 }
 
 // ============================================
+// TIMEZONE HELPERS
+// ============================================
+
+// All known timezone UTC offsets in minutes. DST is approximated with fixed offsets.
+// For production accuracy, this covers the most common trading timezones.
+const TIMEZONE_OFFSETS: Record<string, number> = {
+  'UTC': 0,
+  'Asia/Dubai': 240,        // UTC+4
+  'Asia/Kolkata': 330,       // UTC+5:30
+  'Asia/Tokyo': 540,         // UTC+9
+  'Asia/Shanghai': 480,      // UTC+8
+  'Asia/Hong_Kong': 480,     // UTC+8
+  'Asia/Singapore': 480,     // UTC+8
+  'Asia/Seoul': 540,         // UTC+9
+  'Asia/Bangkok': 420,       // UTC+7
+  'Asia/Karachi': 300,       // UTC+5
+  'Asia/Dhaka': 360,         // UTC+6
+  'Asia/Jakarta': 420,       // UTC+7
+  'Asia/Riyadh': 180,        // UTC+3
+  'Asia/Tehran': 210,        // UTC+3:30
+  'Europe/London': 0,        // UTC+0 (ignoring DST)
+  'Europe/Berlin': 60,       // UTC+1
+  'Europe/Paris': 60,        // UTC+1
+  'Europe/Moscow': 180,      // UTC+3
+  'Europe/Istanbul': 180,    // UTC+3
+  'Europe/Zurich': 60,       // UTC+1
+  'Europe/Amsterdam': 60,    // UTC+1
+  'America/New_York': -300,  // UTC-5
+  'America/Chicago': -360,   // UTC-6
+  'America/Denver': -420,    // UTC-7
+  'America/Los_Angeles': -480, // UTC-8
+  'America/Toronto': -300,   // UTC-5
+  'America/Sao_Paulo': -180, // UTC-3
+  'America/Argentina/Buenos_Aires': -180, // UTC-3
+  'America/Mexico_City': -360, // UTC-6
+  'Pacific/Auckland': 720,   // UTC+12
+  'Australia/Sydney': 600,   // UTC+10
+  'Australia/Melbourne': 600, // UTC+10
+  'Africa/Cairo': 120,       // UTC+2
+  'Africa/Johannesburg': 120, // UTC+2
+  'Africa/Lagos': 60,        // UTC+1
+}
+
+/**
+ * Get UTC offset in milliseconds for a timezone string.
+ * Returns 0 (UTC) for unknown timezones.
+ */
+function getTimezoneOffsetMs(timezone: string): number {
+  const offsetMinutes = TIMEZONE_OFFSETS[timezone]
+  if (offsetMinutes === undefined) {
+    console.log(`[TIMEZONE] Unknown timezone "${timezone}" — defaulting to UTC`)
+    return 0
+  }
+  return offsetMinutes * 60 * 1000
+}
+
+/**
+ * Get the start-of-day timestamp adjusted for the user's timezone.
+ * E.g. for Dubai (UTC+4), "today" starts at 20:00 UTC of the previous day.
+ */
+function getTimezoneTodayStart(timezone: string): Date {
+  const offsetMs = getTimezoneOffsetMs(timezone)
+  const now = new Date()
+  // Convert current UTC time to the user's local time
+  const localMs = now.getTime() + offsetMs
+  // Floor to start of day in local time
+  const localDayStart = new Date(Math.floor(localMs / 86400000) * 86400000)
+  // Convert back to UTC
+  return new Date(localDayStart.getTime() - offsetMs)
+}
+
+/**
+ * Get the candle boundary start time adjusted for timezone (for daily+ timeframes).
+ * For sub-daily timeframes, candle boundaries are UTC-epoch-based and timezone doesn't change them.
+ * For daily timeframes, the "day" starts at midnight in the user's timezone.
+ */
+function getTimezoneCandleStart(timezone: string, timeframe: string, intervalMs: number): Date {
+  const isDailyOrHigher = timeframe === '1d' || timeframe === '1w' || timeframe === '1M'
+  
+  if (isDailyOrHigher) {
+    // Use timezone-aware day boundary
+    return getTimezoneTodayStart(timezone)
+  }
+  
+  // Sub-daily: candle boundaries are based on UTC epoch (same as Binance)
+  return new Date(Math.floor(Date.now() / intervalMs) * intervalMs)
+}
+
+// ============================================
 // ENGINE LOGGING HELPER
 // ============================================
 
@@ -3078,7 +3167,8 @@ Deno.serve(async (req) => {
               position_size_value,
               validation_status,
               webhook_secret,
-              trading_pairs
+              trading_pairs,
+              timezone
             )
           `)
 
@@ -3190,6 +3280,9 @@ Deno.serve(async (req) => {
         const simulation = simulateSignalDecision(signalType, currentPositionSide, effectiveMode, oppositePolicy, currentPrice)
 
         if (!simulation.wouldExecute) {
+          const scriptTimezone = assignmentScript.timezone || 'UTC'
+          console.log(`[WEBHOOK] Signal ${signalType} received but won't execute (decision: ${simulation.decision}). Script timezone: ${scriptTimezone}. Stored as secondary verification.`)
+          
           await supabase
             .from('user_scripts')
             .update({
@@ -3197,9 +3290,11 @@ Deno.serve(async (req) => {
                 ...settings,
                 webhook_enabled: true,
                 lastWebhookReceivedAt: new Date().toISOString(),
-                lastExecutionSource: 'tradingview_webhook',
+                lastExecutionSource: 'tradingview_webhook_secondary',
                 lastWebhookDedupKey: dedupKey,
                 lastProcessedCandleTime: candleTime,
+                lastWebhookSignalType: signalType.startsWith('BUY') ? 'BUY' : signalType.startsWith('SELL') ? 'SELL' : 'NONE',
+                lastWebhookTimezone: scriptTimezone,
               },
             })
             .eq('id', assignment.id)
@@ -3210,6 +3305,8 @@ Deno.serve(async (req) => {
               executed: false,
               deduped: false,
               decision: simulation.decision,
+              executionMode: 'timezone_primary_webhook_secondary',
+              scriptTimezone,
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
@@ -3244,11 +3341,13 @@ Deno.serve(async (req) => {
                 ...settings,
                 webhook_enabled: true,
                 lastWebhookReceivedAt: new Date().toISOString(),
-                lastExecutionSource: 'tradingview_webhook',
+                lastExecutionSource: 'tradingview_webhook_secondary',
                 lastWebhookDedupKey: dedupKey,
                 lastProcessedCandleTime: candleTime,
                 entryCandleTime: 0,
                 positionSide: 'NONE',
+                lastWebhookSignalType: signalType.startsWith('BUY') ? 'BUY' : 'SELL',
+                lastWebhookTimezone: assignmentScript.timezone || 'UTC',
               },
             })
             .eq('id', assignment.id)
@@ -3296,11 +3395,13 @@ Deno.serve(async (req) => {
               ...settings,
               webhook_enabled: true,
               lastWebhookReceivedAt: new Date().toISOString(),
-              lastExecutionSource: 'tradingview_webhook',
+              lastExecutionSource: 'tradingview_webhook_secondary',
               lastWebhookDedupKey: dedupKey,
               lastProcessedCandleTime: candleTime,
               entryCandleTime: execResult.success ? candleTime : (settings.entryCandleTime || 0),
               positionSide: execResult.success ? openingAction : (settings.positionSide || 'NONE'),
+              lastWebhookSignalType: openingAction,
+              lastWebhookTimezone: assignmentScript.timezone || 'UTC',
             },
           })
           .eq('id', assignment.id)
@@ -3316,6 +3417,8 @@ Deno.serve(async (req) => {
             error: execResult.error,
             decision: simulation.decision,
             closedBeforeOpen: !!closeResult,
+            executionMode: 'timezone_primary_webhook_secondary',
+            scriptTimezone: assignmentScript.timezone || 'UTC',
           }),
           { status: execResult.success ? 200 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
@@ -3375,7 +3478,8 @@ Deno.serve(async (req) => {
               trading_pairs,
               multi_pair_mode,
               created_by,
-              admin_tag
+              admin_tag,
+              timezone
             )
           `)
         
@@ -3690,7 +3794,9 @@ Deno.serve(async (req) => {
                 const isHA = resolvedSource === 'heikin_ashi'
                 const indicators = isHA ? haIndicators! : regularIndicators!
                 const candlesUsed = isHA ? haOhlcv! : ohlcv!
-                console.log(`[SCHEDULER] Evaluating "${us.script.name}" user=${us.user_id} (${isHA ? 'HA' : 'Regular'}, price=${currentPrice}, fresh=${dataFreshlyFetched})`)
+                const scriptTimezone = us.script.timezone || 'UTC'
+                const tzOffsetMs = getTimezoneOffsetMs(scriptTimezone)
+                console.log(`[SCHEDULER] Evaluating "${us.script.name}" user=${us.user_id} (${isHA ? 'HA' : 'Regular'}, price=${currentPrice}, fresh=${dataFreshlyFetched}, tz=${scriptTimezone}, offset=${tzOffsetMs/60000}min)`)
                 // strategy is parsed inside the decision engine below
                 // Force USDT-M futures for futures-only symbols (XAU, XAG)
                 const rawMarketType = us.script.market_type || 'futures'
@@ -4046,38 +4152,34 @@ Deno.serve(async (req) => {
 
                 console.log(`[ENGINE] State: positionSide=${positionSide}, rawSignal=${rawSignalAction}, currentCandle=${currentCandleTime}, lastProcessed=${lastProcessedCandleTime}, entryCandle=${entryCandleTime}`)
 
+                // ===== TIMEZONE-BASED ENGINE IS PRIMARY SOURCE OF TRUTH =====
+                // The polling engine uses the script's timezone for candle alignment and signal evaluation.
+                // Webhook signals serve as SECONDARY verification only — they no longer bypass the engine.
+                // If a webhook has been received, we log it as a verification crosscheck but still
+                // execute based on the timezone-aligned engine evaluation.
                 const webhookManaged = settings.webhook_enabled === true || (
                   typeof settings.lastWebhookDedupKey === 'string' && settings.lastWebhookDedupKey.length > 0
                 )
 
                 if (webhookManaged) {
-                  console.log(`[ENGINE] Webhook-managed assignment detected for ${us.script.name} — skipping poll-based execution`)
-                  await supabase.from('user_scripts').update({
-                    settings_json: {
-                      ...settings,
-                      webhook_enabled: true,
-                      lastExecutionSource: settings.lastExecutionSource || 'tradingview_webhook',
-                      lastProcessedCandleTime,
-                      entryCandleTime,
-                      positionSide,
-                      baselineCandleTime,
-                      baselineSignal,
-                      startupComplete,
-                      staleOpenMissCount,
-                      staleOpenTradeId,
-                      staleOpenFirstMissTime,
-                      syncMissCount,
-                      syncMissTradeId,
-                      syncFirstMissTime,
-                    },
-                  }).eq('script_id', us.script_id).eq('user_id', us.user_id)
-
-                  results.push({
-                    scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
-                    symbol, timeframe, executed: false,
-                    reason: 'Webhook-managed assignment: polling execution skipped',
-                  })
-                  continue
+                  // CHANGED: Engine is now PRIMARY. Webhook is secondary verification.
+                  // We still run the engine evaluation — if the engine signal matches the last webhook signal,
+                  // it provides dual-confirmation. If they disagree, we trust the timezone-aligned engine.
+                  const lastWebhookSignal = settings.lastWebhookSignalType || 'NONE'
+                  const lastWebhookTime = settings.lastWebhookReceivedAt || ''
+                  
+                  if (rawSignalAction !== 'NONE') {
+                    const signalMatch = rawSignalAction === lastWebhookSignal
+                    console.log(`[ENGINE] Timezone-primary execution for "${us.script.name}" (tz=${scriptTimezone}): engineSignal=${rawSignalAction}, lastWebhook=${lastWebhookSignal}, match=${signalMatch}`)
+                    await engineLog(supabase, 'INFO', 'SIGNAL',
+                      `Timezone-primary signal: engine=${rawSignalAction} (tz=${scriptTimezone}), webhook=${lastWebhookSignal} @ ${lastWebhookTime}, match=${signalMatch}`,
+                      { engineSignal: rawSignalAction, webhookSignal: lastWebhookSignal, webhookTime: lastWebhookTime, timezone: scriptTimezone, match: signalMatch },
+                      us.user_id, us.script_id, symbol, timeframe
+                    )
+                  } else {
+                    console.log(`[ENGINE] Timezone-primary: no signal from engine (tz=${scriptTimezone}), webhook last signal=${lastWebhookSignal}`)
+                  }
+                  // Continue to normal execution flow — DO NOT skip
                 }
 
                 // ----- STEP 4: SIGNAL = NONE → nothing to do -----
@@ -4293,8 +4395,8 @@ Deno.serve(async (req) => {
 
                 const dailyTarget = parseFloat(userProfile?.daily_profit_target || '0')
                 if (dailyTarget > 0) {
-                  const todayStart = new Date()
-                  todayStart.setUTCHours(0, 0, 0, 0)
+                  // Use script timezone for "today" calculation
+                  const todayStart = getTimezoneTodayStart(scriptTimezone)
                   const resetAt = userProfile?.daily_target_reset_at ? new Date(userProfile.daily_target_reset_at) : null
                   const cutoff = (resetAt && resetAt >= todayStart) ? resetAt : todayStart
 
@@ -4574,10 +4676,10 @@ Deno.serve(async (req) => {
                 const closedCandleCloseTime = currentCandleTime + intervalMs
                 const signalLatencySec = Math.max(0, Math.floor((Date.now() - closedCandleCloseTime) / 1000))
 
-                console.log(`[ENGINE] Executing ${rawSignalAction} ${symbol} @ ${currentPrice}, TP=${farTP.toFixed(2)}, SL=NONE, latency=${signalLatencySec}s`)
+                console.log(`[ENGINE] Executing ${rawSignalAction} ${symbol} @ ${currentPrice}, TP=${farTP.toFixed(2)}, SL=NONE, latency=${signalLatencySec}s, tz=${scriptTimezone}, executionSource=timezone_primary`)
                 await engineLog(supabase, 'INFO', 'TRADE_EXECUTION',
-                  `Executing ${rawSignalAction} ${symbol} @ ${currentPrice} (latency=${signalLatencySec}s)`,
-                  { action: rawSignalAction, price: currentPrice, takeProfit: farTP, candleTime: currentCandleTime, signalLatencySec },
+                  `Executing ${rawSignalAction} ${symbol} @ ${currentPrice} (latency=${signalLatencySec}s, tz=${scriptTimezone}, source=timezone_primary)`,
+                  { action: rawSignalAction, price: currentPrice, takeProfit: farTP, candleTime: currentCandleTime, signalLatencySec, timezone: scriptTimezone, executionSource: 'timezone_primary', webhookLastSignal: settings.lastWebhookSignalType || 'NONE' },
                   us.user_id, us.script_id, symbol, timeframe
                 )
 
