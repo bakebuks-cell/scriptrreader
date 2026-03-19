@@ -3395,11 +3395,13 @@ Deno.serve(async (req) => {
               ...settings,
               webhook_enabled: true,
               lastWebhookReceivedAt: new Date().toISOString(),
-              lastExecutionSource: 'tradingview_webhook',
+              lastExecutionSource: 'tradingview_webhook_secondary',
               lastWebhookDedupKey: dedupKey,
               lastProcessedCandleTime: candleTime,
               entryCandleTime: execResult.success ? candleTime : (settings.entryCandleTime || 0),
               positionSide: execResult.success ? openingAction : (settings.positionSide || 'NONE'),
+              lastWebhookSignalType: openingAction,
+              lastWebhookTimezone: assignmentScript.timezone || 'UTC',
             },
           })
           .eq('id', assignment.id)
