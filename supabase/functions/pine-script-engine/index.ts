@@ -4211,7 +4211,12 @@ Deno.serve(async (req) => {
                 }
 
                 // ----- STEP 5: DEDUP — same candle check -----
-                if (currentCandleTime === lastProcessedCandleTime) {
+                // CRITICAL: RE-ENTRY recovery signals MUST bypass DEDUP.
+                // When a trade is closed externally (SL/TP/manual), positionSide becomes NONE
+                // but lastProcessedCandleTime is already at the current candle. Without this
+                // bypass, the engine loops forever: RE-ENTRY fires → DEDUP blocks → repeat.
+                const isRecoverySignal = flipSource === 'recovery'
+                if (currentCandleTime === lastProcessedCandleTime && !isRecoverySignal) {
                   console.log(`[ENGINE] DEDUP: Same candle as last processed (${currentCandleTime}) — IGNORING`)
                   await engineLog(supabase, 'INFO', 'SIGNAL',
                     `Dedup: ${rawSignalAction} signal ignored — same candle already processed (${currentCandleTime})`,
@@ -4224,6 +4229,14 @@ Deno.serve(async (req) => {
                     reason: `Dedup: signal from same candle (${currentCandleTime})`,
                   })
                   continue
+                }
+                if (isRecoverySignal && currentCandleTime === lastProcessedCandleTime) {
+                  console.log(`[ENGINE] DEDUP bypassed for RE-ENTRY recovery signal (${rawSignalAction}) — position was NONE, indicator active`)
+                  await engineLog(supabase, 'INFO', 'SIGNAL',
+                    `RE-ENTRY recovery bypassed dedup: ${rawSignalAction} signal on same candle (${currentCandleTime}) — executing to restore position`,
+                    { rawSignal: rawSignalAction, candleTime: currentCandleTime, lastProcessed: lastProcessedCandleTime, flipSource },
+                    us.user_id, us.script_id, symbol, timeframe
+                  )
                 }
 
                 // ----- STEP 6: SAME-DIRECTION signal → do NOTHING -----
