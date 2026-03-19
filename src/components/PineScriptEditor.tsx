@@ -666,6 +666,36 @@ export default function PineScriptEditor({
                     />
                   </div>
 
+                  {/* Timezone Selection */}
+                  <div>
+                    <Label className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Timezone *
+                    </Label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Select the timezone your TradingView chart uses. This ensures signals and trade execution are synchronized.
+                    </p>
+                    <Select
+                      value={formData.timezone}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, timezone: value }))}
+                      disabled={readOnly && !companyMode}
+                    >
+                      <SelectTrigger className={!formData.timezone ? 'border-destructive/50' : ''}>
+                        <SelectValue placeholder="Select your timezone..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ALL_TIMEZONES.map(tz => (
+                          <SelectItem key={tz.value} value={tz.value}>
+                            {tz.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!formData.timezone && (
+                      <p className="text-xs text-destructive mt-1">⚠ Timezone is required before saving</p>
+                    )}
+                  </div>
+
                   {/* Validation Summary Panel */}
                   {showValidationSummary && (
                     <div className="mt-6 pt-6 border-t">
