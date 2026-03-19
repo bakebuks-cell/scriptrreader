@@ -4139,38 +4139,34 @@ Deno.serve(async (req) => {
 
                 console.log(`[ENGINE] State: positionSide=${positionSide}, rawSignal=${rawSignalAction}, currentCandle=${currentCandleTime}, lastProcessed=${lastProcessedCandleTime}, entryCandle=${entryCandleTime}`)
 
+                // ===== TIMEZONE-BASED ENGINE IS PRIMARY SOURCE OF TRUTH =====
+                // The polling engine uses the script's timezone for candle alignment and signal evaluation.
+                // Webhook signals serve as SECONDARY verification only — they no longer bypass the engine.
+                // If a webhook has been received, we log it as a verification crosscheck but still
+                // execute based on the timezone-aligned engine evaluation.
                 const webhookManaged = settings.webhook_enabled === true || (
                   typeof settings.lastWebhookDedupKey === 'string' && settings.lastWebhookDedupKey.length > 0
                 )
 
                 if (webhookManaged) {
-                  console.log(`[ENGINE] Webhook-managed assignment detected for ${us.script.name} — skipping poll-based execution`)
-                  await supabase.from('user_scripts').update({
-                    settings_json: {
-                      ...settings,
-                      webhook_enabled: true,
-                      lastExecutionSource: settings.lastExecutionSource || 'tradingview_webhook',
-                      lastProcessedCandleTime,
-                      entryCandleTime,
-                      positionSide,
-                      baselineCandleTime,
-                      baselineSignal,
-                      startupComplete,
-                      staleOpenMissCount,
-                      staleOpenTradeId,
-                      staleOpenFirstMissTime,
-                      syncMissCount,
-                      syncMissTradeId,
-                      syncFirstMissTime,
-                    },
-                  }).eq('script_id', us.script_id).eq('user_id', us.user_id)
-
-                  results.push({
-                    scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
-                    symbol, timeframe, executed: false,
-                    reason: 'Webhook-managed assignment: polling execution skipped',
-                  })
-                  continue
+                  // CHANGED: Engine is now PRIMARY. Webhook is secondary verification.
+                  // We still run the engine evaluation — if the engine signal matches the last webhook signal,
+                  // it provides dual-confirmation. If they disagree, we trust the timezone-aligned engine.
+                  const lastWebhookSignal = settings.lastWebhookSignalType || 'NONE'
+                  const lastWebhookTime = settings.lastWebhookReceivedAt || ''
+                  
+                  if (rawSignalAction !== 'NONE') {
+                    const signalMatch = rawSignalAction === lastWebhookSignal
+                    console.log(`[ENGINE] Timezone-primary execution for "${us.script.name}" (tz=${scriptTimezone}): engineSignal=${rawSignalAction}, lastWebhook=${lastWebhookSignal}, match=${signalMatch}`)
+                    await engineLog(supabase, 'INFO', 'SIGNAL',
+                      `Timezone-primary signal: engine=${rawSignalAction} (tz=${scriptTimezone}), webhook=${lastWebhookSignal} @ ${lastWebhookTime}, match=${signalMatch}`,
+                      { engineSignal: rawSignalAction, webhookSignal: lastWebhookSignal, webhookTime: lastWebhookTime, timezone: scriptTimezone, match: signalMatch },
+                      us.user_id, us.script_id, symbol, timeframe
+                    )
+                  } else {
+                    console.log(`[ENGINE] Timezone-primary: no signal from engine (tz=${scriptTimezone}), webhook last signal=${lastWebhookSignal}`)
+                  }
+                  // Continue to normal execution flow — DO NOT skip
                 }
 
                 // ----- STEP 4: SIGNAL = NONE → nothing to do -----
