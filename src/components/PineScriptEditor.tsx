@@ -180,8 +180,9 @@ export default function PineScriptEditor({
     description: '',
     symbols: ['BTCUSDT'] as string[],
     script_content: DEFAULT_PINE_SCRIPT,
-      allowed_timeframes: ['1m'],
+    allowed_timeframes: ['1m'],
     is_active: false,
+    timezone: '',
   });
 
   const [botConfig, setBotConfig] = useState<BotConfig>(DEFAULT_BOT_CONFIG);
