@@ -3195,6 +3195,9 @@ Deno.serve(async (req) => {
             .update({
               settings_json: {
                 ...settings,
+                webhook_enabled: true,
+                lastWebhookReceivedAt: new Date().toISOString(),
+                lastExecutionSource: 'tradingview_webhook',
                 lastWebhookDedupKey: dedupKey,
                 lastProcessedCandleTime: candleTime,
               },
@@ -3239,6 +3242,9 @@ Deno.serve(async (req) => {
             .update({
               settings_json: {
                 ...settings,
+                webhook_enabled: true,
+                lastWebhookReceivedAt: new Date().toISOString(),
+                lastExecutionSource: 'tradingview_webhook',
                 lastWebhookDedupKey: dedupKey,
                 lastProcessedCandleTime: candleTime,
                 entryCandleTime: 0,
@@ -3288,6 +3294,9 @@ Deno.serve(async (req) => {
           .update({
             settings_json: {
               ...settings,
+              webhook_enabled: true,
+              lastWebhookReceivedAt: new Date().toISOString(),
+              lastExecutionSource: 'tradingview_webhook',
               lastWebhookDedupKey: dedupKey,
               lastProcessedCandleTime: candleTime,
               entryCandleTime: execResult.success ? candleTime : (settings.entryCandleTime || 0),
@@ -4036,6 +4045,40 @@ Deno.serve(async (req) => {
                 }
 
                 console.log(`[ENGINE] State: positionSide=${positionSide}, rawSignal=${rawSignalAction}, currentCandle=${currentCandleTime}, lastProcessed=${lastProcessedCandleTime}, entryCandle=${entryCandleTime}`)
+
+                const webhookManaged = settings.webhook_enabled === true || (
+                  typeof settings.lastWebhookDedupKey === 'string' && settings.lastWebhookDedupKey.length > 0
+                )
+
+                if (webhookManaged) {
+                  console.log(`[ENGINE] Webhook-managed assignment detected for ${us.script.name} — skipping poll-based execution`)
+                  await supabase.from('user_scripts').update({
+                    settings_json: {
+                      ...settings,
+                      webhook_enabled: true,
+                      lastExecutionSource: settings.lastExecutionSource || 'tradingview_webhook',
+                      lastProcessedCandleTime,
+                      entryCandleTime,
+                      positionSide,
+                      baselineCandleTime,
+                      baselineSignal,
+                      startupComplete,
+                      staleOpenMissCount,
+                      staleOpenTradeId,
+                      staleOpenFirstMissTime,
+                      syncMissCount,
+                      syncMissTradeId,
+                      syncFirstMissTime,
+                    },
+                  }).eq('script_id', us.script_id).eq('user_id', us.user_id)
+
+                  results.push({
+                    scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                    symbol, timeframe, executed: false,
+                    reason: 'Webhook-managed assignment: polling execution skipped',
+                  })
+                  continue
+                }
 
                 // ----- STEP 4: SIGNAL = NONE → nothing to do -----
                 if (rawSignalAction === 'NONE') {
