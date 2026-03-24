@@ -3997,7 +3997,7 @@ Deno.serve(async (req) => {
                 //   - Recovery mode: if we are stuck on the opposite side due a missed/blocked flip,
                 //     realign to the latest closed direction within a bounded lag window.
                 //   - Never deep-scan historical candles (prevents forced stale trades).
-                  const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number; source: 'running' | 'fresh' | 'catchup' | 'recovery' | 'none' } => {
+                  const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number; source: 'running' | 'fresh' | 'catchup' | 'direction_recovery' | 'none' } => {
                   const len = directionArr.length
                   if (len < 2) return { flipped: false, direction: directionArr[Math.max(0, len - 1)] || 0, source: 'none' }
 
