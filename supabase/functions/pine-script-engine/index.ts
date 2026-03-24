@@ -3108,7 +3108,7 @@ Deno.serve(async (req) => {
           )
         }
         
-        const ohlcv = await fetchOHLCV(symbol, timeframe, 200)
+        const ohlcv = await fetchOHLCV(symbol, timeframe, 500)
         const currentPrice = await getCurrentPrice(symbol)
         const indicators = calculateAllIndicators(ohlcv)
         const strategy = parsePineScript(scriptContent)
@@ -3784,7 +3784,7 @@ Deno.serve(async (req) => {
               haIndicators = cached.haIndicators
               console.log(`[CACHE] Using cached data for ${key}`)
             } else {
-              ohlcv = await fetchOHLCV(symbol, timeframe, 200)
+              ohlcv = await fetchOHLCV(symbol, timeframe, 500)
               currentPrice = await getCurrentPrice(symbol)
               dataFreshlyFetched = true
 
@@ -5116,7 +5116,7 @@ Deno.serve(async (req) => {
         const symbol = url.searchParams.get('symbol') || 'BTCUSDT'
         const timeframe = url.searchParams.get('timeframe') || '1h'
         
-        const ohlcv = await fetchOHLCV(symbol, timeframe, 200)
+        const ohlcv = await fetchOHLCV(symbol, timeframe, 500)
         const indicators = calculateAllIndicators(ohlcv)
         const currentPrice = await getCurrentPrice(symbol)
         
