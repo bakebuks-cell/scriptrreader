@@ -4200,6 +4200,13 @@ Deno.serve(async (req) => {
                 }
 
                 console.log(`[ENGINE] State: positionSide=${positionSide}, rawSignal=${rawSignalAction}, currentCandle=${currentCandleTime}, lastProcessed=${lastProcessedCandleTime}, entryCandle=${entryCandleTime}`)
+                if (executionTiming.requiresBarCloseConfirmation) {
+                  await engineLog(supabase, 'INFO', 'SIGNAL',
+                    `Close-confirmed mode active: waiting for closed candle signals only (${executionTiming.reason})`,
+                    { executionTiming, currentCandleTime, lastProcessedCandleTime, positionSide, rawSignal: rawSignalAction },
+                    us.user_id, us.script_id, symbol, timeframe
+                  )
+                }
 
                 // ===== TIMEZONE-BASED ENGINE IS PRIMARY SOURCE OF TRUTH =====
                 // The polling engine uses the script's timezone for candle alignment and signal evaluation.
