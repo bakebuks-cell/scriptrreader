@@ -36,7 +36,7 @@ import { Progress } from '@/components/ui/progress';
 import WalletCard from '@/components/WalletCard';
 import BinanceApiKeyForm from '@/components/BinanceApiKeyForm';
 import UserProfile from '@/components/profile/UserProfile';
-import TradingChart from '@/components/TradingChart';
+import TradingViewWidget from '@/components/TradingViewWidget';
 import PreciousMetalsRates from '@/components/PreciousMetalsRates';
 import UserOnboarding from '@/components/onboarding/UserOnboarding';
 import LibraryView from '@/components/library/LibraryView';
