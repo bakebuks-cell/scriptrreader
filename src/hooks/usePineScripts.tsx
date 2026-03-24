@@ -33,6 +33,7 @@ export interface PineScript {
   // Validation fields
   validation_status: string;
   validation_errors: string[];
+  timezone: string;
 }
 
 // Extended with per-user activation state
@@ -48,6 +49,7 @@ export interface CreatePineScriptInput {
   symbol: string;
   allowed_timeframes: string[];
   is_active?: boolean;
+  timezone?: string;
   candle_type?: string;
   market_type?: string;
   trading_pairs?: string[];
@@ -148,6 +150,7 @@ export function usePineScripts() {
         symbol: input.symbol,
         allowed_timeframes: input.allowed_timeframes,
         is_active: input.is_active ?? false,
+        timezone: input.timezone || 'UTC',
         description: input.description || null,
         candle_type: input.candle_type || 'regular',
         market_type: input.market_type || 'spot',
@@ -242,6 +245,7 @@ export function usePineScripts() {
       if (updates.symbol !== undefined) cleanUpdates.symbol = updates.symbol;
       if (updates.allowed_timeframes !== undefined) cleanUpdates.allowed_timeframes = updates.allowed_timeframes;
       if (updates.is_active !== undefined) cleanUpdates.is_active = updates.is_active;
+      if ((updates as any).timezone !== undefined) cleanUpdates.timezone = (updates as any).timezone;
       if (updates.candle_type !== undefined) cleanUpdates.candle_type = updates.candle_type;
       if (updates.market_type !== undefined) cleanUpdates.market_type = updates.market_type;
       if (updates.trading_pairs !== undefined) cleanUpdates.trading_pairs = updates.trading_pairs;
