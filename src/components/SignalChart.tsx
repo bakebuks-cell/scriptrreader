@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { createChart, ColorType, IChartApi, ISeriesApi, CandlestickData, SeriesMarker, Time } from 'lightweight-charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -80,22 +80,22 @@ export default function SignalChart({ symbol = 'BNBUSDT', timeframe = '5m', cand
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: isDark ? 'hsl(222, 47%, 8%)' : 'hsl(0, 0%, 100%)' },
-        textColor: isDark ? 'hsl(210, 40%, 75%)' : 'hsl(222, 47%, 25%)',
+        background: { type: ColorType.Solid, color: isDark ? '#0f1729' : '#ffffff' },
+        textColor: isDark ? '#94a3b8' : '#334155',
       },
       grid: {
-        vertLines: { color: isDark ? 'hsl(222, 30%, 15%)' : 'hsl(220, 14%, 92%)' },
-        horzLines: { color: isDark ? 'hsl(222, 30%, 15%)' : 'hsl(220, 14%, 92%)' },
+        vertLines: { color: isDark ? '#1e293b' : '#e2e8f0' },
+        horzLines: { color: isDark ? '#1e293b' : '#e2e8f0' },
       },
       width: chartContainerRef.current.clientWidth,
-      height: height - 90, // Account for header
+      height: height - 90,
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
-        borderColor: isDark ? 'hsl(222, 30%, 20%)' : 'hsl(220, 14%, 85%)',
+        borderColor: isDark ? '#334155' : '#cbd5e1',
       },
       rightPriceScale: {
-        borderColor: isDark ? 'hsl(222, 30%, 20%)' : 'hsl(220, 14%, 85%)',
+        borderColor: isDark ? '#334155' : '#cbd5e1',
       },
       crosshair: {
         mode: 0,
