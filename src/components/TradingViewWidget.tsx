@@ -129,7 +129,7 @@ function TradingViewWidget({ symbol: defaultSymbol, className, height = 500, act
       interval: tvInterval,
       timezone: 'Asia/Kolkata',
       theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
-      style: activeScript?.candleType === 'heikinashi' ? '8' : '1',
+      style: (activeScript?.candleType === 'heikinashi' || activeScript?.candleType === 'heikin_ashi') ? '8' : '1',
       locale: 'en',
       allow_symbol_change: true,
       calendar: false,
