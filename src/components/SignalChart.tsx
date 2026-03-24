@@ -114,9 +114,9 @@ export default function SignalChart({ symbol = 'BNBUSDT', timeframe = '5m', cand
     chartRef.current = chart;
     seriesRef.current = candleSeries;
 
-    // Fetch candles from Binance Futures
+    // Fetch enough candles to match engine parity for Heikin Ashi / ATR-based indicators
     const interval = TIMEFRAME_TO_INTERVAL[timeframe] || '5m';
-    fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=200`)
+    fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=500`)
       .then(res => res.json())
       .then(data => {
         if (!Array.isArray(data)) {
