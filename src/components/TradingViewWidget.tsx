@@ -218,13 +218,14 @@ function TradingViewWidget({ symbol: defaultSymbol, className, height = 500, act
           </div>
           
           <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 shrink-0 gap-1 text-xs"
             onClick={toggleFullscreen}
-            title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
+            title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Open fullscreen'}
           >
             {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {isFullscreen ? 'Exit' : 'Fullscreen'}
           </Button>
         </div>
         
