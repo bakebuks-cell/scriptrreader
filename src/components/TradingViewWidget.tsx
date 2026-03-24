@@ -122,7 +122,9 @@ function TradingViewWidget({ symbol: defaultSymbol, className, height = 500, act
     script.type = 'text/javascript';
     script.async = true;
     script.innerHTML = JSON.stringify({
-      autosize: true,
+      autosize: false,
+      width: '100%',
+      height: isFullscreen ? window.innerHeight - 53 : height,
       symbol: selectedSymbol,
       interval: tvInterval,
       timezone: 'Asia/Kolkata',
