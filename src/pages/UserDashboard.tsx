@@ -37,6 +37,7 @@ import WalletCard from '@/components/WalletCard';
 import BinanceApiKeyForm from '@/components/BinanceApiKeyForm';
 import UserProfile from '@/components/profile/UserProfile';
 import TradingViewWidget from '@/components/TradingViewWidget';
+import SignalChart from '@/components/SignalChart';
 import PreciousMetalsRates from '@/components/PreciousMetalsRates';
 import UserOnboarding from '@/components/onboarding/UserOnboarding';
 import LibraryView from '@/components/library/LibraryView';
