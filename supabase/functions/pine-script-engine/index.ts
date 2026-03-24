@@ -121,6 +121,12 @@ interface UserScript {
   }
 }
 
+interface ScriptExecutionTiming {
+  requiresBarCloseConfirmation: boolean
+  allowIntrabarExecution: boolean
+  reason: string
+}
+
 // ============================================
 // TIMEZONE HELPERS
 // ============================================
@@ -208,6 +214,31 @@ function getTimezoneCandleStart(timezone: string, timeframe: string, intervalMs:
   
   // Sub-daily: candle boundaries are based on UTC epoch (same as Binance)
   return new Date(Math.floor(Date.now() / intervalMs) * intervalMs)
+}
+
+function detectScriptExecutionTiming(scriptContent: string): ScriptExecutionTiming {
+  const content = scriptContent.toLowerCase()
+  const processOrdersOnClose = /process_orders_on_close\s*=\s*true/.test(content)
+  const calcOnEveryTickDisabled = /calc_on_every_tick\s*=\s*false/.test(content)
+  const requiresBarCloseConfirmation = processOrdersOnClose || calcOnEveryTickDisabled
+
+  if (requiresBarCloseConfirmation) {
+    const reasons: string[] = []
+    if (processOrdersOnClose) reasons.push('process_orders_on_close=true')
+    if (calcOnEveryTickDisabled) reasons.push('calc_on_every_tick=false')
+
+    return {
+      requiresBarCloseConfirmation: true,
+      allowIntrabarExecution: false,
+      reason: `close_confirmed:${reasons.join('+')}`,
+    }
+  }
+
+  return {
+    requiresBarCloseConfirmation: false,
+    allowIntrabarExecution: true,
+    reason: 'intrabar_allowed:default',
+  }
 }
 
 // ============================================
@@ -1431,9 +1462,15 @@ function evaluateStrategy(
   indicators: IndicatorValues,
   ohlcv: OHLCV[],
   currentPrice: number,
-  botStartedAt?: string // ISO timestamp — only fire signals from candles after this moment
+  botStartedAt?: string, // ISO timestamp — only fire signals from candles after this moment
+  options?: {
+    useClosedCandlesOnly?: boolean
+  }
 ): TradeSignal {
-  const lastIndex = ohlcv.length - 1
+  const useClosedCandlesOnly = options?.useClosedCandlesOnly === true
+  const lastIndex = useClosedCandlesOnly
+    ? Math.max(0, ohlcv.length - 2)
+    : ohlcv.length - 1
   
   // Determine the earliest candle open-time we will accept as a NEW signal
   // (any candle that opened BEFORE bot_started_at is a pre-existing signal — ignore it)
@@ -1442,7 +1479,7 @@ function evaluateStrategy(
     console.log(`[EVAL] bot_started_at filter: only accepting candles with openTime >= ${new Date(minCandleOpenTime).toISOString()}`)
   }
 
-  console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}, direction=${strategy.direction}`)
+  console.log(`[EVAL] Evaluating ${strategy.entryConditions.length} entry conditions at price ${currentPrice}, direction=${strategy.direction}, closedOnly=${useClosedCandlesOnly}`)
   
   // scanDepth=2: only check the most recent completed candle + 1 buffer.
   // A larger window (e.g. 5) causes the engine to re-detect OLD direction changes
@@ -3934,7 +3971,8 @@ Deno.serve(async (req) => {
                 }
 
                 // ----- STEP 1: EVALUATE SIGNAL -----
-                const strategy = parsePineScript(us.script.script_content)
+                  const strategy = parsePineScript(us.script.script_content)
+                  const executionTiming = detectScriptExecutionTiming(us.script.script_content)
                 
                 // Determine signal from SuperTrend/UTBot state or standard evaluation
                 const isSuperTrendStateBased =
@@ -3959,7 +3997,7 @@ Deno.serve(async (req) => {
                 //   - Recovery mode: if we are stuck on the opposite side due a missed/blocked flip,
                 //     realign to the latest closed direction within a bounded lag window.
                 //   - Never deep-scan historical candles (prevents forced stale trades).
-                const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number; source: 'running' | 'fresh' | 'catchup' | 'recovery' | 'none' } => {
+                  const findRecentFlip = (directionArr: number[]): { flipped: boolean; direction: number; source: 'running' | 'fresh' | 'catchup' | 'recovery' | 'none' } => {
                   const len = directionArr.length
                   if (len < 2) return { flipped: false, direction: directionArr[Math.max(0, len - 1)] || 0, source: 'none' }
 
@@ -3971,11 +4009,15 @@ Deno.serve(async (req) => {
                   // running candle's indicator flips. UTBot's trailing stop already
                   // provides stability; adding an HA time-gate only delays execution
                   // because HA close values don't converge until very late in the candle.
-                  if (runningDir !== lastClosedDir) {
+                    if (executionTiming.allowIntrabarExecution && runningDir !== lastClosedDir) {
                     const label = isHA ? 'HA' : 'regular'
                     console.log(`[ENGINE] RUNNING candle flip: ${lastClosedDir} → ${runningDir} (early entry — ${label} candles)`)
                     return { flipped: true, direction: runningDir, source: 'running' }
                   }
+
+                    if (!executionTiming.allowIntrabarExecution && runningDir !== lastClosedDir) {
+                      console.log(`[ENGINE] Running candle flip ignored — waiting for closed candle confirmation (${executionTiming.reason})`)
+                    }
 
                   if (len < 3) return { flipped: false, direction: lastClosedDir, source: 'none' }
 
@@ -4049,9 +4091,11 @@ Deno.serve(async (req) => {
                   }
                 } else {
                   const botStartedAt = (settings.bot_started_at as string | undefined) || undefined
-                  const evalResult = evaluateStrategy(strategy, indicators, candlesUsed, currentPrice, botStartedAt)
+                    const evalResult = evaluateStrategy(strategy, indicators, candlesUsed, currentPrice, botStartedAt, {
+                      useClosedCandlesOnly: executionTiming.requiresBarCloseConfirmation,
+                    })
                   rawSignalAction = evalResult.action === 'BUY' || evalResult.action === 'SELL' ? evalResult.action : 'NONE'
-                  console.log(`[ENGINE] Standard eval → rawSignal=${rawSignalAction}`)
+                    console.log(`[ENGINE] Standard eval → rawSignal=${rawSignalAction} (${executionTiming.reason})`)
                 }
 
                 // For running candle flips, use the running candle's openTime for dedup
