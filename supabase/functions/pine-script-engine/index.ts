@@ -3108,7 +3108,7 @@ Deno.serve(async (req) => {
           )
         }
         
-        const ohlcv = await fetchOHLCV(symbol, timeframe, 200)
+        const ohlcv = await fetchOHLCV(symbol, timeframe, 500)
         const currentPrice = await getCurrentPrice(symbol)
         const indicators = calculateAllIndicators(ohlcv)
         const strategy = parsePineScript(scriptContent)
