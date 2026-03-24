@@ -616,7 +616,7 @@ export default function UserDashboard() {
 
             {/* TradingView Chart - synced with active Pine Script */}
             <TradingViewWidget 
-              height={500} 
+              height={700} 
               activeScript={(() => {
                 const active = scripts.find(s => s.is_active);
                 if (!active) return null;
