@@ -614,8 +614,21 @@ export default function UserDashboard() {
               </Card>
             </div>
 
-            {/* TradingView Chart */}
-            <TradingViewWidget height={500} />
+            {/* TradingView Chart - synced with active Pine Script */}
+            <TradingViewWidget 
+              height={500} 
+              activeScript={(() => {
+                const active = scripts.find(s => s.is_active);
+                if (!active) return null;
+                return {
+                  name: active.name,
+                  symbol: active.symbol,
+                  scriptContent: active.script_content,
+                  allowedTimeframes: active.allowed_timeframes,
+                  candleType: active.candle_type ?? undefined,
+                };
+              })()}
+            />
           </div>
         );
 
