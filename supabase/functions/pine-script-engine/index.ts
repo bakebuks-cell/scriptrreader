@@ -4294,6 +4294,52 @@ Deno.serve(async (req) => {
                   continue
                 }
                 if (isRecoverySignal && currentCandleTime === lastProcessedCandleTime) {
+                  // CRITICAL FIX: Check if a trade was already placed by a previous recovery attempt
+                  // on this same candle. Without this, RE-ENTRY fires every 3s poll cycle.
+                  const { data: recentRecoveryTrade } = await supabase
+                    .from('trades')
+                    .select('id, status, created_at')
+                    .eq('user_id', us.user_id)
+                    .eq('symbol', symbol)
+                    .eq('script_id', us.script_id)
+                    .in('status', ['OPEN', 'PENDING'])
+                    .limit(1)
+                    .maybeSingle()
+                  
+                  if (recentRecoveryTrade) {
+                    console.log(`[ENGINE] RE-ENTRY recovery BLOCKED — trade ${recentRecoveryTrade.id} already exists from previous recovery`)
+                    await engineLog(supabase, 'INFO', 'SIGNAL',
+                      `RE-ENTRY recovery blocked: ${rawSignalAction} — trade ${recentRecoveryTrade.id} already placed by prior recovery`,
+                      { tradeId: recentRecoveryTrade.id, candleTime: currentCandleTime },
+                      us.user_id, us.script_id, symbol, timeframe
+                    )
+                    // Update positionSide to match the existing trade
+                    positionSide = rawSignalAction
+                    await supabase.from('user_scripts').update({
+                      settings_json: {
+                        ...settings,
+                        lastProcessedCandleTime,
+                        entryCandleTime,
+                        positionSide,
+                        baselineCandleTime,
+                        baselineSignal,
+                        startupComplete,
+                        staleOpenMissCount,
+                        staleOpenTradeId,
+                        staleOpenFirstMissTime,
+                        syncMissCount,
+                        syncMissTradeId,
+                        syncFirstMissTime,
+                      },
+                    }).eq('script_id', us.script_id).eq('user_id', us.user_id)
+                    results.push({
+                      scriptId: us.script_id, scriptName: us.script.name, userId: us.user_id,
+                      symbol, timeframe, executed: false,
+                      reason: `RE-ENTRY blocked: trade already restored by prior recovery`,
+                    })
+                    continue
+                  }
+                  
                   console.log(`[ENGINE] DEDUP bypassed for RE-ENTRY recovery signal (${rawSignalAction}) — position was NONE, indicator active`)
                   await engineLog(supabase, 'INFO', 'SIGNAL',
                     `RE-ENTRY recovery bypassed dedup: ${rawSignalAction} signal on same candle (${currentCandleTime}) — executing to restore position`,
