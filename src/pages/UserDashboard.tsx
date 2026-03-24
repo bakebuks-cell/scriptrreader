@@ -615,21 +615,42 @@ export default function UserDashboard() {
               </Card>
             </div>
 
-            {/* TradingView Chart - synced with active Pine Script */}
-            <TradingViewWidget 
-              height={700} 
-              activeScript={(() => {
-                const active = scripts.find(s => s.is_active);
-                if (!active) return null;
-                return {
-                  name: active.name,
-                  symbol: active.symbol,
-                  scriptContent: active.script_content,
-                  allowedTimeframes: active.allowed_timeframes,
-                  candleType: active.candle_type ?? undefined,
-                };
-              })()}
-            />
+            {/* Side-by-side Charts: TradingView + Signal Markers */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <TradingViewWidget 
+                height={700} 
+                activeScript={(() => {
+                  const active = scripts.find(s => s.is_active);
+                  if (!active) return null;
+                  return {
+                    name: active.name,
+                    symbol: active.symbol,
+                    scriptContent: active.script_content,
+                    allowedTimeframes: active.allowed_timeframes,
+                    candleType: active.candle_type ?? undefined,
+                  };
+                })()}
+              />
+              <SignalChart
+                symbol={(() => {
+                  const active = scripts.find(s => s.is_active);
+                  return active?.symbol || 'BNBUSDT';
+                })()}
+                timeframe={(() => {
+                  const active = scripts.find(s => s.is_active);
+                  return active?.allowed_timeframes?.[0] || '5m';
+                })()}
+                candleType={(() => {
+                  const active = scripts.find(s => s.is_active);
+                  return active?.candle_type || 'regular';
+                })()}
+                scriptId={(() => {
+                  const active = scripts.find(s => s.is_active);
+                  return active?.id;
+                })()}
+                height={700}
+              />
+            </div>
           </div>
         );
 
