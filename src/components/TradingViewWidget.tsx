@@ -232,7 +232,7 @@ function TradingViewWidget({ symbol: defaultSymbol, className, height = 500, act
         <div
           ref={containerRef}
           className="tradingview-widget-container"
-          style={{ height: isFullscreen ? 'calc(100vh - 53px)' : `${height}px`, width: '100%' }}
+          style={{ height: isFullscreen ? 'calc(100vh - 53px)' : `${height}px`, minHeight: `${height}px`, width: '100%', overflow: 'hidden' }}
         />
       </CardContent>
     </Card>
