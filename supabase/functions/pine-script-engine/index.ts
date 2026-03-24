@@ -5116,7 +5116,7 @@ Deno.serve(async (req) => {
         const symbol = url.searchParams.get('symbol') || 'BTCUSDT'
         const timeframe = url.searchParams.get('timeframe') || '1h'
         
-        const ohlcv = await fetchOHLCV(symbol, timeframe, 200)
+        const ohlcv = await fetchOHLCV(symbol, timeframe, 500)
         const indicators = calculateAllIndicators(ohlcv)
         const currentPrice = await getCurrentPrice(symbol)
         
