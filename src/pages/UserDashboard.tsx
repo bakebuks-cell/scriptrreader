@@ -613,6 +613,9 @@ export default function UserDashboard() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* TradingView Chart */}
+            <TradingViewWidget height={500} />
           </div>
         );
 
