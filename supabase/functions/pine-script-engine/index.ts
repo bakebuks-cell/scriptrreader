@@ -3784,7 +3784,7 @@ Deno.serve(async (req) => {
               haIndicators = cached.haIndicators
               console.log(`[CACHE] Using cached data for ${key}`)
             } else {
-              ohlcv = await fetchOHLCV(symbol, timeframe, 200)
+              ohlcv = await fetchOHLCV(symbol, timeframe, 500)
               currentPrice = await getCurrentPrice(symbol)
               dataFreshlyFetched = true
 
