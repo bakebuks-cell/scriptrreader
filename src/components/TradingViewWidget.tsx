@@ -215,7 +215,7 @@ function TradingViewWidget({ symbol: defaultSymbol, className, height = 500, act
             
             <span className="text-xs text-muted-foreground">
               Perpetual · TradingView
-              {activeScript?.candleType === 'heikinashi' && ' · Heikin Ashi'}
+              {(activeScript?.candleType === 'heikinashi' || activeScript?.candleType === 'heikin_ashi') && ' · Heikin Ashi'}
             </span>
           </div>
           
