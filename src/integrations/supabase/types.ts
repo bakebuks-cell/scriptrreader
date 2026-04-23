@@ -875,6 +875,54 @@ export type Database = {
           },
         ]
       }
+      tradingview_ohlc_collection: {
+        Row: {
+          candle_time: string
+          candle_type: string
+          close: number
+          high: number
+          id: string
+          low: number
+          open: number
+          raw_payload: Json | null
+          received_at: string
+          source: string
+          symbol: string
+          timeframe: string
+          volume: number | null
+        }
+        Insert: {
+          candle_time: string
+          candle_type?: string
+          close: number
+          high: number
+          id?: string
+          low: number
+          open: number
+          raw_payload?: Json | null
+          received_at?: string
+          source?: string
+          symbol: string
+          timeframe: string
+          volume?: number | null
+        }
+        Update: {
+          candle_time?: string
+          candle_type?: string
+          close?: number
+          high?: number
+          id?: string
+          low?: number
+          open?: number
+          raw_payload?: Json | null
+          received_at?: string
+          source?: string
+          symbol?: string
+          timeframe?: string
+          volume?: number | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
